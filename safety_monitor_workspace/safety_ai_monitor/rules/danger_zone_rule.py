@@ -19,7 +19,7 @@ class DangerZoneRule(EventRule):
                 events.append(
                     Event(
                         event_type=EventType.DANGER_ZONE,
-                        message="위험구역 침입 이벤트 발생",
+                        message="위험구역 진입 이벤트 발생",
                         frame_id=result.frame_id,
                         created_at=result.event_created_at or datetime.now(),
                         level=EventLevel.DANGER,

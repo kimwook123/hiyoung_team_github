@@ -1,8 +1,10 @@
+import os
 from pathlib import Path
 
 import numpy as np
 
 from core.detection_model import Box, Detection, DetectionModel, DetectionResult
+from core.path_helper import to_project_path
 
 
 class YoloModelSample(DetectionModel):
@@ -12,8 +14,9 @@ class YoloModelSample(DetectionModel):
         self.model = None
 
     def load(self) -> None:
-        # 실제 YOLO 사용 시 requirements.txt의 ultralytics를 설치해야 한다.
-        # 예: pip install ultralytics
+        # Keep Ultralytics writable even in restricted Windows environments.
+        os.environ.setdefault("YOLO_CONFIG_DIR", to_project_path(".yolo_config"))
+
         try:
             from ultralytics import YOLO
         except ModuleNotFoundError as error:
@@ -47,7 +50,6 @@ class YoloModelSample(DetectionModel):
                 name = names[class_id]
                 x1, y1, x2, y2 = box_data.xyxy[0].tolist()
 
-                # YOLO 결과를 DetectionResult 공통 형식으로 변환한다
                 detections.append(
                     Detection(
                         name=name,

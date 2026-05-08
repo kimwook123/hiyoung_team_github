@@ -26,7 +26,7 @@ if not exist "%GUI_EXE%" (
   exit /b 1
 )
 
-start "Safety Python" /D "%PY_DIR%" python main.py
+start "Safety Python" /D "%PY_DIR%" py -3.12 main.py
 timeout /t 3 /nobreak > nul
 start "Safety GUI" /D "%GUI_DIR%" "%GUI_EXE%"
 

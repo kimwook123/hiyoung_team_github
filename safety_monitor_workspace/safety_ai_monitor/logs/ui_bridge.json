@@ -1,0 +1,7 @@
+{
+  "source_type": "video",
+  "source_value": "C:\\Users\\AISW_203_114\\Desktop\\safety_monitor_workspace\\test.mp4",
+  "log_path": "C:\\Users\\AISW_203_114\\Desktop\\safety_monitor_workspace\\safety_ai_monitor\\logs\\test_event_log.txt",
+  "model_type": "yolo",
+  "source_fps": 25.0
+}

@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local temp files
+.tmp/
+tmp/
+*.tmp
+
+# Logs and runtime state
+*.log
+logs/
+safety_ai_monitor/logs/*
+!safety_ai_monitor/logs/.gitkeep
+
+# Generated clips and local media
+*.mp4
+*.avi
+*.mov
+*.mkv
+!README.md
+
+# Model weights and large binary assets
+*.pt
+*.pth
+*.onnx
+*.engine
+*.bin
+!safety_ai_monitor/models/weights/.gitkeep
+
+# Ultralytics local config/cache
+.yolo_config/
+safety_ai_monitor/.yolo_config/
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+build/
+
+# Flutter Windows generated artifacts
+safety_ai_monitor_ui/build/
+safety_ai_monitor_ui/windows/flutter/ephemeral/
+
+# IDE / OS
+.idea/
+.vscode/
+Thumbs.db
+Desktop.ini

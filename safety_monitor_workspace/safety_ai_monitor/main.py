@@ -5,11 +5,13 @@ from config import (
     BRIDGE_PATH,
     CAMERA_INDEX,
     DANGER_ZONE_ROI,
+    ENABLE_JSON_EVENT_LOG,
     EVENT_COOLDOWN_SECONDS,
     EVENT_CLIP_BEFORE_SECONDS,
     EVENT_CLIP_DIR,
     EVENT_END_MISSING_FRAMES,
     INPUT_MODE,
+    JSON_EVENT_LOG_PATH,
     LOG_PATH,
     MIN_CONFIDENCE,
     MODEL_PATH,
@@ -33,6 +35,7 @@ from core.path_helper import to_abs_path, to_project_path
 from core.pipeline import VideoPipeline
 from core.ui_bridge import SourceStateReader, UiBridgeWriter
 from handlers.console_event_handler import ConsoleEventHandler
+from handlers.json_event_handler import JsonEventHandler
 from handlers.log_event_handler import LogEventHandler
 from models.dummy_model import DummyDetectionModel
 from models.yolo_model_sample import YoloModelSample
@@ -100,6 +103,10 @@ def build_pipeline(
         ConsoleEventHandler(),
         LogEventHandler(log_path=log_path),
     ]
+    if ENABLE_JSON_EVENT_LOG:
+        handlers.append(
+            JsonEventHandler(log_path=to_project_path(JSON_EVENT_LOG_PATH))
+        )
 
     event_filter = EventFilter(
         cooldown_seconds=EVENT_COOLDOWN_SECONDS,

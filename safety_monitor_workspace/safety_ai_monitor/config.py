@@ -16,6 +16,12 @@ MODEL_PATH = "models/weights/best.pt"
 # 이벤트 로그 저장 경로
 LOG_PATH = "logs/event_log.txt"
 
+# JSON 이벤트 로그 저장 여부
+ENABLE_JSON_EVENT_LOG = True
+
+# JSON 이벤트 로그 저장 경로
+JSON_EVENT_LOG_PATH = "logs/events.jsonl"
+
 # Flutter UI와 연결할 정보 파일 경로
 BRIDGE_PATH = "logs/ui_bridge.json"
 

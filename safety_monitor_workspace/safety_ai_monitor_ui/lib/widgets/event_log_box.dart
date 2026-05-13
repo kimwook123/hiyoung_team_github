@@ -1,16 +1,16 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
-import '../controllers/event_log_controller.dart';
+import '../controllers/event_feed_source.dart';
 import '../models/event_log_item.dart';
 
 class EventLogBox extends StatelessWidget {
   const EventLogBox({
     super.key,
-    required this.controller,
+    required this.eventFeed,
     required this.onTapItem,
   });
 
-  final EventLogController controller;
+  final EventFeedSource eventFeed;
   final void Function(EventLogItem item) onTapItem;
 
   @override
@@ -31,25 +31,25 @@ class EventLogBox extends StatelessWidget {
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const Spacer(),
-                Text('총 ${controller.items.length}건'),
+                Text('총 ${eventFeed.logItems.length}건'),
               ],
             ),
           ),
           const Divider(height: 1),
           Expanded(
-            child: controller.items.isEmpty
+            child: eventFeed.logItems.isEmpty
                 ? const Center(
                     child: Text('표시할 로그가 없습니다.'),
                   )
                 : ListView.separated(
-                    itemCount: controller.items.length,
+                    itemCount: eventFeed.logItems.length,
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (context, index) {
-                      final item = controller.items[index];
+                      final item = eventFeed.logItems[index];
                       return _LogTile(
                         item: item,
                         isSelected:
-                            controller.selectedKeys.contains(item.eventKeyText),
+                            eventFeed.selectedKeys.contains(item.eventKeyText),
                         onTap: () => onTapItem(item),
                       );
                     },

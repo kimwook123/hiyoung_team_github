@@ -101,9 +101,18 @@ Flutter UI는 이 파일을 읽어서 영상 경로와 로그 경로를 자동�
 - `lib/controllers/api_event_feed_source.dart`는 `ApiEventController`를 감싸는 어댑터입니다.
 - `ApiEventController`는 내부적으로 `ApiEventItem` 목록을 유지하면서, `logItems` getter로 기존 UI용 `EventLogItem` 목록도 함께 제공합니다.
 - 이 구조 덕분에 기존 `EventLogBox`, `VideoViewBox`를 크게 바꾸지 않고 API 모드로 전환할 수 있습니다.
+- 현재 `HomeScreen`과 `EventLogBox`는 1차적으로 `EventFeedSource`를 통해 이벤트 표시 데이터를 받도록 연결되었습니다.
+- 현재 기본 연결은 `FileEventFeedSource`이며, 실제 동작은 기존 파일 로그 기반 모드와 동일합니다.
+- `HomeScreen`에서는 이제 파일 로그 모드와 API 서버 모드를 선택할 수 있습니다.
+- 기본값은 파일 로그 모드입니다.
 - 기본 서버 주소는 `http://127.0.0.1:8000` 입니다.
-- 아직 `HomeScreen`에는 연결하지 않았고, 실제 화면 전환은 다음 단계에서 진행합니다.
-- 다음 단계에서 `HomeScreen`이 `EventFeedSource`를 바라보도록 바꾸면 파일 로그/API 모드 전환이 쉬워집니다.
+- API 서버 모드는 FastAPI 서버가 실행 중이어야 하며, `API 새로고침` 버튼으로 이벤트를 가져옵니다.
+- API 서버 모드에서 이벤트를 클릭하면 `/api/events/detail`을 통해 상세 정보를 조회합니다.
+- 상세 패널은 API 모드에서만 표시됩니다.
+- 현재 API 모드는 수동 새로고침 방식만 지원하며 자동 polling은 아직 없습니다.
+- 기존 파일 로그 기반 흐름은 그대로 유지됩니다.
+- `EventLogBox`, `VideoViewBox`의 표시 모델은 계속 `EventLogItem`이고, API 데이터는 `ApiEventItem -> EventLogItem` 어댑터를 거쳐 표시됩니다.
+- 이번 단계는 API 모드 선택과 수동 조회까지만 포함하며, 자동 polling, 서버 상태 감시, API 기반 영상 소스 제어는 아직 하지 않습니다.
 
 ## 참고 패키지
 

@@ -1,3 +1,4 @@
+// 이 파일은 기존 txt 로그 한 줄을 Flutter UI가 쓰기 쉬운 형태로 바꾼 모델입니다.
 class EventLogItem {
   const EventLogItem({
     required this.timeText,
@@ -39,6 +40,7 @@ class EventLogItem {
   bool get hasClip => clipPathText.isNotEmpty && clipPathText != '-';
 
   bool matchesFrame(int frameValue) {
+    // 현재 프레임이 이벤트 시작~종료 구간 안에 있는지 계산해 오버레이 표시에 사용합니다.
     final startFrame = startFrameValue;
     final endFrame = endFrameValue;
     if (startFrame == null) {

@@ -1,6 +1,8 @@
 import '../models/api_event_item.dart';
 import '../models/event_log_item.dart';
 
+// API 서버의 이벤트 JSON을 기존 화면 모델 EventLogItem으로 바꾸는 어댑터입니다.
+// 덕분에 EventLogBox, VideoViewBox를 크게 바꾸지 않고 API 모드를 붙일 수 있습니다.
 EventLogItem apiEventToLogItem(ApiEventItem item) {
   final timeText = _firstNonEmpty(item.sourceTimeText, item.createdAt, '-');
   final eventKeyText = _orDash(item.eventKey);
@@ -68,6 +70,7 @@ String _firstNonEmpty(String first, String second, String fallback) {
 }
 
 String _buildRawText(ApiEventItem item, String timeText) {
+  // 파일 로그 모드와 비슷한 문자열 형태를 남겨 비교나 디버깅이 쉬우게 합니다.
   return [
     timeText,
     'frame=${_intText(item.frameId)}',

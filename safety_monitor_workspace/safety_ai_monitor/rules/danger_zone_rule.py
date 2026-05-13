@@ -4,8 +4,11 @@ from core.detection_model import Detection, DetectionResult
 from core.event_rule import Event, EventRule
 from core.event_types import EventLevel, EventType
 
+# 이 파일은 사람 중심점이 위험구역 ROI 안에 들어왔는지 검사하는 룰입니다.
+
 
 class DangerZoneRule(EventRule):
+    # ROI(rectangle, 사각형 구역) 안에 사람이 들어오면 DANGER_ZONE 이벤트를 만듭니다.
     def __init__(self, roi: tuple[int, int, int, int]) -> None:
         self.roi = roi
 

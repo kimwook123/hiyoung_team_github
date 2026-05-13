@@ -4,13 +4,17 @@ from core.detection_model import Box, Detection, DetectionResult
 from core.event_rule import Event, EventRule
 from core.event_types import EventLevel, EventType
 
+# 이 파일은 person과 helmet 탐지 결과를 이용해 안전모 미착용 의심 이벤트를 만듭니다.
+
 
 class NoHelmetRule(EventRule):
+    # 사람 박스의 상단 일부를 머리 영역으로 보고, 그 안에 helmet이 있는지 확인합니다.
     def __init__(self, head_ratio: float = 0.3, overlap_ratio: float = 0.2) -> None:
         self.head_ratio = min(max(head_ratio, 0.1), 0.5)
         self.overlap_ratio = min(max(overlap_ratio, 0.0), 1.0)
 
     def check(self, result: DetectionResult) -> list[Event]:
+        # DetectionResult에서 person과 helmet만 골라 Event 목록으로 바꾸는 단계입니다.
         persons = [d for d in result.detections if d.name == "person"]
         helmets = [d for d in result.detections if d.name == "helmet"]
 

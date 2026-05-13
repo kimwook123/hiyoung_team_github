@@ -3,6 +3,9 @@ import 'dart:io';
 
 import '../models/app_link_info.dart';
 
+// 이 파일은 Flutter와 Python AI Worker 사이의 파일 기반 연결 도구입니다.
+// source_state.json, ui_bridge.json, 로그 파일 경로 규칙을 여기서 다룹니다.
+
 class AppLinkService {
   Future<AppLinkInfo?> readDefaultLink() async {
     final bridgeFile = await _findBridgeFile();
@@ -31,6 +34,7 @@ class AppLinkService {
     required String sourceType,
     required String sourceValue,
   }) async {
+    // Flutter가 선택한 입력을 source_state.json에 써 주면 Python이 그 값을 읽어 분석을 시작합니다.
     final stateFile = await _getSourceStateFile();
     await stateFile.parent.create(recursive: true);
     final data = {
@@ -59,6 +63,7 @@ class AppLinkService {
     required String sourceType,
     required String sourceValue,
   }) async {
+    // 파일 로그 모드에서 현재 입력과 대응되는 txt 로그 파일명을 계산합니다.
     final logsDir = await _getLogsDirectory();
 
     if (sourceType == 'video') {

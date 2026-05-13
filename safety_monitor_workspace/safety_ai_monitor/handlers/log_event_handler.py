@@ -5,8 +5,12 @@ from core.event_handler import EventHandler
 from core.event_rule import Event
 from core.event_types import EventStatus
 
+# 이 파일은 기존 Flutter 파일 로그 모드와 호환되는 txt 로그를 기록합니다.
+# GUI가 EventLogItem.fromLine()으로 읽는 한 줄 텍스트 형식을 여기서 만듭니다.
+
 
 class LogEventHandler(EventHandler):
+    # Event를 사람이 읽기 쉬운 txt 한 줄 형식으로 남기는 핸들러입니다.
     def __init__(self, log_path: str = "logs/event_log.txt") -> None:
         self.log_path = Path(log_path)
         self.last_written_lines: dict[str, str] = {}
@@ -16,6 +20,7 @@ class LogEventHandler(EventHandler):
         self.log_path.write_text("", encoding="utf-8")
 
     def handle(self, event: Event) -> None:
+        # 같은 event_key의 완전히 같은 줄은 다시 쓰지 않아 로그 중복을 줄입니다.
         # logs 폴더가 없으면 생성한다
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -43,6 +48,7 @@ class LogEventHandler(EventHandler):
             raise last_error
 
     def _make_line(self, event: Event) -> str:
+        # txt 로그는 GUI 호환을 위해 기존 쉼표 구분 형식을 그대로 유지합니다.
         person_text = "unknown"
         if event.person_id is not None:
             person_text = str(event.person_id)

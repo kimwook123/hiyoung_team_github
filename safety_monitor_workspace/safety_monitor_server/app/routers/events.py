@@ -18,6 +18,8 @@ from app.schemas import (
     EventListResponse,
 )
 
+# 이 파일은 이벤트 저장/조회 API를 담당합니다.
+# POST /api/events -> normalize_event_record -> append_event_record -> data/events.jsonl 저장 흐름이 핵심입니다.
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 
@@ -26,6 +28,8 @@ router = APIRouter(prefix="/api/events", tags=["events"])
 def create_event(
     event_record: dict[str, Any] = Body(...),
 ) -> EventCreateResponse:
+    # POST는 서버에 데이터를 보내는 요청입니다.
+    # 여기서는 Python AI Worker가 보낸 이벤트 JSON을 받아 서버 저장소에 기록합니다.
     if not event_record:
         raise HTTPException(status_code=400, detail="event record is required")
 
@@ -52,6 +56,7 @@ def create_event(
     normalized_record = normalize_event_record(normalized_record)
 
     try:
+        # 정규화된 이벤트를 서버 소유 JSON Lines 저장소에 append합니다.
         saved_record = append_event_record(DEFAULT_EVENT_LOG_PATH, normalized_record)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -68,6 +73,7 @@ def list_events(
     event_type: str | None = None,
     status: str | None = None,
 ) -> EventListResponse:
+    # GET은 서버에서 데이터를 가져오는 요청입니다.
     if latest_only:
         items = get_latest_events_by_key(DEFAULT_EVENT_LOG_PATH)
     else:
@@ -101,6 +107,7 @@ def get_event_detail(
     event_key: str = Query(min_length=1),
     latest_only: bool = True,
 ) -> EventDetailResponse | EventHistoryResponse:
+    # event_key 하나를 기준으로 최신 1건 또는 전체 이력을 조회합니다.
     normalized_event_key = event_key.strip()
     if not normalized_event_key:
         raise HTTPException(status_code=400, detail="event_key is required")

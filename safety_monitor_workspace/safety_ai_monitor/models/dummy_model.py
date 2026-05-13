@@ -2,8 +2,11 @@ import numpy as np
 
 from core.detection_model import Box, Detection, DetectionModel, DetectionResult
 
+# 이 파일은 실제 모델 없이 파이프라인 흐름을 확인하기 위한 더미 모델입니다.
+
 
 class DummyDetectionModel(DetectionModel):
+    # 일정 프레임마다 person, helmet을 만들어 구조 테스트에 사용합니다.
     def __init__(self, min_confidence: float = 0.5) -> None:
         self.min_confidence = min_confidence
 

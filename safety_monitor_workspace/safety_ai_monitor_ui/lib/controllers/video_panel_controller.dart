@@ -6,6 +6,8 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../services/video_service.dart';
 
+// 영상 재생 패널의 상태를 한 곳에서 관리합니다.
+// 파일 영상, 스트림, replay clip 재생을 모두 이 controller가 다룹니다.
 class VideoPanelController extends ChangeNotifier {
   VideoPanelController({VideoService? service})
       : _service = service ?? VideoService() {
@@ -36,6 +38,7 @@ class VideoPanelController extends ChangeNotifier {
       ((currentPosition.inMilliseconds / 1000) * frameRate).round();
 
   Future<void> openVideo(String path, {String nextSourceType = 'video'}) async {
+    // 로컬 파일과 서버 clip URL을 같은 메서드로 열 수 있게 합니다.
     errorText = '';
 
     if (path.isEmpty) {
@@ -63,6 +66,7 @@ class VideoPanelController extends ChangeNotifier {
   }
 
   Future<void> openReplayClip(String path) async {
+    // 이벤트 상세나 로그 클릭으로 클립 재생 모드로 전환할 때 사용합니다.
     await openVideo(path, nextSourceType: 'video');
     isReplayMode = true;
     notifyListeners();
@@ -121,6 +125,7 @@ class VideoPanelController extends ChangeNotifier {
   }
 
   void _listenVideoState() {
+    // media_kit의 재생 상태 변화를 UI용 필드로 반영합니다.
     _positionSub = _service.positionStream.listen((value) {
       currentPosition = value;
       notifyListeners();
@@ -149,6 +154,7 @@ class VideoPanelController extends ChangeNotifier {
   }
 
   bool _isNetworkVideoPath(String path) {
+    // clip_url처럼 HTTP 주소가 들어오면 로컬 파일 존재 검사를 건너뛰기 위해 사용합니다.
     final normalized = path.trim().toLowerCase();
     return normalized.startsWith('http://') || normalized.startsWith('https://');
   }

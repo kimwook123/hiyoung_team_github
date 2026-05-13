@@ -10,8 +10,12 @@ from core.event_rule import EventRule
 from core.frame_source import FrameSource
 from core.object_tracker import PersonTracker
 
+# 이 파일은 실제 프레임 처리 루프를 담당합니다.
+# 프레임을 읽고, DetectionResult를 만들고, EventRule/EventFilter/EventHandler 흐름을 순서대로 실행합니다.
 
 class VideoPipeline:
+    # 하나의 입력 소스를 끝까지 분석하는 실행 단위입니다.
+    # Python AI Worker의 핵심 루프가 이 클래스 안에 있습니다.
     def __init__(
         self,
         frame_source: FrameSource,
@@ -37,6 +41,8 @@ class VideoPipeline:
         self.restart_checker = restart_checker
 
     def run(self) -> str:
+        # 이 함수가 실제 분석 루프입니다.
+        # 매 프레임마다 모델 추론 -> 이벤트 판정 -> 상태 관리 -> 로그/클립 저장이 이어집니다.
         frame_id = 0
         stop_reason = "completed"
 
@@ -63,7 +69,7 @@ class VideoPipeline:
 
                 events = []
                 for rule in self.rules:
-                    # 이벤트 조건을 검사한다
+                    # DetectionResult를 Event 후보로 바꾸는 단계입니다.
                     events.extend(rule.check(result))
 
                 state_events = self.event_filter.update(
@@ -73,6 +79,7 @@ class VideoPipeline:
                     frame_id=frame_id,
                     now=now,
                 )
+                # 클립 저장은 EventFilter가 만든 상태 이벤트를 기준으로 시작/종료됩니다.
                 self.clip_recorder.update(
                     frame=frame,
                     frame_id=frame_id,
@@ -81,10 +88,10 @@ class VideoPipeline:
                 )
                 for event in state_events:
                     for handler in self.handlers:
-                        # 이벤트가 발생하면 처리기에게 넘긴다
+                        # EventHandler는 txt 로그, JSONL, HTTP 전송 같은 후처리를 담당합니다.
                         handler.handle(event)
 
-                # 진행 중인 이벤트도 로그 파일에 계속 반영한다
+                # 진행 중인 ACTIVE 이벤트도 txt 로그에는 계속 반영해 GUI 파일 로그 모드가 최신 상태를 읽게 합니다.
                 for event in active_events:
                     for handler in self.handlers:
                         if handler.__class__.__name__ == "LogEventHandler":
@@ -188,6 +195,7 @@ class VideoPipeline:
         return display_frame
 
     def _fill_result_time(self, result, now: datetime, frame_id: int) -> None:
+        # 영상 파일은 영상 재생 시간 기준, 스트림/카메라는 현재 시각 기준으로 시간 정보를 채웁니다.
         source_seconds = self.frame_source.get_time_seconds()
         if self.source_time_mode == "video":
             if source_seconds is None:

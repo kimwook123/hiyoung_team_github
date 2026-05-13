@@ -2,6 +2,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+# 이 파일은 FastAPI 응답 모델 모음입니다.
+# Pydantic 모델은 서버가 어떤 JSON 형태를 돌려주는지 문서처럼 보여 주는 역할도 합니다.
 
 class EventListResponse(BaseModel):
     count: int

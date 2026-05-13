@@ -3,8 +3,12 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+# 이 파일은 events.jsonl 읽기/쓰기 유틸리티입니다.
+# JSON Lines 형식으로 저장된 이벤트를 읽고, 최신 상태를 모아 주고, 새 이벤트를 append합니다.
 
 def read_event_records(log_path: Path) -> list[dict]:
+    # JSON Lines 파일을 한 줄씩 읽습니다.
+    # 잘못된 줄이 있어도 서버가 죽지 않게 해당 줄만 건너뜁니다.
     if not log_path.exists():
         return []
 
@@ -28,6 +32,7 @@ def read_event_records(log_path: Path) -> list[dict]:
 
 
 def get_latest_events_by_key(log_path: Path) -> list[dict]:
+    # 같은 event_key가 여러 번 기록될 수 있으므로 마지막 상태만 남깁니다.
     latest_by_key: dict[object, dict] = {}
 
     for record in read_event_records(log_path):
@@ -55,6 +60,8 @@ def get_latest_event_by_key(log_path: Path, event_key: str) -> dict | None:
 
 
 def append_event_record(log_path: Path, event_record: dict) -> dict:
+    # 서버가 최종적으로 events.jsonl에 저장하는 함수입니다.
+    # PermissionError는 다른 프로세스가 읽는 순간일 수 있어 잠깐 재시도합니다.
     if not isinstance(event_record, dict):
         raise ValueError("event_record must be a dict")
 

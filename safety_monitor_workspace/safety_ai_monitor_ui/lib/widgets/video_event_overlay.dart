@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/event_log_item.dart';
 
+// 현재 프레임에 해당하는 이벤트를 영상 위쪽에 간단한 경고 카드로 덧그립니다.
 class VideoEventOverlay extends StatelessWidget {
   const VideoEventOverlay({
     super.key,
@@ -16,6 +17,7 @@ class VideoEventOverlay extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    // 너무 많은 카드가 한 번에 보이면 영상이 가려지므로 상위 몇 개만 표시합니다.
     return IgnorePointer(
       child: Align(
         alignment: Alignment.topLeft,

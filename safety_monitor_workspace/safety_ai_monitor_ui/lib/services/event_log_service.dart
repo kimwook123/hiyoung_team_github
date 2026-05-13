@@ -3,6 +3,9 @@ import 'dart:io';
 
 import '../models/event_log_item.dart';
 
+// 이 파일은 기존 txt 로그 파일을 읽고 변화 여부를 감시하는 서비스입니다.
+// 파일 로그 모드에서만 사용되며, API 모드와는 별도 흐름입니다.
+
 class EventLogService {
   Timer? _timer;
   String _lastSignature = '';

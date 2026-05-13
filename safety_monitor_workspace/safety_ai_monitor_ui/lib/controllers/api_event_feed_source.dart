@@ -2,6 +2,7 @@ import '../models/event_log_item.dart';
 import 'api_event_controller.dart';
 import 'event_feed_source.dart';
 
+// API 서버에서 가져온 이벤트를 기존 UI가 같은 방식으로 소비할 수 있게 하는 어댑터입니다.
 class ApiEventFeedSource extends EventFeedSource {
   ApiEventFeedSource(this.controller) {
     controller.addListener(_handleControllerChanged);
@@ -46,6 +47,7 @@ class ApiEventFeedSource extends EventFeedSource {
   }
 
   void _handleControllerChanged() {
+    // API controller의 상태 변화도 EventFeedSource 변화로 연결합니다.
     notifyListeners();
   }
 }

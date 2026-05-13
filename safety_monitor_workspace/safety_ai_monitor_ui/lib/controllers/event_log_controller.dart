@@ -3,6 +3,7 @@
 import '../models/event_log_item.dart';
 import '../services/event_log_service.dart';
 
+// 기존 txt 로그 파일을 읽고, 화면에서 바로 쓸 이벤트 목록으로 유지하는 controller입니다.
 class EventLogController extends ChangeNotifier {
   EventLogController({EventLogService? service})
       : _service = service ?? EventLogService();
@@ -15,6 +16,8 @@ class EventLogController extends ChangeNotifier {
   Set<String> selectedKeys = <String>{};
 
   Future<void> loadLog(String path) async {
+    // 파일 로그 모드의 진입점입니다.
+    // 로그 파일을 읽고, 이후 파일 변경도 watch해서 UI를 계속 갱신합니다.
     logPath = path;
     errorText = '';
 
@@ -54,6 +57,7 @@ class EventLogController extends ChangeNotifier {
   }
 
   List<EventLogItem> getItemsForFrame(int frameValue) {
+    // 같은 event_key가 여러 번 기록될 수 있으므로 최신 항목만 남겨 오버레이 중복을 줄입니다.
     final selectedMap = <String, EventLogItem>{};
     for (final item in items) {
       if (!item.matchesFrame(frameValue)) {
@@ -75,6 +79,7 @@ class EventLogController extends ChangeNotifier {
   }
 
   bool _isSameItems(List<EventLogItem> left, List<EventLogItem> right) {
+    // 파일 watch 중 같은 내용으로 여러 번 이벤트가 오면 불필요한 UI 갱신을 줄입니다.
     if (identical(left, right)) {
       return true;
     }

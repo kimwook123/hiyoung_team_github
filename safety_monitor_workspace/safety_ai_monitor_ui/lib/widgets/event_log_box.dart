@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../controllers/event_feed_source.dart';
 import '../models/event_log_item.dart';
 
+// 이벤트 목록 패널입니다.
+// 파일 로그 모드와 API 모드 모두 EventFeedSource만 맞으면 같은 UI를 재사용합니다.
 class EventLogBox extends StatelessWidget {
   const EventLogBox({
     super.key,
@@ -78,6 +80,7 @@ class _LogTile extends StatelessWidget {
       dense: true,
       selected: isSelected,
       onTap: onTap,
+      // type / level / 메시지를 간단히 보여 주고, 클릭 시 상세 이동이나 클립 재생으로 이어집니다.
       title: Text('${item.typeText} / ${item.levelText}'),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

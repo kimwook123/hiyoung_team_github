@@ -5,7 +5,11 @@ import 'package:http/http.dart' as http;
 import '../models/api_event_item.dart';
 import '../models/api_server_health.dart';
 
+// 이 파일은 Flutter에서 FastAPI 서버를 호출하는 HTTP 서비스입니다.
+// GET은 서버에서 데이터를 가져오는 요청이며, 여기서는 이벤트 목록/상세/health 조회에 사용합니다.
+
 class EventApiService {
+  // API 서버 기본 주소를 기준으로 이벤트와 health 요청을 보냅니다.
   EventApiService({
     http.Client? client,
     this.baseUrl = 'http://127.0.0.1:8000',
@@ -20,6 +24,7 @@ class EventApiService {
     String? eventType,
     String? status,
   }) async {
+    // /api/events는 전체 기록 또는 최신 상태 목록을 가져오는 기본 조회 API입니다.
     final uri = _buildUri(
       '/api/events',
       {
@@ -51,6 +56,7 @@ class EventApiService {
   }
 
   Future<ApiEventItem?> fetchEventDetail(String eventKey) async {
+    // 상세 패널은 목록과 별도로 /api/events/detail을 다시 호출해 최신 1건을 가져옵니다.
     final normalizedEventKey = eventKey.trim();
     if (normalizedEventKey.isEmpty) {
       return null;
@@ -90,6 +96,7 @@ class EventApiService {
   }
 
   Future<ApiServerHealth?> fetchHealth() async {
+    // health check는 서버가 켜져 있는지와 event 저장소 경로를 확인하는 용도입니다.
     final uri = _buildUri('/health', const {});
 
     try {
@@ -113,6 +120,7 @@ class EventApiService {
   }
 
   Future<List<ApiEventItem>> _fetchEventList(Uri uri) async {
+    // 네트워크 실패나 JSON 파싱 실패가 나도 앱이 바로 죽지 않게 빈 목록으로 처리합니다.
     try {
       final response = await _client.get(uri);
       if (response.statusCode != 200) {

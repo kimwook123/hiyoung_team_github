@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 
+import '../adapters/api_event_log_adapter.dart';
 import '../models/api_event_item.dart';
+import '../models/event_log_item.dart';
 import '../services/event_api_service.dart';
 
 class ApiEventController extends ChangeNotifier {
@@ -10,9 +12,12 @@ class ApiEventController extends ChangeNotifier {
   final EventApiService _service;
 
   List<ApiEventItem> items = const [];
+  Set<String> selectedKeys = <String>{};
   bool isLoading = false;
   String? errorMessage;
   DateTime? lastUpdatedAt;
+
+  List<EventLogItem> get logItems => apiEventsToLogItems(items);
 
   Future<void> loadLatestEvents({
     int? limit,
@@ -77,8 +82,30 @@ class ApiEventController extends ChangeNotifier {
     }
   }
 
+  List<EventLogItem> getLogItemsForFrame(int frameValue) {
+    final selectedMap = <String, EventLogItem>{};
+    for (final item in logItems) {
+      if (!item.matchesFrame(frameValue)) {
+        continue;
+      }
+      selectedMap[item.eventKeyText] = item;
+    }
+    return selectedMap.values.toList();
+  }
+
+  void selectLogItem(EventLogItem item) {
+    selectedKeys = {item.eventKeyText};
+    notifyListeners();
+  }
+
+  void clearSelection() {
+    selectedKeys = <String>{};
+    notifyListeners();
+  }
+
   void clear() {
     items = const [];
+    selectedKeys = <String>{};
     errorMessage = null;
     lastUpdatedAt = null;
     notifyListeners();

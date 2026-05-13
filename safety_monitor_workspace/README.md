@@ -26,9 +26,12 @@ Python 기반 위험 감지 파이프라인과 Flutter 기반 GUI를 함께 사�
 │  │  └─ weights/
 │  ├─ rules/
 │  └─ logs/
+├─ safety_monitor_server/
 ├─ safety_ai_monitor_ui/
 ├─ flutter/
 ├─ run_python_and_gui.bat
+├─ run_server.bat
+├─ run_python_server_and_gui.bat
 ├─ run_gui_only.bat
 ├─ run_flutter_debug.bat
 └─ build_gui.bat
@@ -40,6 +43,25 @@ Python 기반 위험 감지 파이프라인과 Flutter 기반 GUI를 함께 사�
 - Python `3.12.x`
 - Flutter `3.41.x`
 - Visual Studio 2022 Build Tools
+
+## 실행 단위 설명
+
+### Python AI 파이프라인
+
+- 폴더: `safety_ai_monitor`
+- 역할: 영상/스트림 입력, 객체 검출, 이벤트 판정, txt 로그, `events.jsonl`, 이벤트 클립 저장
+
+### FastAPI 이벤트 조회 서버
+
+- 폴더: `safety_monitor_server`
+- 역할: `safety_ai_monitor/logs/events.jsonl`을 읽어 Read-only API로 제공
+- 주의: 이 서버는 AI 파이프라인을 직접 실행하지 않습니다.
+
+### Flutter GUI
+
+- 폴더: `safety_ai_monitor_ui`
+- 역할: 영상 재생, 스트림 입력, 로그 모니터링, 이벤트 오버레이 표시
+- 현재 GUI는 아직 API가 아니라 기존 파일 기반 로그 구조를 사용합니다.
 
 ## Python 설치 및 실행
 
@@ -60,6 +82,29 @@ py -3.12 main.py
 
 - `config.py`의 기본값은 `INPUT_MODE = "gui"` 입니다.
 - GUI 모드에서는 Python이 시작된 뒤 GUI가 `source_state.json`에 입력 소스를 써줘야 실제 분석이 시작됩니다.
+
+## 서버 설치 및 실행
+
+서버 의존성 설치:
+
+```powershell
+py -3.12 -m pip install -r safety_monitor_server\requirements.txt
+```
+
+서버 배치 실행:
+
+```powershell
+run_server.bat
+```
+
+수동 실행:
+
+```powershell
+cd safety_monitor_server
+py -3.12 -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
+```
+
+서버는 `safety_ai_monitor/logs/events.jsonl`만 읽어 API를 제공합니다. AI 파이프라인 자체를 실행하지는 않습니다.
 
 ## Flutter 설치 및 실행
 
@@ -102,6 +147,33 @@ run_python_and_gui.bat
 1. `safety_ai_monitor\main.py`를 Python 3.12로 실행
 2. 3초 대기
 3. 빌드된 GUI exe 실행
+
+Python, 서버, GUI를 함께 실행하려면:
+
+```powershell
+run_python_server_and_gui.bat
+```
+
+이 스크립트는:
+
+1. `safety_ai_monitor\main.py`를 Python 3.12로 실행
+2. 3초 대기
+3. `safety_monitor_server`의 FastAPI 서버 실행
+4. 3초 대기
+5. 기존 `run_gui_only.bat`를 호출해 빌드된 GUI 실행
+
+## 현재 연동 상태
+
+- AI 파이프라인은 기존 txt 로그와 함께 `events.jsonl`을 생성합니다.
+- 서버는 `events.jsonl`을 읽어 API를 제공합니다.
+- Flutter GUI는 아직 API가 아니라 기존 파일 기반 로그/영상 연동 구조를 유지합니다.
+
+## API 확인 경로
+
+- `http://127.0.0.1:8000/health`
+- `http://127.0.0.1:8000/api/events`
+- `http://127.0.0.1:8000/api/events/latest`
+- `http://127.0.0.1:8000/api/events/detail?event_key=...`
 
 ## 입력 정책
 

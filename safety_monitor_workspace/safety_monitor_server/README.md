@@ -4,10 +4,11 @@
 
 - 입력 데이터는 `safety_ai_monitor/logs/events.jsonl` 파일입니다.
 - 서버는 `events.jsonl`을 읽어서 HTTP API로 이벤트 목록을 제공합니다.
-- 또한 Python AI Worker가 이벤트를 서버로 전송하면 `POST /api/events`로 같은 `events.jsonl` 파일에 append 저장할 수 있습니다.
+- 또한 Python AI Worker의 서버 전송 모드에서는 `POST /api/events`로 이벤트를 받아 같은 `events.jsonl` 파일에 append 저장할 수 있습니다.
 - 기존 `*_event_log.txt`, `source_state.json`, `ui_bridge.json`, Flutter UI 동작은 변경하지 않습니다.
 - 현재는 파일 기반 프로토타입이며, 추후 DB 저장소나 WebSocket 기반 실시간 전송으로 확장할 수 있습니다.
 - CORS는 개발 편의를 위해 모든 origin 허용으로 열려 있으며, 운영 환경에서는 제한이 필요합니다.
+- 이 서버는 AI 추론을 수행하지 않고 이벤트 저장과 조회만 담당합니다.
 
 ## 실행 예시
 

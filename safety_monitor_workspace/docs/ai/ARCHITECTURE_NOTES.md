@@ -4,6 +4,7 @@
 - 시스템은 Python 추론 모듈과 Flutter GUI 모듈이 분리된 멀티프로세스 구조다.
 - Python은 분석과 이벤트 생성을 담당하고, Flutter는 입력 선택과 결과 시각화를 담당한다.
 - 두 모듈은 직접 IPC를 쓰지 않고 `logs` 디렉터리 아래 파일을 교환 매체로 사용한다.
+- 현재 구조는 순수 파일 브릿지 방식에서 서버 중심 이벤트 저장 구조로 점진 전환 중이다.
 
 ## Python 추론 모듈의 역할
 - 프레임 입력 추상화: `FrameSource`
@@ -40,6 +41,13 @@
 - 서버 전송 실패 시에만 `events_post_failed.jsonl` 같은 fallback JSONL에 실패 이벤트를 남길 수 있다.
 - 누적된 fallback 이벤트는 `run_repost_failed_events.bat` 또는 `tools/repost_failed_events.py`로 나중에 수동 재전송할 수 있다.
 - 재전송 스크립트는 원본 fallback 파일을 수정하지 않고, 성공/실패 결과를 별도 JSONL 파일로 남긴다.
+
+## 현재 역할 분리
+- Python AI Worker는 `Event Producer` 역할을 맡는다.
+- FastAPI Server는 `Event Store`이자 `API Provider` 역할을 맡는다.
+- Flutter GUI는 파일 로그 또는 서버 API를 소비하는 `Event Consumer` 역할을 맡는다.
+- `events.jsonl`은 현재 프로토타입 저장소이며, 추후 DB로 교체될 수 있다.
+- fallback JSONL은 서버 장애 시 이벤트 유실을 줄이기 위한 안전장치다.
 
 ## 파일 입출력 기반 통신을 사용하는 경우의 장점과 한계
 ### 장점

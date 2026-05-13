@@ -23,7 +23,7 @@ ENABLE_JSON_EVENT_LOG = True
 JSON_EVENT_LOG_PATH = "logs/events.jsonl"
 
 # HTTP 이벤트 전송 사용 여부
-ENABLE_HTTP_EVENT_POST = False
+ENABLE_HTTP_EVENT_POST = True
 
 # HTTP 이벤트 전송 대상 URL
 EVENT_POST_URL = "http://127.0.0.1:8000/api/events"

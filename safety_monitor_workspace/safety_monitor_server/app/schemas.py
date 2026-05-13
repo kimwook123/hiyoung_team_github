@@ -24,6 +24,17 @@ class EventCreateResponse(BaseModel):
     item: dict[str, Any]
 
 
+class ClipItem(BaseModel):
+    name: str
+    path: str
+    url: str
+
+
+class ClipListResponse(BaseModel):
+    count: int
+    items: list[ClipItem]
+
+
 class HealthResponse(BaseModel):
     status: str
     event_log_path: str

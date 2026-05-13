@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -37,6 +38,8 @@ class _HomeScreenState extends State<HomeScreen> {
   late final ApiEventController apiEventController;
   late final ApiEventFeedSource apiEventFeed;
   late final AppLinkService appLinkService;
+  final ScrollController pageScrollController = ScrollController();
+  final ScrollController rightPanelScrollController = ScrollController();
   final TextEditingController streamTextController = TextEditingController();
   EventSourceMode eventSourceMode = EventSourceMode.fileLog;
   ApiEventItem? selectedApiEventDetail;
@@ -72,6 +75,8 @@ class _HomeScreenState extends State<HomeScreen> {
     fileEventFeed.dispose();
     apiEventFeed.dispose();
     logController.disposeController();
+    pageScrollController.dispose();
+    rightPanelScrollController.dispose();
     streamTextController.dispose();
     super.dispose();
   }
@@ -82,85 +87,120 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('Safety AI Monitor UI'),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            FileBar(
-              videoPath: videoController.videoPath,
-              sourceType: videoController.sourceType,
-              logPath: logController.logPath,
-              isReplayMode: videoController.isReplayMode,
-              streamTextController: streamTextController,
-              onPickVideo: _pickVideoFile,
-              onOpenStream: _openStream,
-              onReturnLive: _returnToLive,
-            ),
-            const SizedBox(height: 16),
-            _buildEventSourceControls(),
-            const SizedBox(height: 16),
-            Expanded(
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: Column(
-                      children: [
-                        Expanded(
-                          child: AnimatedBuilder(
-                            animation: Listenable.merge(
-                              [videoController, fileEventFeed, apiEventFeed],
-                            ),
-                            builder: (context, _) {
-                              return VideoViewBox(
-                                controller: videoController,
-                                overlayItems: _getOverlayItems(),
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        AnimatedBuilder(
-                          animation: videoController,
-                          builder: (context, _) {
-                            return VideoControlBar(controller: videoController);
-                          },
-                        ),
-                      ],
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final contentAreaHeight = math.max(
+            720.0,
+            constraints.maxHeight - 180.0,
+          );
+
+          return Scrollbar(
+            controller: pageScrollController,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: pageScrollController,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    FileBar(
+                      videoPath: videoController.videoPath,
+                      sourceType: videoController.sourceType,
+                      logPath: logController.logPath,
+                      isReplayMode: videoController.isReplayMode,
+                      streamTextController: streamTextController,
+                      onPickVideo: _pickVideoFile,
+                      onOpenStream: _openStream,
+                      onReturnLive: _returnToLive,
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 2,
-                    child: Column(
-                      children: [
-                        _buildApiServerHealthPanel(),
-                        if (eventSourceMode == EventSourceMode.api)
-                          const SizedBox(height: 12),
-                        _buildApiDetailPanel(),
-                        if (eventSourceMode == EventSourceMode.api)
-                          const SizedBox(height: 12),
-                        Expanded(
-                          child: AnimatedBuilder(
-                            animation: Listenable.merge(
-                              [fileEventFeed, apiEventFeed],
+                    const SizedBox(height: 16),
+                    _buildEventSourceControls(),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: contentAreaHeight,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: Column(
+                              children: [
+                                Expanded(
+                                  child: AnimatedBuilder(
+                                    animation: Listenable.merge(
+                                      [videoController, fileEventFeed, apiEventFeed],
+                                    ),
+                                    builder: (context, _) {
+                                      return VideoViewBox(
+                                        controller: videoController,
+                                        overlayItems: _getOverlayItems(),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                AnimatedBuilder(
+                                  animation: videoController,
+                                  builder: (context, _) {
+                                    return VideoControlBar(controller: videoController);
+                                  },
+                                ),
+                              ],
                             ),
-                            builder: (context, _) {
-                              return EventLogBox(
-                                eventFeed: activeEventFeed,
-                                onTapItem: _onTapEventItem,
-                              );
-                            },
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 16),
+                          Expanded(
+                            flex: 2,
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                return Column(
+                                  children: [
+                                    if (eventSourceMode == EventSourceMode.api)
+                                      Flexible(
+                                        fit: FlexFit.loose,
+                                        child: Scrollbar(
+                                          controller: rightPanelScrollController,
+                                          thumbVisibility: true,
+                                          child: SingleChildScrollView(
+                                            controller: rightPanelScrollController,
+                                            child: Column(
+                                              children: [
+                                                _buildApiServerHealthPanel(),
+                                                const SizedBox(height: 12),
+                                                _buildApiDetailPanel(),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    if (eventSourceMode == EventSourceMode.api)
+                                      const SizedBox(height: 12),
+                                    Expanded(
+                                      child: AnimatedBuilder(
+                                        animation: Listenable.merge(
+                                          [fileEventFeed, apiEventFeed],
+                                        ),
+                                        builder: (context, _) {
+                                          return EventLogBox(
+                                            eventFeed: activeEventFeed,
+                                            onTapItem: _onTapEventItem,
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

@@ -3,31 +3,25 @@ setlocal
 
 set "ROOT_DIR=%~dp0"
 if "%ROOT_DIR:~-1%"=="\" set "ROOT_DIR=%ROOT_DIR:~0,-1%"
-set "PY_DIR=%ROOT_DIR%\safety_ai_monitor"
-set "GUI_DIR=%ROOT_DIR%\safety_ai_monitor_ui\build\windows\x64\runner\Release"
-set "GUI_EXE=%GUI_DIR%\safety_ai_monitor_ui.exe"
+set "PY_SCRIPT=%ROOT_DIR%\run_python_only.bat"
+set "GUI_SCRIPT=%ROOT_DIR%\run_gui_only.bat"
 
-if not exist "%GUI_EXE%" (
-  set "GUI_DIR=%ROOT_DIR%\safety_ai_monitor_ui\build\windows\x64\runner\Debug"
-  set "GUI_EXE=%GUI_DIR%\safety_ai_monitor_ui.exe"
-)
-
-if not exist "%PY_DIR%\main.py" (
-  echo Python entry file not found.
-  echo %PY_DIR%\main.py
+if not exist "%PY_SCRIPT%" (
+  echo Python launcher not found.
+  echo %PY_SCRIPT%
   pause
   exit /b 1
 )
 
-if not exist "%GUI_EXE%" (
-  echo GUI executable not found.
-  echo %GUI_EXE%
+if not exist "%GUI_SCRIPT%" (
+  echo GUI launcher not found.
+  echo %GUI_SCRIPT%
   pause
   exit /b 1
 )
 
-start "Safety Python" /D "%PY_DIR%" py -3.12 main.py
+start "Safety Python Launcher" /D "%ROOT_DIR%" cmd /c ""%PY_SCRIPT%""
 timeout /t 3 /nobreak > nul
-start "Safety GUI" /D "%GUI_DIR%" "%GUI_EXE%"
+start "Safety GUI Launcher" /D "%ROOT_DIR%" cmd /c ""%GUI_SCRIPT%""
 
 endlocal

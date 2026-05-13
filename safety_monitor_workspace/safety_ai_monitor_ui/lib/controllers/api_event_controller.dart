@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../adapters/api_event_log_adapter.dart';
 import '../models/api_event_item.dart';
+import '../models/api_server_health.dart';
 import '../models/event_log_item.dart';
 import '../services/event_api_service.dart';
 
@@ -16,6 +17,10 @@ class ApiEventController extends ChangeNotifier {
   bool isLoading = false;
   String? errorMessage;
   DateTime? lastUpdatedAt;
+  ApiServerHealth? serverHealth;
+  bool isCheckingHealth = false;
+  String? healthErrorMessage;
+  DateTime? lastHealthCheckedAt;
 
   List<EventLogItem> get logItems => apiEventsToLogItems(items);
 
@@ -79,6 +84,28 @@ class ApiEventController extends ChangeNotifier {
       errorMessage = 'Failed to load API event detail: $error';
       notifyListeners();
       return null;
+    }
+  }
+
+  Future<void> checkHealth() async {
+    isCheckingHealth = true;
+    healthErrorMessage = null;
+    notifyListeners();
+
+    try {
+      final nextHealth = await _service.fetchHealth();
+      serverHealth = nextHealth;
+      if (nextHealth == null) {
+        healthErrorMessage = 'API 서버 상태를 확인할 수 없습니다.';
+      }
+      lastHealthCheckedAt = DateTime.now();
+    } catch (_) {
+      serverHealth = null;
+      healthErrorMessage = 'API 서버 상태를 확인할 수 없습니다.';
+      lastHealthCheckedAt = DateTime.now();
+    } finally {
+      isCheckingHealth = false;
+      notifyListeners();
     }
   }
 

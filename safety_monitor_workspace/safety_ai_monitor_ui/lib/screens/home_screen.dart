@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
@@ -131,6 +133,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     flex: 2,
                     child: Column(
                       children: [
+                        _buildApiServerHealthPanel(),
+                        if (eventSourceMode == EventSourceMode.api)
+                          const SizedBox(height: 12),
                         _buildApiDetailPanel(),
                         if (eventSourceMode == EventSourceMode.api)
                           const SizedBox(height: 12),
@@ -279,6 +284,75 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildApiServerHealthPanel() {
+    if (eventSourceMode != EventSourceMode.api) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.black12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: AnimatedBuilder(
+        animation: apiEventFeed,
+        builder: (context, _) {
+          final health = apiEventController.serverHealth;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'API 서버 상태',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const Spacer(),
+                  OutlinedButton(
+                    onPressed: apiEventController.isCheckingHealth
+                        ? null
+                        : _checkApiHealth,
+                    child: const Text('상태 확인'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (apiEventController.isCheckingHealth)
+                const Text('확인 중...')
+              else ...[
+                if ((apiEventController.healthErrorMessage ?? '').isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(apiEventController.healthErrorMessage!),
+                  ),
+                if (health != null) ...[
+                  _buildDetailLine('status', health.status),
+                  _buildDetailLine(
+                    'eventLogExists',
+                    health.eventLogExists ? 'true' : 'false',
+                  ),
+                  _buildDetailLine('eventLogPath', health.eventLogPath),
+                  _buildDetailLine(
+                    'lastHealthCheckedAt',
+                    _formatDateTime(apiEventController.lastHealthCheckedAt),
+                  ),
+                ] else
+                  Text(
+                    '상태 확인 버튼으로 API 서버와 events.jsonl 상태를 확인합니다.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.black54,
+                    ),
+                  ),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildApiDetailContent(ApiEventItem item) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -303,7 +377,55 @@ class _HomeScreenState extends State<HomeScreen> {
           'relatedDetections',
           item.relatedDetections.length.toString(),
         ),
+        _buildRelatedDetections(item),
+        if (_resolveClipPath(item.clipPath).isNotEmpty) ...[
+          const SizedBox(height: 8),
+          FilledButton(
+            onPressed: () => _openApiDetailClip(item.clipPath),
+            child: const Text('클립 열기'),
+          ),
+        ],
       ],
+    );
+  }
+
+  Widget _buildRelatedDetections(ApiEventItem detail) {
+    if (detail.relatedDetections.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final visibleDetections = detail.relatedDetections.take(5).toList();
+    final remainingCount = detail.relatedDetections.length - visibleDetections.length;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '관련 탐지 객체',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(height: 6),
+          for (final detection in visibleDetections) ...[
+            Text(_formatDetectionSummary(detection)),
+            Text(
+              _formatDetectionBoxLine(detection),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Colors.black54,
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
+          if (remainingCount > 0)
+            Text(
+              '외 $remainingCount개',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Colors.black54,
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -312,6 +434,64 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.only(bottom: 4),
       child: Text('$label: ${value.isEmpty ? '-' : value}'),
     );
+  }
+
+  String _formatDetectionSummary(Map<String, dynamic> detection) {
+    final name = (detection['name']?.toString().trim().isNotEmpty ?? false)
+        ? detection['name'].toString().trim()
+        : 'unknown';
+    final score = _formatScore(detection['score']);
+    final trackId = detection['track_id']?.toString().trim();
+    final trackIdText = (trackId?.isNotEmpty ?? false) ? trackId! : '-';
+    return '$name / score=$score / id=$trackIdText';
+  }
+
+  String _formatDetectionBoxLine(Map<String, dynamic> detection) {
+    return 'box=${_formatBox(detection['box'])}';
+  }
+
+  String _formatScore(Object? score) {
+    if (score is num) {
+      return score.toStringAsFixed(2);
+    }
+
+    if (score is String) {
+      final parsed = double.tryParse(score);
+      if (parsed != null) {
+        return parsed.toStringAsFixed(2);
+      }
+    }
+
+    return '-';
+  }
+
+  String _formatBox(Object? box) {
+    if (box is! Map) {
+      return '-';
+    }
+
+    final x1 = box['x1'];
+    final y1 = box['y1'];
+    final x2 = box['x2'];
+    final y2 = box['y2'];
+    if (x1 == null || y1 == null || x2 == null || y2 == null) {
+      return '-';
+    }
+
+    return '($x1, $y1, $x2, $y2)';
+  }
+
+  String _formatDateTime(DateTime? value) {
+    if (value == null) {
+      return '-';
+    }
+
+    return '${value.year.toString().padLeft(4, '0')}-'
+        '${value.month.toString().padLeft(2, '0')}-'
+        '${value.day.toString().padLeft(2, '0')} '
+        '${value.hour.toString().padLeft(2, '0')}:'
+        '${value.minute.toString().padLeft(2, '0')}:'
+        '${value.second.toString().padLeft(2, '0')}';
   }
 
   Future<void> _pickVideoFile() async {
@@ -419,8 +599,55 @@ class _HomeScreenState extends State<HomeScreen> {
     await videoController.returnToLive();
   }
 
+  Future<void> _openApiDetailClip(String clipPath) async {
+    final resolvedPath = _resolveClipPath(clipPath);
+    if (resolvedPath.isEmpty) {
+      setState(() {
+        apiDetailErrorMessage = '클립 경로가 비어 있습니다.';
+      });
+      return;
+    }
+
+    try {
+      await videoController.openReplayClip(resolvedPath);
+    } catch (error) {
+      setState(() {
+        apiDetailErrorMessage = '클립을 열 수 없습니다: $error';
+      });
+    }
+  }
+
   Future<void> _refreshApiEvents() async {
     await apiEventController.loadLatestEvents(limit: 200);
+  }
+
+  Future<void> _checkApiHealth() async {
+    await apiEventController.checkHealth();
+  }
+
+  String _resolveClipPath(String clipPath) {
+    final trimmed = clipPath.trim();
+    if (trimmed.isEmpty || trimmed == '-') {
+      return '';
+    }
+
+    final normalized = trimmed.replaceAll('\\', '/');
+    final isWindowsAbsolute = RegExp(r'^[A-Za-z]:[\\/]').hasMatch(trimmed);
+    final isUnixAbsolute = normalized.startsWith('/');
+    if (isWindowsAbsolute || isUnixAbsolute) {
+      return trimmed;
+    }
+
+    if (normalized.startsWith('logs/')) {
+      final workspaceRoot = Directory.current.parent.path;
+      final relativePath = normalized.replaceAll('/', Platform.pathSeparator);
+      final workspacePath =
+          '$workspaceRoot${Platform.pathSeparator}safety_ai_monitor'
+          '${Platform.pathSeparator}$relativePath';
+      return workspacePath;
+    }
+
+    return trimmed;
   }
 
   Future<void> _watchExpectedLog({

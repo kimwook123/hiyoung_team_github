@@ -10,6 +10,10 @@ class ApiEventItem {
     required this.createdAt,
     required this.durationSeconds,
     required this.clipPath,
+    required this.clipUrl,
+    required this.serverClipPath,
+    required this.serverClipName,
+    required this.clipUploadOk,
     required this.sourceTimeText,
     required this.startedSourceTimeText,
     required this.endedSourceTimeText,
@@ -28,6 +32,10 @@ class ApiEventItem {
   final String createdAt;
   final double durationSeconds;
   final String clipPath;
+  final String clipUrl;
+  final String serverClipPath;
+  final String serverClipName;
+  final bool clipUploadOk;
   final String sourceTimeText;
   final String startedSourceTimeText;
   final String endedSourceTimeText;
@@ -49,6 +57,10 @@ class ApiEventItem {
       createdAt: _toStringValue(json['created_at']),
       durationSeconds: _toDoubleValue(json['duration_seconds']) ?? 0.0,
       clipPath: _toStringValue(json['clip_path']),
+      clipUrl: _toStringValue(json['clip_url']),
+      serverClipPath: _toStringValue(json['server_clip_path']),
+      serverClipName: _toStringValue(json['server_clip_name']),
+      clipUploadOk: _toBoolValue(json['clip_upload_ok']),
       sourceTimeText: _toStringValue(json['source_time_text']),
       startedSourceTimeText: _toStringValue(json['started_source_time_text']),
       endedSourceTimeText: _toStringValue(json['ended_source_time_text']),
@@ -89,6 +101,16 @@ class ApiEventItem {
       return double.tryParse(value);
     }
     return null;
+  }
+
+  static bool _toBoolValue(Object? value) {
+    if (value is bool) {
+      return value;
+    }
+    if (value is String) {
+      return value.toLowerCase() == 'true';
+    }
+    return false;
   }
 
   static List<Map<String, dynamic>> _toDetectionList(Object? value) {

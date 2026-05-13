@@ -43,7 +43,7 @@ class VideoPanelController extends ChangeNotifier {
       return;
     }
 
-    if (nextSourceType == 'video') {
+    if (nextSourceType == 'video' && !_isNetworkVideoPath(path)) {
       final file = File(path);
       if (!await file.exists()) {
         errorText = '영상 파일을 찾을 수 없습니다.';
@@ -146,5 +146,10 @@ class VideoPanelController extends ChangeNotifier {
     final nextMs = currentPosition.inMilliseconds + (frameMs * frameStep);
     final safeMs = nextMs < 0 ? 0 : nextMs;
     await _service.seek(Duration(milliseconds: safeMs));
+  }
+
+  bool _isNetworkVideoPath(String path) {
+    final normalized = path.trim().toLowerCase();
+    return normalized.startsWith('http://') || normalized.startsWith('https://');
   }
 }

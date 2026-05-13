@@ -32,6 +32,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static const String _apiServerBaseUrl = 'http://127.0.0.1:8000';
   late final VideoPanelController videoController;
   late final EventLogController logController;
   late final FileEventFeedSource fileEventFeed;
@@ -404,15 +405,20 @@ class _HomeScreenState extends State<HomeScreen> {
           'clipPath',
           item.clipPath.isEmpty ? '-' : item.clipPath,
         ),
+        _buildDetailLine('clipUrl', item.clipUrl.isEmpty ? '-' : item.clipUrl),
+        _buildDetailLine(
+          'serverClipName',
+          item.serverClipName.isEmpty ? '-' : item.serverClipName,
+        ),
         _buildDetailLine(
           'relatedDetections',
           item.relatedDetections.length.toString(),
         ),
         _buildRelatedDetections(item),
-        if (_resolveClipPath(item.clipPath).isNotEmpty) ...[
+        if (_resolveApiClipSource(item).isNotEmpty) ...[
           const SizedBox(height: 8),
           FilledButton(
-            onPressed: () => _openApiDetailClip(item.clipPath),
+            onPressed: () => _openApiDetailClip(item),
             child: const Text('클립 열기'),
           ),
         ],
@@ -630,8 +636,8 @@ class _HomeScreenState extends State<HomeScreen> {
     await videoController.returnToLive();
   }
 
-  Future<void> _openApiDetailClip(String clipPath) async {
-    final resolvedPath = _resolveClipPath(clipPath);
+  Future<void> _openApiDetailClip(ApiEventItem item) async {
+    final resolvedPath = _resolveApiClipSource(item);
     if (resolvedPath.isEmpty) {
       setState(() {
         apiDetailErrorMessage = '클립 경로가 비어 있습니다.';
@@ -699,6 +705,30 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return trimmed;
+  }
+
+  String _resolveApiClipSource(ApiEventItem item) {
+    final clipUrl = item.clipUrl.trim();
+    if (clipUrl.isNotEmpty && clipUrl != '-') {
+      return _resolveClipUrl(clipUrl);
+    }
+    return _resolveClipPath(item.clipPath);
+  }
+
+  String _resolveClipUrl(String clipUrl) {
+    final trimmed = clipUrl.trim();
+    if (trimmed.isEmpty || trimmed == '-') {
+      return '';
+    }
+
+    final normalized = trimmed.toLowerCase();
+    if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
+      return trimmed;
+    }
+    if (trimmed.startsWith('/')) {
+      return '$_apiServerBaseUrl$trimmed';
+    }
+    return '$_apiServerBaseUrl/$trimmed';
   }
 
   Future<void> _watchExpectedLog({

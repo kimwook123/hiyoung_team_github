@@ -2,7 +2,6 @@
 
 이 서버는 기존 Python AI 파이프라인을 실행하거나 제어하지 않는 파일 기반 이벤트 API 서버입니다.
 
-- 입력 데이터는 `safety_ai_monitor/logs/events.jsonl` 파일입니다.
 - 서버는 기본적으로 `data/events.jsonl`과 `data/clips/`를 서버 소유 저장소로 사용합니다.
 - 서버는 `events.jsonl`을 읽어서 HTTP API로 이벤트 목록을 제공합니다.
 - 또한 Python AI Worker의 서버 전송 모드에서는 `POST /api/events`로 이벤트를 받아 서버의 `data/events.jsonl`에 append 저장할 수 있습니다.
@@ -23,6 +22,7 @@ python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
 - `GET /health`
 - `POST /api/events`
+- `POST /api/clips`
 - `GET /api/events`
 - `GET /api/events/latest`
 - `GET /api/events/detail?event_key=...&latest_only=true`
@@ -37,7 +37,16 @@ python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ### `POST /api/events`
 - Python AI Worker가 JSON 이벤트를 서버로 전송할 때 사용하는 수신 API입니다.
 - 서버는 받은 이벤트를 서버 소유 파일 기반 저장소인 `data/events.jsonl`에 JSON Lines 형식으로 append 저장합니다.
+- 저장 전 `clip_url`, `server_clip_path`, `server_clip_name`, `clip_path`를 기준으로 clip 접근 필드를 정규화합니다.
+- 서버 클립 업로드가 성공한 이벤트는 `clip_url`과 `preferred_clip_source="server"`를 가질 수 있습니다.
+- 클립 업로드가 없거나 실패한 이벤트는 기존 `clip_path` fallback과 `preferred_clip_source="local"` 상태로 남을 수 있습니다.
 - 추후에는 같은 계약을 유지한 채 DB 저장 방식으로 교체할 수 있습니다.
+
+### `POST /api/clips`
+- multipart/form-data 형식으로 mp4 파일을 업로드합니다.
+- 업로드된 파일은 서버의 `data/clips/` 아래에 저장됩니다.
+- 응답의 `url`은 Flutter 또는 다른 클라이언트가 클립 재생에 사용할 수 있습니다.
+- 예시: `curl.exe -X POST "http://127.0.0.1:8000/api/clips" -F "file=@sample.mp4" -F "event_key=NO_HELMET:3"`
 
 예시 요청:
 
@@ -77,8 +86,8 @@ python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
 ### `GET /api/clips/{clip_name}`
 - 서버가 소유한 mp4 클립 파일을 직접 반환합니다.
-- 현재는 Python AI Worker가 클립을 서버로 업로드하는 기능은 아직 없습니다.
-- 추후 Python 쪽에서 클립 업로드를 붙이면 Flutter는 서버 clip URL을 사용할 수 있습니다.
+- Python AI Worker는 서버 전송 모드에서 `POST /api/clips`로 클립을 업로드할 수 있습니다.
+- Flutter는 응답으로 받은 서버 clip URL을 사용해 클립을 재생할 수 있습니다.
 
 ## 서버 소유 데이터 디렉터리
 

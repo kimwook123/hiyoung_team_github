@@ -37,6 +37,15 @@ ENABLE_HTTP_EVENT_FALLBACK_JSON = True
 # HTTP 이벤트 전송 실패 시 저장할 fallback JSON 경로
 HTTP_EVENT_FALLBACK_JSON_PATH = "logs/events_post_failed.jsonl"
 
+# 이벤트 클립 업로드 사용 여부
+ENABLE_EVENT_CLIP_UPLOAD = False
+
+# 이벤트 클립 업로드 대상 URL
+EVENT_CLIP_UPLOAD_URL = "http://127.0.0.1:8000/api/clips"
+
+# 이벤트 클립 업로드 타임아웃(초)
+EVENT_CLIP_UPLOAD_TIMEOUT_SECONDS = 5.0
+
 # Flutter UI와 연결할 정보 파일 경로
 BRIDGE_PATH = "logs/ui_bridge.json"
 

@@ -3,6 +3,7 @@ from typing import Any
 from fastapi import APIRouter, Body, HTTPException, Query
 
 from app.config import DEFAULT_EVENT_LOG_PATH
+from app.event_normalizer import normalize_event_record
 from app.event_store import (
     append_event_record,
     find_events_by_key,
@@ -47,6 +48,8 @@ def create_event(
     status = str(normalized_record.get("status", "")).strip()
     if not status:
         normalized_record["status"] = "ACTIVE"
+
+    normalized_record = normalize_event_record(normalized_record)
 
     try:
         saved_record = append_event_record(DEFAULT_EVENT_LOG_PATH, normalized_record)

@@ -14,7 +14,6 @@
 - 동일 `event_key`에 대해 완전히 같은 JSON 문자열은 중복 저장하지 않는다.
 - 서버가 수신한 레코드에는 `received_at` 같은 서버 수신 메타데이터가 추가될 수 있다.
 - 클라이언트는 알 수 없는 추가 필드를 무시할 수 있어야 한다.
-- 추후 서버 저장 이벤트에는 `clip_url` 같은 서버 접근용 필드가 추가될 수 있다.
 - 이벤트 JSON에는 `clip_url`, `server_clip_path`, `server_clip_name`, `clip_upload_ok`, `clip_available`, `preferred_clip_source` 같은 서버 클립 필드가 추가될 수 있다.
 
 ## 필드 목록
@@ -46,6 +45,18 @@
 | `started_source_time_text` | `string` | 아니오 | 이벤트 시작 시점의 시간 문자열이다. 비어 있으면 생성 시 `source_time_text`로 초기화된다. | `"00:07.920"` |
 | `ended_source_time_text` | `string` | 아니오 | 이벤트 종료 시점의 시간 문자열이다. 종료되지 않았으면 빈 문자열일 수 있다. | `"00:09.280"` |
 | `related_detections` | `array<object>` | 아니오 | 이벤트와 연결된 탐지 목록이다. 각 원소는 Detection 구조를 따른다. | 아래 구조 참고 |
+
+## clip 필드 정책
+
+| 필드 | 설명 |
+| --- | --- |
+| `clip_path` | 생산자 로컬 경로 또는 fallback 경로다. 기존 호환성과 디버깅을 위해 보존될 수 있다. |
+| `clip_url` | 서버가 소유한 클립에 접근할 수 있는 URL이다. 있으면 클라이언트는 이 값을 우선 사용한다. |
+| `server_clip_path` | 서버 저장소 기준 상대 경로다. 보통 `clips/<파일명>` 형태다. |
+| `server_clip_name` | 서버 저장소에 기록된 mp4 파일명이다. |
+| `clip_upload_ok` | 서버 클립 업로드 성공 여부다. 서버 저장 시 기본값이 보강될 수 있다. |
+| `clip_available` | 서버 URL 또는 로컬 fallback 기준으로 사용 가능한 클립 정보가 있는지 나타낸다. |
+| `preferred_clip_source` | `"server"`, `"local"`, `""` 중 하나다. 각각 서버 클립 우선, 로컬 fallback, 클립 없음 의미다. |
 
 ## related_detections 구조
 
@@ -160,6 +171,7 @@
 - `clip_url`이 있으면 클라이언트는 `clip_url`을 우선 사용하고, `preferred_clip_source`가 `"server"`인 경우도 같은 의미로 해석할 수 있다.
 - `clip_url`이 없고 `preferred_clip_source`가 `"local"`이면 기존 `clip_path`를 fallback으로 사용할 수 있다.
 - `clip_path`는 기존 호환성과 fallback을 위해 보존될 수 있다.
+- `preferred_clip_source` 값은 `"server"`면 서버 클립 URL 우선, `"local"`이면 로컬 `clip_path` fallback, `""`면 클립 없음으로 해석한다.
 - `related_detections`를 사용하면 이벤트 시점의 탐지 객체, 추적 ID, 박스 정보를 함께 전달할 수 있다.
 - `source_time_text`는 영상 파일에서는 영상 재생 시간 문자열일 수 있고, 스트림 또는 카메라에서는 현재 시각 기반 문자열일 수 있다.
 - 클라이언트는 알 수 없는 추가 필드를 무시해야 한다.

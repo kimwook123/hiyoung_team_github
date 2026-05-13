@@ -14,6 +14,8 @@ class ApiEventItem {
     required this.serverClipPath,
     required this.serverClipName,
     required this.clipUploadOk,
+    required this.clipAvailable,
+    required this.preferredClipSource,
     required this.sourceTimeText,
     required this.startedSourceTimeText,
     required this.endedSourceTimeText,
@@ -36,6 +38,8 @@ class ApiEventItem {
   final String serverClipPath;
   final String serverClipName;
   final bool clipUploadOk;
+  final bool clipAvailable;
+  final String preferredClipSource;
   final String sourceTimeText;
   final String startedSourceTimeText;
   final String endedSourceTimeText;
@@ -43,7 +47,8 @@ class ApiEventItem {
   final int? endedFrameId;
   final List<Map<String, dynamic>> relatedDetections;
 
-  bool get hasClip => clipPath.isNotEmpty;
+  bool get hasClip =>
+      clipAvailable || clipUrl.isNotEmpty || clipPath.isNotEmpty;
 
   factory ApiEventItem.fromJson(Map<String, dynamic> json) {
     return ApiEventItem(
@@ -61,6 +66,8 @@ class ApiEventItem {
       serverClipPath: _toStringValue(json['server_clip_path']),
       serverClipName: _toStringValue(json['server_clip_name']),
       clipUploadOk: _toBoolValue(json['clip_upload_ok']),
+      clipAvailable: _toBoolValue(json['clip_available']),
+      preferredClipSource: _toStringValue(json['preferred_clip_source']),
       sourceTimeText: _toStringValue(json['source_time_text']),
       startedSourceTimeText: _toStringValue(json['started_source_time_text']),
       endedSourceTimeText: _toStringValue(json['ended_source_time_text']),

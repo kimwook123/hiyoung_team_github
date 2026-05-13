@@ -33,6 +33,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   static const String _apiServerBaseUrl = 'http://127.0.0.1:8000';
+  static const Duration _apiAutoRefreshInterval = Duration(seconds: 3);
   late final VideoPanelController videoController;
   late final EventLogController logController;
   late final FileEventFeedSource fileEventFeed;
@@ -46,6 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
   ApiEventItem? selectedApiEventDetail;
   bool isLoadingApiDetail = false;
   String? apiDetailErrorMessage;
+  Timer? apiAutoRefreshTimer;
 
   EventFeedSource get activeEventFeed {
     switch (eventSourceMode) {
@@ -72,6 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    apiAutoRefreshTimer?.cancel();
     videoController.disposeController();
     fileEventFeed.dispose();
     apiEventFeed.dispose();
@@ -257,7 +260,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildApiStatusText() {
-    String text = 'API 모드가 선택되었습니다. "API 새로고침"으로 이벤트를 가져옵니다.';
+    String text =
+        'API 모드가 선택되었습니다. 3초마다 자동 새로고침되며 "API 새로고침"으로 수동 갱신도 가능합니다.';
 
     if (apiEventController.isLoading) {
       text = 'API 이벤트 불러오는 중...';
@@ -405,11 +409,28 @@ class _HomeScreenState extends State<HomeScreen> {
           'clipPath',
           item.clipPath.isEmpty ? '-' : item.clipPath,
         ),
+        _buildDetailLine(
+          'clipAvailable',
+          item.clipAvailable ? 'true' : 'false',
+        ),
+        _buildDetailLine(
+          'preferredClipSource',
+          item.preferredClipSource.isEmpty ? '-' : item.preferredClipSource,
+        ),
+        _buildDetailLine(
+          'clipUploadOk',
+          item.clipUploadOk ? 'true' : 'false',
+        ),
         _buildDetailLine('clipUrl', item.clipUrl.isEmpty ? '-' : item.clipUrl),
         _buildDetailLine(
           'serverClipName',
           item.serverClipName.isEmpty ? '-' : item.serverClipName,
         ),
+        _buildDetailLine(
+          'serverClipPath',
+          item.serverClipPath.isEmpty ? '-' : item.serverClipPath,
+        ),
+        _buildDetailLine('clipPolicy', _describeClipPolicy(item)),
         _buildDetailLine(
           'relatedDetections',
           item.relatedDetections.length.toString(),
@@ -667,6 +688,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    _stopApiAutoRefresh();
     fileEventFeed.clearSelection();
     apiEventFeed.clearSelection();
 
@@ -679,7 +701,31 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (nextMode == EventSourceMode.api) {
       unawaited(apiEventController.checkHealth());
+      unawaited(_refreshApiEventsIfNeeded());
+      _startApiAutoRefresh();
     }
+  }
+
+  void _startApiAutoRefresh() {
+    _stopApiAutoRefresh();
+    apiAutoRefreshTimer = Timer.periodic(_apiAutoRefreshInterval, (_) {
+      unawaited(_refreshApiEventsIfNeeded());
+    });
+  }
+
+  void _stopApiAutoRefresh() {
+    apiAutoRefreshTimer?.cancel();
+    apiAutoRefreshTimer = null;
+  }
+
+  Future<void> _refreshApiEventsIfNeeded() async {
+    if (!mounted || eventSourceMode != EventSourceMode.api) {
+      return;
+    }
+    if (apiEventController.isLoading) {
+      return;
+    }
+    await _refreshApiEvents();
   }
 
   String _resolveClipPath(String clipPath) {
@@ -713,6 +759,23 @@ class _HomeScreenState extends State<HomeScreen> {
       return _resolveClipUrl(clipUrl);
     }
     return _resolveClipPath(item.clipPath);
+  }
+
+  String _describeClipPolicy(ApiEventItem item) {
+    switch (item.preferredClipSource.trim()) {
+      case 'server':
+        return '서버 클립 우선 사용';
+      case 'local':
+        return '로컬 clipPath fallback 사용';
+      default:
+        if (item.clipUrl.trim().isNotEmpty) {
+          return '서버 클립 우선 사용';
+        }
+        if (item.clipPath.trim().isNotEmpty) {
+          return '로컬 clipPath fallback 사용';
+        }
+        return '사용 가능한 클립 정보 없음';
+    }
   }
 
   String _resolveClipUrl(String clipUrl) {

@@ -40,7 +40,29 @@ python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 - 저장 전 `clip_url`, `server_clip_path`, `server_clip_name`, `clip_path`를 기준으로 clip 접근 필드를 정규화합니다.
 - 서버 클립 업로드가 성공한 이벤트는 `clip_url`과 `preferred_clip_source="server"`를 가질 수 있습니다.
 - 클립 업로드가 없거나 실패한 이벤트는 기존 `clip_path` fallback과 `preferred_clip_source="local"` 상태로 남을 수 있습니다.
+- 서버는 알 수 없는 추가 이벤트 필드를 삭제하지 않고 그대로 보존합니다.
 - 추후에는 같은 계약을 유지한 채 DB 저장 방식으로 교체할 수 있습니다.
+
+정규화 예시:
+
+```json
+{
+  "event_key": "NO_HELMET:3",
+  "event_type": "NO_HELMET",
+  "status": "END",
+  "message": "안전모 미착용 의심 이벤트 발생",
+  "clip_path": "C:/example/logs/clips/NO_HELMET_3_120.mp4",
+  "clip_url": "/api/clips/NO_HELMET_3_120.mp4",
+  "server_clip_path": "clips/NO_HELMET_3_120.mp4",
+  "server_clip_name": "NO_HELMET_3_120.mp4",
+  "clip_upload_ok": true,
+  "clip_available": true,
+  "preferred_clip_source": "server"
+}
+```
+
+- `clip_url`이 있으면 클라이언트는 서버 클립을 우선 사용합니다.
+- `clip_url`이 없고 `clip_path`만 있으면 local fallback으로 볼 수 있습니다.
 
 ### `POST /api/clips`
 - multipart/form-data 형식으로 mp4 파일을 업로드합니다.
@@ -96,6 +118,6 @@ python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
 ## 현재 범위
 
-- 이 서버는 `events.jsonl` 계약만 소비합니다.
-- Flutter UI 연동은 아직 하지 않습니다.
+- 이 서버는 이벤트 JSON 계약과 서버 소유 클립 저장소를 소비합니다.
+- Flutter 같은 클라이언트는 이 서버 API를 사용할 수 있지만, 서버가 UI를 직접 제어하지는 않습니다.
 - AI 파이프라인 import 없이 파일 기반으로만 동작합니다.

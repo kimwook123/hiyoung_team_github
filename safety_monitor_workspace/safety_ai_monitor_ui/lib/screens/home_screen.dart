@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
@@ -189,17 +190,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
                 selected: {eventSourceMode},
                 onSelectionChanged: (selection) {
-                  final nextMode = selection.first;
-                  if (nextMode == eventSourceMode) {
-                    return;
-                  }
-                  setState(() {
-                    eventSourceMode = nextMode;
-                    selectedApiEventDetail = null;
-                    apiDetailErrorMessage = null;
-                    isLoadingApiDetail = false;
-                  });
-                  activeEventFeed.clearSelection();
+                  _changeEventSourceMode(selection.first);
                 },
               ),
               const Spacer(),
@@ -340,7 +331,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ] else
                   Text(
-                    '상태 확인 버튼으로 API 서버와 events.jsonl 상태를 확인합니다.',
+                    'API 모드 진입 시 서버 상태를 자동 확인합니다.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Colors.black54,
                     ),
@@ -623,6 +614,26 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _checkApiHealth() async {
     await apiEventController.checkHealth();
+  }
+
+  void _changeEventSourceMode(EventSourceMode nextMode) {
+    if (nextMode == eventSourceMode) {
+      return;
+    }
+
+    fileEventFeed.clearSelection();
+    apiEventFeed.clearSelection();
+
+    setState(() {
+      eventSourceMode = nextMode;
+      selectedApiEventDetail = null;
+      apiDetailErrorMessage = null;
+      isLoadingApiDetail = false;
+    });
+
+    if (nextMode == EventSourceMode.api) {
+      unawaited(apiEventController.checkHealth());
+    }
   }
 
   String _resolveClipPath(String clipPath) {

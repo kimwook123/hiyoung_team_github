@@ -22,6 +22,21 @@ ENABLE_JSON_EVENT_LOG = True
 # JSON 이벤트 로그 저장 경로
 JSON_EVENT_LOG_PATH = "logs/events.jsonl"
 
+# HTTP 이벤트 전송 사용 여부
+ENABLE_HTTP_EVENT_POST = False
+
+# HTTP 이벤트 전송 대상 URL
+EVENT_POST_URL = "http://127.0.0.1:8000/api/events"
+
+# HTTP 이벤트 전송 타임아웃(초)
+EVENT_POST_TIMEOUT_SECONDS = 1.5
+
+# HTTP 이벤트 전송 실패 시 로컬 fallback JSON 저장 여부
+ENABLE_HTTP_EVENT_FALLBACK_JSON = True
+
+# HTTP 이벤트 전송 실패 시 저장할 fallback JSON 경로
+HTTP_EVENT_FALLBACK_JSON_PATH = "logs/events_post_failed.jsonl"
+
 # Flutter UI와 연결할 정보 파일 경로
 BRIDGE_PATH = "logs/ui_bridge.json"
 

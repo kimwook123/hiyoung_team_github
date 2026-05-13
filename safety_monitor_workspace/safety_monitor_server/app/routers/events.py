@@ -1,16 +1,61 @@
-from fastapi import APIRouter, HTTPException, Query
+from typing import Any
+
+from fastapi import APIRouter, Body, HTTPException, Query
 
 from app.config import DEFAULT_EVENT_LOG_PATH
 from app.event_store import (
+    append_event_record,
     find_events_by_key,
     get_latest_event_by_key,
     get_latest_events_by_key,
     read_event_records,
 )
-from app.schemas import EventDetailResponse, EventHistoryResponse, EventListResponse
+from app.schemas import (
+    EventCreateResponse,
+    EventDetailResponse,
+    EventHistoryResponse,
+    EventListResponse,
+)
 
 
 router = APIRouter(prefix="/api/events", tags=["events"])
+
+
+@router.post("", response_model=EventCreateResponse)
+def create_event(
+    event_record: dict[str, Any] = Body(...),
+) -> EventCreateResponse:
+    if not event_record:
+        raise HTTPException(status_code=400, detail="event record is required")
+
+    normalized_record = dict(event_record)
+
+    event_key = str(normalized_record.get("event_key", "")).strip()
+    if not event_key:
+        raise HTTPException(status_code=400, detail="event_key is required")
+
+    event_type = str(normalized_record.get("event_type", "")).strip()
+    if not event_type:
+        raise HTTPException(status_code=400, detail="event_type is required")
+
+    normalized_record["event_key"] = event_key
+    normalized_record["event_type"] = event_type
+
+    if "message" not in normalized_record or normalized_record["message"] is None:
+        normalized_record["message"] = ""
+
+    status = str(normalized_record.get("status", "")).strip()
+    if not status:
+        normalized_record["status"] = "ACTIVE"
+
+    try:
+        saved_record = append_event_record(DEFAULT_EVENT_LOG_PATH, normalized_record)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except Exception as error:
+        raise HTTPException(status_code=500, detail="failed to save event") from error
+
+    return EventCreateResponse(ok=True, item=saved_record)
 
 
 @router.get("", response_model=EventListResponse)

@@ -33,6 +33,14 @@
   - `*_event_log.txt`
   - `logs/clips/*.mp4`
 
+## 이벤트 저장 모드
+- 기본값은 로컬 JSONL 모드이며, Python이 `JsonEventHandler`로 `events.jsonl`을 직접 기록한다.
+- 서버 전송 모드에서는 Python이 `POST /api/events`로 이벤트를 보내고, FastAPI 서버가 `events.jsonl` 저장 책임을 가진다.
+- 이 모드에서는 같은 `events.jsonl` 중복 저장을 막기 위해 일반 `JsonEventHandler`를 동시에 켜지 않는다.
+- 서버 전송 실패 시에만 `events_post_failed.jsonl` 같은 fallback JSONL에 실패 이벤트를 남길 수 있다.
+- 누적된 fallback 이벤트는 `run_repost_failed_events.bat` 또는 `tools/repost_failed_events.py`로 나중에 수동 재전송할 수 있다.
+- 재전송 스크립트는 원본 fallback 파일을 수정하지 않고, 성공/실패 결과를 별도 JSONL 파일로 남긴다.
+
 ## 파일 입출력 기반 통신을 사용하는 경우의 장점과 한계
 ### 장점
 - 구현이 단순하다.

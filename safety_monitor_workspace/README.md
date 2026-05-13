@@ -167,6 +167,10 @@ run_python_server_and_gui.bat
 - AI 파이프라인은 기존 txt 로그와 함께 `events.jsonl`을 생성합니다.
 - 서버는 `events.jsonl`을 읽어 API를 제공합니다.
 - Flutter GUI는 아직 API가 아니라 기존 파일 기반 로그/영상 연동 구조를 유지합니다.
+- 서버 전송 모드에서는 Python이 `POST /api/events`로 이벤트를 보내고, 서버가 `events.jsonl` 저장 책임을 가집니다.
+- 서버가 꺼져 있으면 실패 이벤트가 `logs/events_post_failed.jsonl`에 fallback 저장될 수 있습니다.
+- 이 실패 이벤트는 `run_repost_failed_events.bat`로 나중에 수동 재전송할 수 있습니다.
+- 재전송 스크립트는 원본 fallback 파일을 삭제하지 않고, 성공/실패 결과를 별도 JSONL로 남깁니다.
 
 ## API 확인 경로
 

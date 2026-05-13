@@ -5,6 +5,17 @@ Python 기반 위험 감지 파이프라인과 Flutter 기반 GUI를 함께 사�
 - Python 레이어: 영상/스트림 입력, 객체 검출, 추적, 위험 이벤트 판정, 로그/클립 저장
 - Flutter 레이어: 영상 재생, 스트림 열기, 로그 모니터링, 이벤트 오버레이 표시
 
+## 실행 모드 빠른 선택표
+
+| 모드 | 목적 | 사용하는 배치 파일 | 필요한 선행 조건 | 데이터 흐름 |
+| --- | --- | --- | --- | --- |
+| 기존 로컬 실행 | Python AI와 기존 GUI 파일 로그 흐름 사용 | `run_python_and_gui.bat` | Python 환경, 빌드된 GUI | Python AI -> `*_event_log.txt`, 필요 시 `events.jsonl` -> Flutter 파일 로그 모드 |
+| 서버만 실행 | 기존 `events.jsonl`을 API로 조회 | `run_server.bat` | Python 또는 다른 프로세스가 `safety_ai_monitor/logs/events.jsonl` 생성 중이어야 함 | `events.jsonl` -> FastAPI GET API |
+| 전체 실행 | Python AI, FastAPI 서버, Flutter GUI 동시 실행 | `run_python_server_and_gui.bat` | Python 환경, 서버 requirements, 빌드된 GUI | Python AI -> 서버 또는 파일 로그 -> FastAPI/Flutter |
+| fallback 재전송 | 서버 전송 실패 이벤트 수동 재전송 | `run_repost_failed_events.bat` | `logs/events_post_failed.jsonl` 존재, FastAPI 서버 실행 중 | fallback JSONL -> `POST /api/events` -> 서버 저장 |
+| Flutter 파일 로그 모드 | 기존 txt 로그 기반 이벤트 확인 | `run_gui_only.bat` 또는 전체 실행 배치 | Python AI가 `*_event_log.txt` 생성 중이어야 함 | `*_event_log.txt` -> Flutter |
+| Flutter API 서버 모드 | 서버 API 기반 이벤트 목록/상세/health 확인 | `run_gui_only.bat` 또는 전체 실행 배치 | FastAPI 서버 실행 중, 필요 시 Python AI 또는 기존 `events.jsonl` 존재 | `events.jsonl` / `POST /api/events` -> FastAPI API -> Flutter |
+
 ## 현재 확인한 상태
 
 - Python 3.12에서 백엔드 실행 확인
@@ -54,8 +65,8 @@ Python 기반 위험 감지 파이프라인과 Flutter 기반 GUI를 함께 사�
 ### FastAPI 이벤트 조회 서버
 
 - 폴더: `safety_monitor_server`
-- 역할: `safety_ai_monitor/logs/events.jsonl`을 읽어 Read-only API로 제공
-- 주의: 이 서버는 AI 파이프라인을 직접 실행하지 않습니다.
+- 역할: `safety_ai_monitor/logs/events.jsonl`을 읽고, 필요 시 `POST /api/events`로 받은 이벤트를 저장/조회 API로 제공합니다.
+- 주의: 이 서버는 AI 파이프라인을 직접 실행하지 않고, AI 추론도 수행하지 않습니다.
 
 ### Flutter GUI
 
@@ -171,6 +182,34 @@ run_python_server_and_gui.bat
 - 서버가 꺼져 있으면 실패 이벤트가 `logs/events_post_failed.jsonl`에 fallback 저장될 수 있습니다.
 - 이 실패 이벤트는 `run_repost_failed_events.bat`로 나중에 수동 재전송할 수 있습니다.
 - 재전송 스크립트는 원본 fallback 파일을 삭제하지 않고, 성공/실패 결과를 별도 JSONL로 남깁니다.
+
+## 이벤트 저장 모드
+
+### A. 로컬 JSONL 모드
+
+- `ENABLE_HTTP_EVENT_POST = False`
+- `ENABLE_JSON_EVENT_LOG = True`
+- Python AI Worker가 `logs/events.jsonl`을 직접 기록합니다.
+- FastAPI 서버는 이 파일을 읽어 조회 API를 제공합니다.
+
+### B. 서버 전송 모드
+
+- `ENABLE_HTTP_EVENT_POST = True`
+- Python AI Worker가 `POST /api/events`로 이벤트를 전송합니다.
+- FastAPI 서버가 `logs/events.jsonl` 저장 책임을 가집니다.
+- 같은 `events.jsonl` 중복 저장을 막기 위해 일반 `JsonEventHandler`는 동시에 쓰지 않습니다.
+- 서버 전송 실패 시 `logs/events_post_failed.jsonl`에 fallback 저장할 수 있습니다.
+
+## 추천 실행 순서
+
+서버 전송 모드 기준 권장 순서입니다.
+
+1. `safety_ai_monitor/config.py`에서 `ENABLE_HTTP_EVENT_POST = True`인지 확인합니다.
+2. `run_server.bat`로 FastAPI 서버를 실행합니다.
+3. `run_python_server_and_gui.bat` 또는 Python AI Worker 단독 실행으로 이벤트 생산을 시작합니다.
+4. Flutter GUI에서 `API 서버` 모드를 선택합니다.
+5. `API 새로고침` 후 이벤트 목록과 상세 정보를 확인합니다.
+6. 서버가 꺼져 있었던 시간대의 실패 이벤트가 있으면 `run_repost_failed_events.bat`로 재전송합니다.
 
 ## API 확인 경로
 

@@ -4,6 +4,7 @@
 - `events.jsonl`은 Python AI 파이프라인에서 생성된 `Event`를 서버 또는 다른 클라이언트가 재사용할 수 있도록 JSON Lines 형식으로 기록하는 파일이다.
 - 이 파일은 구조화된 이벤트 소비를 위한 별도 출력 계층이며, 기존 Flutter GUI 호환을 위한 `*_event_log.txt` 출력은 그대로 유지된다.
 - 즉, `*_event_log.txt`는 기존 GUI 파서용 텍스트 로그이고, `events.jsonl`은 서버 연동 및 후속 시스템 통합을 위한 구조화 로그다.
+- 같은 JSON 이벤트 스키마는 Python 로컬 JSONL 기록과 `POST /api/events` 요청 body 양쪽에서 공통으로 사용된다.
 
 ## 기록 형식
 - `events.jsonl`은 JSON Lines 형식이다.
@@ -11,6 +12,8 @@
 - 파일은 append-only 이벤트 스트림으로 취급한다.
 - 최신 상태가 필요하면 `event_key` 기준으로 가장 마지막 레코드를 사용한다.
 - 동일 `event_key`에 대해 완전히 같은 JSON 문자열은 중복 저장하지 않는다.
+- 서버가 수신한 레코드에는 `received_at` 같은 서버 수신 메타데이터가 추가될 수 있다.
+- 클라이언트는 알 수 없는 추가 필드를 무시할 수 있어야 한다.
 
 ## 필드 목록
 

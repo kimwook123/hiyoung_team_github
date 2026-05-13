@@ -5,11 +5,16 @@ from config import (
     BRIDGE_PATH,
     CAMERA_INDEX,
     DANGER_ZONE_ROI,
+    ENABLE_HTTP_EVENT_FALLBACK_JSON,
+    ENABLE_HTTP_EVENT_POST,
     ENABLE_JSON_EVENT_LOG,
+    EVENT_POST_TIMEOUT_SECONDS,
+    EVENT_POST_URL,
     EVENT_COOLDOWN_SECONDS,
     EVENT_CLIP_BEFORE_SECONDS,
     EVENT_CLIP_DIR,
     EVENT_END_MISSING_FRAMES,
+    HTTP_EVENT_FALLBACK_JSON_PATH,
     INPUT_MODE,
     JSON_EVENT_LOG_PATH,
     LOG_PATH,
@@ -35,6 +40,7 @@ from core.path_helper import to_abs_path, to_project_path
 from core.pipeline import VideoPipeline
 from core.ui_bridge import SourceStateReader, UiBridgeWriter
 from handlers.console_event_handler import ConsoleEventHandler
+from handlers.http_event_handler import HttpEventHandler
 from handlers.json_event_handler import JsonEventHandler
 from handlers.log_event_handler import LogEventHandler
 from models.dummy_model import DummyDetectionModel
@@ -103,7 +109,20 @@ def build_pipeline(
         ConsoleEventHandler(),
         LogEventHandler(log_path=log_path),
     ]
-    if ENABLE_JSON_EVENT_LOG:
+    if ENABLE_HTTP_EVENT_POST:
+        fallback_handler = None
+        if ENABLE_HTTP_EVENT_FALLBACK_JSON:
+            fallback_handler = JsonEventHandler(
+                log_path=to_project_path(HTTP_EVENT_FALLBACK_JSON_PATH)
+            )
+        handlers.append(
+            HttpEventHandler(
+                post_url=EVENT_POST_URL,
+                timeout_seconds=EVENT_POST_TIMEOUT_SECONDS,
+                fallback_handler=fallback_handler,
+            )
+        )
+    elif ENABLE_JSON_EVENT_LOG:
         handlers.append(
             JsonEventHandler(log_path=to_project_path(JSON_EVENT_LOG_PATH))
         )

@@ -1,9 +1,10 @@
 # safety_monitor_server
 
-이 서버는 기존 Python AI 파이프라인을 실행하거나 제어하지 않는 Read-only 이벤트 조회 서버입니다.
+이 서버는 기존 Python AI 파이프라인을 실행하거나 제어하지 않는 파일 기반 이벤트 API 서버입니다.
 
 - 입력 데이터는 `safety_ai_monitor/logs/events.jsonl` 파일입니다.
 - 서버는 `events.jsonl`을 읽어서 HTTP API로 이벤트 목록을 제공합니다.
+- 또한 Python AI Worker가 이벤트를 서버로 전송하면 `POST /api/events`로 같은 `events.jsonl` 파일에 append 저장할 수 있습니다.
 - 기존 `*_event_log.txt`, `source_state.json`, `ui_bridge.json`, Flutter UI 동작은 변경하지 않습니다.
 - 현재는 파일 기반 프로토타입이며, 추후 DB 저장소나 WebSocket 기반 실시간 전송으로 확장할 수 있습니다.
 - CORS는 개발 편의를 위해 모든 origin 허용으로 열려 있으며, 운영 환경에서는 제한이 필요합니다.
@@ -19,6 +20,7 @@ python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ## API 목록
 
 - `GET /health`
+- `POST /api/events`
 - `GET /api/events`
 - `GET /api/events/latest`
 - `GET /api/events/detail?event_key=...&latest_only=true`
@@ -27,6 +29,27 @@ python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
 ### `GET /health`
 - 서버 상태와 현재 이벤트 로그 경로, 파일 존재 여부를 반환합니다.
+
+### `POST /api/events`
+- Python AI Worker가 JSON 이벤트를 서버로 전송할 때 사용하는 수신 API입니다.
+- 서버는 받은 이벤트를 현재 파일 기반 저장소인 `events.jsonl`에 JSON Lines 형식으로 append 저장합니다.
+- 추후에는 같은 계약을 유지한 채 DB 저장 방식으로 교체할 수 있습니다.
+
+예시 요청:
+
+```json
+{
+  "event_key": "NO_HELMET:3",
+  "event_type": "NO_HELMET",
+  "status": "ACTIVE",
+  "level": "WARNING",
+  "message": "안전모 미착용 의심 이벤트 발생",
+  "frame_id": 120,
+  "person_id": 3,
+  "source_time_text": "00:08.160",
+  "related_detections": []
+}
+```
 
 ### `GET /api/events`
 - `events.jsonl` 전체 레코드를 반환합니다.

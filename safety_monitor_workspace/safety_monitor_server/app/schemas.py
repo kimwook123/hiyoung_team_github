@@ -19,6 +19,11 @@ class EventHistoryResponse(BaseModel):
     items: list[dict[str, Any]]
 
 
+class EventCreateResponse(BaseModel):
+    ok: bool
+    item: dict[str, Any]
+
+
 class HealthResponse(BaseModel):
     status: str
     event_log_path: str

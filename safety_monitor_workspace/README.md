@@ -5,6 +5,14 @@ Python 기반 위험 감지 파이프라인과 Flutter 기반 GUI를 함께 사�
 - Python 레이어: 영상/스트림 입력, 객체 검출, 추적, 위험 이벤트 판정, 로그/클립 저장
 - Flutter 레이어: 영상 재생, 스트림 열기, 로그 모니터링, 이벤트 오버레이 표시
 
+## 처음 보는 팀원을 위한 30초 시작 가이드
+
+- 안정적으로 기존 기능만 확인하려면: `run_python_and_gui.bat`를 사용하고 Flutter는 파일 로그 모드로 보면 됩니다. 서버 없이 기존 영상 분석, 로그, 클립 흐름을 확인할 수 있습니다.
+- 서버-클라이언트 분리 구조까지 확인하려면: `run_server.bat` 실행 후 Python AI Worker를 실행하고, Flutter에서 API 서버 모드를 선택합니다. `API 새로고침`, 상세, `클립 열기`로 서버 조회 흐름을 볼 수 있습니다.
+- 서버 전송 실패 이벤트를 다시 보내려면: `run_repost_failed_events.bat`를 사용합니다. `events_post_failed.jsonl`에 쌓인 실패 이벤트를 `POST /api/events`로 재전송합니다.
+
+요약하면 Python AI Worker가 이벤트를 만들고, FastAPI Server가 저장/조회하며, Flutter GUI가 이를 표시합니다.
+
 ## 실행 모드 빠른 선택표
 
 | 모드 | 목적 | 사용하는 배치 파일 | 필요한 선행 조건 | 데이터 흐름 |

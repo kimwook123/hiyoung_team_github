@@ -211,6 +211,53 @@ run_python_server_and_gui.bat
 5. `API 새로고침` 후 이벤트 목록과 상세 정보를 확인합니다.
 6. 서버가 꺼져 있었던 시간대의 실패 이벤트가 있으면 `run_repost_failed_events.bat`로 재전송합니다.
 
+## 개발/발표용 권장 시나리오
+
+### A. 안정 시연 시나리오
+
+- 목적: 기존 기능을 안정적으로 보여주는 데모
+- 권장 모드: 로컬 JSONL 모드 + Flutter 파일 로그 모드
+- 흐름:
+  1. Python AI Worker 실행
+  2. Flutter GUI 실행
+  3. 영상 파일 선택
+  4. 이벤트 로그, 클립, 오버레이 확인
+- 장점:
+  - 서버 상태에 덜 의존합니다.
+  - 기존 파일 기반 흐름을 바로 확인할 수 있습니다.
+
+### B. 서버-클라이언트 분리 시연 시나리오
+
+- 목적: 서버 중심 이벤트 저장/조회 구조를 보여주는 데모
+- 권장 모드: 서버 전송 모드 + Flutter API 서버 모드
+- 흐름:
+  1. `ENABLE_HTTP_EVENT_POST = True` 설정 확인
+  2. `run_server.bat` 실행
+  3. Python AI Worker 실행
+  4. Flutter GUI 실행
+  5. GUI에서 `API 서버` 모드 선택
+  6. 상태 확인, API 새로고침, 이벤트 상세, 클립 열기 확인
+- 장점:
+  - Python AI Worker, FastAPI Server, Flutter GUI 역할 분리를 설명하기 쉽습니다.
+  - `POST /api/events`와 GET API 흐름을 함께 설명할 수 있습니다.
+
+### C. 장애 대응 시나리오
+
+- 목적: 서버 장애 시 fallback 구조 설명
+- 흐름:
+  1. 서버가 꺼진 상태에서 서버 전송 모드 실행 시 실패 이벤트가 fallback JSONL에 저장될 수 있습니다.
+  2. 서버를 다시 켠 뒤 `run_repost_failed_events.bat`로 재전송할 수 있습니다.
+- 장점:
+  - 이벤트 유실 방지 구조를 설명할 수 있습니다.
+
+## 발표 때 강조할 포인트
+
+- 기존 파일 기반 프로토타입을 유지하면서 서버 중심 구조로 점진 전환하고 있습니다.
+- `EventHandler` 구조를 활용해 txt 로그, JSONL, HTTP 전송을 병렬 또는 선택적으로 확장했습니다.
+- 서버는 AI 추론을 직접 수행하지 않고 이벤트 저장과 조회 책임만 가집니다.
+- Flutter는 기존 UI 모델을 유지하면서 API 모드를 추가했습니다.
+- 현재는 프로토타입 파일 기반 저장이며, 추후 DB, WebSocket, 자동 갱신 구조로 확장할 수 있습니다.
+
 ## API 확인 경로
 
 - `http://127.0.0.1:8000/health`

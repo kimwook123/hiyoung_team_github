@@ -41,6 +41,7 @@
 - 서버 전송 실패 시에만 `events_post_failed.jsonl` 같은 fallback JSONL에 실패 이벤트를 남길 수 있다.
 - 누적된 fallback 이벤트는 `run_repost_failed_events.bat` 또는 `tools/repost_failed_events.py`로 나중에 수동 재전송할 수 있다.
 - 재전송 스크립트는 원본 fallback 파일을 수정하지 않고, 성공/실패 결과를 별도 JSONL 파일로 남긴다.
+- 현재 단계에서는 서버가 `data/events.jsonl`과 `data/clips/` 구조를 소유하도록 준비되어 있다.
 
 ## 현재 역할 분리
 - Python AI Worker는 `Event Producer` 역할을 맡는다.
@@ -48,6 +49,8 @@
 - Flutter GUI는 파일 로그 또는 서버 API를 소비하는 `Event Consumer` 역할을 맡는다.
 - `events.jsonl`은 현재 프로토타입 저장소이며, 추후 DB로 교체될 수 있다.
 - fallback JSONL은 서버 장애 시 이벤트 유실을 줄이기 위한 안전장치다.
+- 이벤트 데이터와 클립 파일의 최종 소유권은 서버로 이동하는 방향이다.
+- 기존 `safety_ai_monitor/logs`는 로컬 실행 로그와 fallback 용도로 유지된다.
 
 ## 파일 입출력 기반 통신을 사용하는 경우의 장점과 한계
 ### 장점

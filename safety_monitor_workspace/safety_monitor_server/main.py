@@ -1,12 +1,22 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import DEFAULT_EVENT_LOG_PATH
+from app.config import (
+    DEFAULT_EVENT_LOG_PATH,
+    SERVER_CLIP_DIR,
+    SERVER_DATA_DIR,
+    ensure_server_dirs,
+)
+from app.routers.clips import router as clips_router
 from app.routers.events import router as events_router
 from app.schemas import HealthResponse
 
 
 app = FastAPI(title="Safety Monitor Server")
+
+ensure_server_dirs()
+SERVER_DATA_DIR.mkdir(parents=True, exist_ok=True)
+SERVER_CLIP_DIR.mkdir(parents=True, exist_ok=True)
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,6 +27,7 @@ app.add_middleware(
 )
 
 app.include_router(events_router)
+app.include_router(clips_router)
 
 
 @app.get("/health", response_model=HealthResponse)

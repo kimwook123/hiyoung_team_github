@@ -116,6 +116,9 @@ Flutter UI는 이 파일을 읽어서 영상 경로와 로그 경로를 자동�
 - API 상세 패널에서는 `relatedDetections`도 함께 간단히 표시합니다.
 - 표시 정보는 객체명, confidence score, `track_id`, `box` 좌표이며 이벤트 판단 근거를 빠르게 확인하기 위한 보조 정보입니다.
 - API 상세 패널에서 `clipPath`가 있는 이벤트는 `클립 열기` 버튼으로 저장된 이벤트 클립을 재생할 수 있습니다.
+- API 서버 모드에서는 `clip_url`이 있으면 서버 클립 URL을 우선 사용합니다.
+- `clip_url`이 없으면 기존 `clipPath` 로컬 경로를 fallback으로 사용합니다.
+- 서버 클립 URL은 FastAPI 서버의 `/api/clips/{clip_name}`에서 제공됩니다.
 - `clipPath`는 Python AI 파이프라인이 저장한 로컬 클립 경로를 사용합니다.
 - 경로가 잘못되었거나 파일이 없으면 재생되지 않을 수 있습니다.
 - 서버가 꺼져 있거나 `events.jsonl` 파일이 없으면 API 이벤트 목록이 비어 있거나 오류 메시지가 표시될 수 있습니다.

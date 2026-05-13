@@ -51,6 +51,11 @@
 - fallback JSONL은 서버 장애 시 이벤트 유실을 줄이기 위한 안전장치다.
 - 이벤트 데이터와 클립 파일의 최종 소유권은 서버로 이동하는 방향이다.
 - 기존 `safety_ai_monitor/logs`는 로컬 실행 로그와 fallback 용도로 유지된다.
+- 서버는 `data/events.jsonl`과 `data/clips/`를 소유한다.
+- 서버 전송 모드에서 Python은 이벤트를 `POST /api/events`로 보내고, 클립은 `POST /api/clips`로 업로드할 수 있다.
+- 서버가 반환한 `clip_url`은 Flutter가 서버 클립을 재생하는 데 사용된다.
+- 서버는 이벤트 저장 시 clip 접근 필드를 정규화해 클라이언트 소비를 단순화한다.
+- 서버 클립이 있으면 `preferred_clip_source="server"`를, 없으면 로컬 fallback 기준으로 `preferred_clip_source="local"` 또는 빈 값을 기록할 수 있다.
 
 ## 파일 입출력 기반 통신을 사용하는 경우의 장점과 한계
 ### 장점

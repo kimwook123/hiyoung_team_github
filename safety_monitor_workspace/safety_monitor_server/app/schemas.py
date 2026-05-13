@@ -35,6 +35,15 @@ class ClipListResponse(BaseModel):
     items: list[ClipItem]
 
 
+class ClipUploadResponse(BaseModel):
+    ok: bool
+    name: str
+    path: str
+    url: str
+    size_bytes: int
+    event_key: str | None = None
+
+
 class HealthResponse(BaseModel):
     status: str
     event_log_path: str

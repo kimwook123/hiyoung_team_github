@@ -15,6 +15,7 @@
 - 서버가 수신한 레코드에는 `received_at` 같은 서버 수신 메타데이터가 추가될 수 있다.
 - 클라이언트는 알 수 없는 추가 필드를 무시할 수 있어야 한다.
 - 추후 서버 저장 이벤트에는 `clip_url` 같은 서버 접근용 필드가 추가될 수 있다.
+- 이벤트 JSON에는 `clip_url`, `server_clip_path`, `server_clip_name`, `clip_upload_ok`, `clip_available`, `preferred_clip_source` 같은 서버 클립 필드가 추가될 수 있다.
 
 ## 필드 목록
 
@@ -34,6 +35,12 @@
 | `started_frame_id` | `integer` | 예 | 이벤트 시작 프레임 번호다. 기본적으로 첫 생성 시 `frame_id`로 채워진다. | `110` |
 | `ended_frame_id` | `integer` | 예 | 이벤트 종료 프레임 번호다. 종료되지 않았으면 `null`이다. | `145` |
 | `clip_path` | `string` | 아니오 | 저장된 이벤트 클립 경로다. 없으면 빈 문자열일 수 있다. | `"logs/clips/no_helmet_3.mp4"` |
+| `clip_url` | `string` | 예 | 서버가 소유한 클립에 접근할 수 있는 URL이다. 있으면 클라이언트는 이 값을 우선 사용한다. | `"/api/clips/no_helmet_3.mp4"` |
+| `server_clip_path` | `string` | 예 | 서버 저장소 기준 상대 클립 경로다. | `"clips/no_helmet_3.mp4"` |
+| `server_clip_name` | `string` | 예 | 서버 저장소에 기록된 클립 파일명이다. | `"no_helmet_3.mp4"` |
+| `clip_upload_ok` | `boolean` | 아니오 | 서버 클립 업로드 성공 여부다. 서버 정규화 단계에서 기본값이 채워질 수 있다. | `true` |
+| `clip_available` | `boolean` | 아니오 | 서버 URL 또는 로컬 fallback 경로 중 재생 가능한 클립 정보가 있는지 나타낸다. | `true` |
+| `preferred_clip_source` | `string` | 아니오 | 클라이언트가 우선 사용할 클립 소스다. `server`, `local`, `""` 중 하나다. | `"server"` |
 | `source_time_seconds` | `number` | 아니오 | 원본 입력 기준 시간(초)이다. | `8.16` |
 | `source_time_text` | `string` | 아니오 | 원본 입력 기준 시간 문자열이다. | `"00:08.160"` |
 | `started_source_time_text` | `string` | 아니오 | 이벤트 시작 시점의 시간 문자열이다. 비어 있으면 생성 시 `source_time_text`로 초기화된다. | `"00:07.920"` |
@@ -150,8 +157,12 @@
 - `status`가 `END`인 레코드는 종료된 이벤트로 처리한다.
 - `clip_path`가 비어 있지 않으면 저장된 이벤트 클립과 연결할 수 있다.
 - 현재 `clip_path`는 생산자 로컬 경로일 수 있으며, 서버 소유 클립 전환 이후에는 서버 URL 필드가 우선될 수 있다.
+- `clip_url`이 있으면 클라이언트는 `clip_url`을 우선 사용하고, `preferred_clip_source`가 `"server"`인 경우도 같은 의미로 해석할 수 있다.
+- `clip_url`이 없고 `preferred_clip_source`가 `"local"`이면 기존 `clip_path`를 fallback으로 사용할 수 있다.
+- `clip_path`는 기존 호환성과 fallback을 위해 보존될 수 있다.
 - `related_detections`를 사용하면 이벤트 시점의 탐지 객체, 추적 ID, 박스 정보를 함께 전달할 수 있다.
 - `source_time_text`는 영상 파일에서는 영상 재생 시간 문자열일 수 있고, 스트림 또는 카메라에서는 현재 시각 기반 문자열일 수 있다.
+- 클라이언트는 알 수 없는 추가 필드를 무시해야 한다.
 
 ## 주의사항
 - 기존 `*_event_log.txt` 형식은 Flutter GUI 호환을 위해 유지되며, 이 문서는 그 텍스트 로그 계약을 대체하지 않는다.

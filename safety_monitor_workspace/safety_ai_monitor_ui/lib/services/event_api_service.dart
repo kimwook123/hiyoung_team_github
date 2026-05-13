@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/api_event_item.dart';
+import '../models/api_server_health.dart';
 
 class EventApiService {
   EventApiService({
@@ -80,6 +81,29 @@ class EventApiService {
       }
       if (item is Map) {
         return ApiEventItem.fromJson(Map<String, dynamic>.from(item));
+      }
+    } catch (_) {
+      return null;
+    }
+
+    return null;
+  }
+
+  Future<ApiServerHealth?> fetchHealth() async {
+    final uri = _buildUri('/health', const {});
+
+    try {
+      final response = await _client.get(uri);
+      if (response.statusCode != 200) {
+        return null;
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        return ApiServerHealth.fromJson(decoded);
+      }
+      if (decoded is Map) {
+        return ApiServerHealth.fromJson(Map<String, dynamic>.from(decoded));
       }
     } catch (_) {
       return null;

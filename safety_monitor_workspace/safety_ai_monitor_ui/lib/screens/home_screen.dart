@@ -19,6 +19,8 @@ import '../widgets/file_bar.dart';
 import '../widgets/video_control_bar.dart';
 import '../widgets/video_view_box.dart';
 
+// 메인 화면입니다.
+// 파일 로그 모드와 API 서버 모드를 모두 품고 있으며, 실제 화면 조합은 여기서 결정합니다.
 enum EventSourceMode {
   fileLog,
   api,
@@ -50,6 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? apiAutoRefreshTimer;
 
   EventFeedSource get activeEventFeed {
+    // 화면 위젯은 이 getter만 보면 현재 어떤 모드인지 몰라도 같은 방식으로 동작합니다.
     switch (eventSourceMode) {
       case EventSourceMode.fileLog:
         return fileEventFeed;
@@ -107,6 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
+                    // 상단 입력 영역은 기존 파일 기반 흐름을 그대로 유지합니다.
                     FileBar(
                       videoPath: videoController.videoPath,
                       sourceType: videoController.sourceType,
@@ -130,11 +134,12 @@ class _HomeScreenState extends State<HomeScreen> {
                               children: [
                                 Expanded(
                                   child: AnimatedBuilder(
-                                    animation: Listenable.merge(
-                                      [videoController, fileEventFeed, apiEventFeed],
-                                    ),
-                                    builder: (context, _) {
-                                      return VideoViewBox(
+                                        animation: Listenable.merge(
+                                          [videoController, fileEventFeed, apiEventFeed],
+                                        ),
+                                        builder: (context, _) {
+                                          // 오버레이는 현재 활성 feed에서 프레임 기준 이벤트만 받아 재사용합니다.
+                                          return VideoViewBox(
                                         controller: videoController,
                                         overlayItems: _getOverlayItems(),
                                       );
@@ -210,6 +215,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildEventSourceControls() {
+    // 사용자가 파일 로그 모드와 API 서버 모드를 전환하는 최소 제어 영역입니다.
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -240,6 +246,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const Spacer(),
               if (eventSourceMode == EventSourceMode.api)
                 FilledButton(
+                  // 자동 polling이 있어도, 사용자가 즉시 다시 받고 싶을 때 수동 갱신할 수 있게 둡니다.
                   onPressed: _refreshApiEvents,
                   child: const Text('API 새로고침'),
                 ),
@@ -292,6 +299,8 @@ class _HomeScreenState extends State<HomeScreen> {
       return const SizedBox.shrink();
     }
 
+    // API 모드에서만 보이는 상세 패널입니다.
+    // 이벤트 목록 클릭 후 GET /api/events/detail 결과를 요약해서 보여 줍니다.
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -325,6 +334,8 @@ class _HomeScreenState extends State<HomeScreen> {
       return const SizedBox.shrink();
     }
 
+    // /health 호출 결과를 보여 주는 보조 패널입니다.
+    // 서버가 꺼졌는지, events.jsonl을 찾았는지 빠르게 점검할 때 사용합니다.
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -390,6 +401,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildApiDetailContent(ApiEventItem item) {
+    // clipUrl 우선, clipPath fallback 정책과 서버 정규화 clip 필드를 여기서 눈으로 확인할 수 있습니다.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -452,6 +464,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return const SizedBox.shrink();
     }
 
+    // 탐지 근거는 너무 길어지지 않도록 일부만 보여 줍니다.
     final visibleDetections = detail.relatedDetections.take(5).toList();
     final remainingCount = detail.relatedDetections.length - visibleDetections.length;
 
@@ -607,6 +620,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _onTapEventItem(EventLogItem item) async {
+    // 클릭 공통 동작:
+    // 1) 선택 표시
+    // 2) API 모드면 상세 조회
+    // 3) 스트림 replay clip 또는 해당 프레임으로 이동
     activeEventFeed.selectLogItem(item);
 
     if (eventSourceMode == EventSourceMode.api) {
@@ -658,6 +675,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openApiDetailClip(ApiEventItem item) async {
+    // API 상세 패널의 "클립 열기"는 서버 clip_url을 우선 사용하고,
+    // 없으면 기존 로컬 clipPath를 fallback으로 사용합니다.
     final resolvedPath = _resolveApiClipSource(item);
     if (resolvedPath.isEmpty) {
       setState(() {
@@ -688,6 +707,8 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    // 모드 전환 시 선택 상태와 상세 패널 상태를 정리하고,
+    // API 모드 진입 시에는 health 확인과 자동 새로고침을 시작합니다.
     _stopApiAutoRefresh();
     fileEventFeed.clearSelection();
     apiEventFeed.clearSelection();
@@ -707,6 +728,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _startApiAutoRefresh() {
+    // 실시간 push(WebSocket) 대신 3초 간격 polling으로 서버 최신 이벤트를 가져옵니다.
     _stopApiAutoRefresh();
     apiAutoRefreshTimer = Timer.periodic(_apiAutoRefreshInterval, (_) {
       unawaited(_refreshApiEventsIfNeeded());
@@ -723,12 +745,15 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     if (apiEventController.isLoading) {
+      // 이미 요청 중이면 중복 호출을 피해서 화면 흔들림과 불필요한 서버 호출을 줄입니다.
       return;
     }
     await _refreshApiEvents();
   }
 
   String _resolveClipPath(String clipPath) {
+    // 기존 로컬 clipPath는 Python 작업 디렉터리 기준 상대 경로일 수 있어
+    // Flutter 쪽에서 한 번 더 보정해 줍니다.
     final trimmed = clipPath.trim();
     if (trimmed.isEmpty || trimmed == '-') {
       return '';
@@ -754,6 +779,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _resolveApiClipSource(ApiEventItem item) {
+    // 서버가 clip_url을 돌려준 경우 그 URL을 우선 사용하고,
+    // 아직 서버 클립이 없으면 기존 로컬 경로를 예비 경로로 사용합니다.
     final clipUrl = item.clipUrl.trim();
     if (clipUrl.isNotEmpty && clipUrl != '-') {
       return _resolveClipUrl(clipUrl);
@@ -779,6 +806,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _resolveClipUrl(String clipUrl) {
+    // /api/clips/파일명 형태의 상대 URL을 실제 접속 가능한 절대 URL로 바꿉니다.
     final trimmed = clipUrl.trim();
     if (trimmed.isEmpty || trimmed == '-') {
       return '';
@@ -798,6 +826,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required String sourceType,
     required String sourceValue,
   }) async {
+    // 파일 로그 모드에서는 입력 소스에 대응하는 txt 로그 경로를 계산해 watch를 시작합니다.
     final logPath = await appLinkService.buildLogPath(
       sourceType: sourceType,
       sourceValue: sourceValue,

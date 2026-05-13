@@ -7,8 +7,13 @@ from core.event_handler import EventHandler
 from core.event_rule import Event
 from core.event_serializer import serialize_event
 
+# 이 파일은 이벤트를 FastAPI 서버로 보내는 핸들러입니다.
+# POST는 서버에 데이터를 보내는 요청이며, 실패 시 fallback handler가 대신 로컬 저장을 맡을 수 있습니다.
+
 
 class HttpEventHandler(EventHandler):
+    # Python AI Worker가 만든 Event를 POST /api/events로 전송합니다.
+    # 필요하면 먼저 clip_path 파일을 POST /api/clips로 업로드한 뒤 서버 클립 정보를 payload에 붙입니다.
     def __init__(
         self,
         post_url: str,
@@ -23,6 +28,8 @@ class HttpEventHandler(EventHandler):
         self.last_sent_payloads: dict[str, str] = {}
 
     def handle(self, event: Event) -> None:
+        # Event를 dict로 직렬화한 뒤 HTTP 요청으로 서버에 보냅니다.
+        # timeout은 서버 응답을 기다리는 최대 시간이며, 200번대 상태 코드는 성공으로 봅니다.
         payload = serialize_event(event)
         self._attach_clip_upload_fields(payload, event)
         payload_text = json.dumps(payload, ensure_ascii=False, sort_keys=True)
@@ -48,6 +55,8 @@ class HttpEventHandler(EventHandler):
             self._handle_failure(event, f"HTTP event post failed: {error}")
 
     def _attach_clip_upload_fields(self, payload: dict, event: Event) -> None:
+        # 로컬 clip_path가 있을 때만 서버 클립 업로드를 시도합니다.
+        # 업로드 성공 후 받은 clip_url은 Flutter API 모드에서 로컬 경로보다 우선 사용됩니다.
         clip_path = str(payload.get("clip_path") or "").strip()
         if not clip_path or clip_path == "-" or self.clip_upload_client is None:
             return
@@ -69,6 +78,8 @@ class HttpEventHandler(EventHandler):
             payload["server_clip_name"] = upload_result.get("name")
 
     def _handle_failure(self, event: Event, message: str) -> None:
+        # 이벤트 POST가 실패했을 때만 fallback handler가 동작합니다.
+        # 예를 들어 JsonEventHandler를 fallback으로 두면 실패 이벤트를 로컬 JSONL에 남길 수 있습니다.
         print(message)
 
         if self.fallback_handler is None:

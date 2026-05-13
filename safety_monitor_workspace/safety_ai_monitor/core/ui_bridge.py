@@ -2,8 +2,12 @@
 import time
 from pathlib import Path
 
+# 이 파일은 Flutter GUI와 Python AI Worker 사이의 파일 기반 브리지입니다.
+# source_state.json은 Flutter -> Python, ui_bridge.json은 Python -> Flutter 방향으로 사용됩니다.
+
 
 class UiBridgeWriter:
+    # 현재 입력 소스와 로그 경로를 GUI가 참고할 수 있게 기록합니다.
     def __init__(self, bridge_path: str) -> None:
         self.bridge_path = Path(bridge_path)
 
@@ -30,11 +34,13 @@ class UiBridgeWriter:
 
 
 class SourceStateReader:
+    # Flutter가 선택한 입력 소스 상태 파일을 읽는 도구입니다.
     def __init__(self, state_path: str, min_updated_at: float | None = None) -> None:
         self.state_path = Path(state_path)
         self.min_updated_at = min_updated_at
 
     def read(self, wait_seconds: int | None = None) -> dict[str, str]:
+        # GUI가 아직 입력을 고르지 않았으면 잠시 기다립니다.
         deadline = None if wait_seconds is None else time.time() + wait_seconds
         while True:
             if self.state_path.exists() and self._is_fresh_enough():
@@ -55,6 +61,7 @@ class SourceStateReader:
             time.sleep(0.5)
 
     def read_if_changed(self, previous_state: dict[str, str]) -> dict[str, str] | None:
+        # GUI에서 다른 영상이나 스트림을 고르면 파이프라인을 재시작할 수 있게 변경만 감지합니다.
         if not self.state_path.exists() or not self._is_fresh_enough():
             return None
 

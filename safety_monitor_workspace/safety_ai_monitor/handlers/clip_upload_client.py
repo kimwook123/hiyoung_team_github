@@ -2,8 +2,11 @@ from pathlib import Path
 
 import requests
 
+# 이 파일은 로컬 mp4 클립을 FastAPI 서버에 업로드하는 작은 HTTP 클라이언트입니다.
+# multipart/form-data는 파일 업로드에 사용하는 HTTP 요청 형식입니다.
 
 class ClipUploadClient:
+    # 이벤트 종료 후 생성된 clip_path 파일을 POST /api/clips로 보냅니다.
     def __init__(
         self,
         upload_url: str,
@@ -17,6 +20,7 @@ class ClipUploadClient:
         clip_path: str,
         event_key: str | None = None,
     ) -> dict | None:
+        # 서버가 꺼져 있거나 응답이 잘못 와도 앱이 죽지 않게 None으로 실패를 돌려줍니다.
         normalized_path = clip_path.strip()
         if not normalized_path or normalized_path == "-":
             return None

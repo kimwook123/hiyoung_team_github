@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../controllers/video_panel_controller.dart';
 
+// 재생, 프레임 이동, 탐색 슬라이더를 묶은 하단 제어 바입니다.
 class VideoControlBar extends StatelessWidget {
   const VideoControlBar({
     super.key,
@@ -12,6 +13,7 @@ class VideoControlBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 현재 시간을 비율로 바꿔 Slider와 연결합니다.
     final totalMs = controller.totalDuration.inMilliseconds;
     final currentMs = controller.currentPosition.inMilliseconds;
     final sliderValue = totalMs <= 0 ? 0.0 : currentMs / totalMs;

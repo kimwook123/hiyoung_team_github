@@ -1,4 +1,7 @@
+// 이 파일은 FastAPI 서버 응답을 담는 모델입니다.
+// API 모드에서는 events.jsonl 기반 JSON이 먼저 이 구조로 들어옵니다.
 class ApiEventItem {
+  // 서버가 정규화한 clip 필드까지 함께 담는 이벤트 상세 모델입니다.
   const ApiEventItem({
     required this.eventKey,
     required this.eventType,
@@ -47,6 +50,7 @@ class ApiEventItem {
   final int? endedFrameId;
   final List<Map<String, dynamic>> relatedDetections;
 
+  // 서버 clip_url이 있거나, 로컬 fallback clipPath가 있으면 재생 가능한 클립이 있다고 봅니다.
   bool get hasClip =>
       clipAvailable || clipUrl.isNotEmpty || clipPath.isNotEmpty;
 

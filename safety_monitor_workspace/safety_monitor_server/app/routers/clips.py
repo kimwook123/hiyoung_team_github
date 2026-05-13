@@ -6,6 +6,8 @@ from fastapi.responses import FileResponse
 from app.config import SERVER_CLIP_DIR
 from app.schemas import ClipItem, ClipListResponse, ClipUploadResponse
 
+# 이 파일은 서버 소유 mp4 클립 업로드/조회 API를 담당합니다.
+# Python AI Worker는 POST /api/clips로 업로드하고, Flutter는 GET /api/clips/{clip_name}으로 재생할 수 있습니다.
 
 router = APIRouter(prefix="/api/clips", tags=["clips"])
 
@@ -15,6 +17,8 @@ async def upload_clip(
     file: UploadFile = File(...),
     event_key: str | None = Form(default=None),
 ) -> ClipUploadResponse:
+    # multipart/form-data는 파일 업로드용 HTTP 요청 형식입니다.
+    # 업로드된 mp4는 반드시 서버 data/clips 아래에만 저장되도록 제한합니다.
     original_name = Path(file.filename or "").name.strip()
     if not original_name:
         raise HTTPException(status_code=400, detail="file name is required")
@@ -51,6 +55,7 @@ async def upload_clip(
 
 @router.get("", response_model=ClipListResponse)
 def list_clips() -> ClipListResponse:
+    # 서버가 현재 소유한 mp4 파일 목록을 클라이언트가 확인할 때 사용합니다.
     items = [
         ClipItem(
             name=clip_path.name,
@@ -65,6 +70,7 @@ def list_clips() -> ClipListResponse:
 
 @router.get("/{clip_name}")
 def get_clip(clip_name: str) -> FileResponse:
+    # mp4 파일 일부만 전송하는 206 Partial Content 응답도 브라우저/플레이어에서는 정상적일 수 있습니다.
     normalized_name = clip_name.strip()
     if (
         not normalized_name

@@ -4,8 +4,12 @@ from enum import Enum
 from core.detection_model import Box, Detection
 from core.event_rule import Event
 
+# 이 파일은 Event 객체를 JSON 저장과 HTTP 전송에 맞는 순수 dict 구조로 바꿉니다.
+# JsonEventHandler와 HttpEventHandler가 같은 직렬화 로직을 공유하기 위해 사용합니다.
+
 
 def serialize_box(box: Box | None) -> dict[str, int | None] | None:
+    # JSON에는 파이썬 객체를 그대로 넣지 않고 값만 남깁니다.
     if box is None:
         return None
 
@@ -27,6 +31,8 @@ def serialize_detection(detection: Detection) -> dict[str, object]:
 
 
 def serialize_event(event: Event) -> dict[str, object]:
+    # Event -> dict 변환의 공통 진입점입니다.
+    # 서버 전송 모드와 로컬 JSONL 모드가 같은 스키마를 쓰도록 맞춰 줍니다.
     return {
         "event_key": getattr(event, "event_key", None),
         "event_type": _serialize_value(getattr(event, "event_type", None)),
@@ -56,6 +62,7 @@ def serialize_event(event: Event) -> dict[str, object]:
 
 
 def _serialize_value(value: object) -> object:
+    # Enum, datetime 같은 파이썬 전용 타입을 JSON에 맞는 값으로 바꿉니다.
     if value is None:
         return None
     if isinstance(value, Enum):

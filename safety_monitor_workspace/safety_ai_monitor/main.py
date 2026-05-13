@@ -52,8 +52,12 @@ from models.yolo_model_sample import YoloModelSample
 from rules.danger_zone_rule import DangerZoneRule
 from rules.no_helmet_rule import NoHelmetRule
 
+# 이 파일은 Python AI Worker의 진입점입니다.
+# 입력 소스, 모델, 이벤트 룰, 로그 핸들러를 조립해 하나의 파이프라인으로 실행합니다.
 
 def build_model() -> DetectionModel:
+    # 모델 계층은 DetectionModel 공통 인터페이스를 따릅니다.
+    # 그래서 여기 분기만 바꿔도 룰, 로그, 서버 전송 구조는 그대로 재사용할 수 있습니다.
     # config.py의 MODEL_TYPE 값으로 모델 구현체를 고른다
     if MODEL_TYPE == "dummy":
         return DummyDetectionModel(min_confidence=MIN_CONFIDENCE)
@@ -74,6 +78,8 @@ def build_pipeline(
     source_state: dict[str, str] | None = None,
     restart_checker=None,
 ) -> VideoPipeline:
+    # 이 함수는 전체 AI 분석 파이프라인을 조립합니다.
+    # DetectionResult -> EventRule -> EventFilter -> EventHandler 흐름이 여기서 연결됩니다.
     if INPUT_MODE == "camera":
         frame_source = CameraFrameSource(camera_index=CAMERA_INDEX)
         source_type = "camera"
@@ -114,6 +120,8 @@ def build_pipeline(
         LogEventHandler(log_path=log_path),
     ]
     if ENABLE_HTTP_EVENT_POST:
+        # 서버 전송 모드에서는 이벤트를 POST /api/events로 보냅니다.
+        # fallback은 서버 전송 실패 시 대신 로컬 JSON Lines에 남기는 예비 처리입니다.
         fallback_handler = None
         clip_upload_client = None
         if ENABLE_HTTP_EVENT_FALLBACK_JSON:
@@ -134,6 +142,7 @@ def build_pipeline(
             )
         )
     elif ENABLE_JSON_EVENT_LOG:
+        # 로컬 JSONL 모드는 Python이 직접 events.jsonl을 기록하는 방식입니다.
         handlers.append(
             JsonEventHandler(log_path=to_project_path(JSON_EVENT_LOG_PATH))
         )
@@ -185,6 +194,8 @@ def main() -> None:
 
 
 def _run_gui_mode() -> None:
+    # GUI 모드에서는 Flutter가 source_state.json에 입력을 쓰고,
+    # Python은 그 파일을 감시하다가 값이 바뀌면 파이프라인을 다시 시작합니다.
     source_reader = _get_source_state_reader()
     current_state = source_reader.read()
 
@@ -211,6 +222,8 @@ def _get_source_state_reader() -> SourceStateReader:
 
 
 def _build_log_path(source_type: str, source_value: str) -> str:
+    # 영상 파일은 파일명별 로그를 나누고, 스트림은 고정 이름 로그를 사용합니다.
+    # 이렇게 해야 Flutter 파일 로그 모드가 현재 입력과 맞는 txt 로그를 쉽게 찾을 수 있습니다.
     if source_type == "video":
         video_name = Path(source_value).stem
         return str(

@@ -5,9 +5,13 @@ from datetime import datetime
 from core.detection_model import Detection
 from core.event_types import EventLevel, EventStatus, EventType
 
+# 이 파일은 이벤트 공통 구조와 EventRule 인터페이스를 정의합니다.
+# 룰은 DetectionResult를 받아 Event 목록으로 바꾸는 역할만 담당합니다.
 
 @dataclass
 class Event:
+    # 룰이 만든 이벤트 공통 구조입니다.
+    # 이후 EventFilter가 START/ACTIVE/END 상태를 관리하고, EventHandler가 후처리합니다.
     event_type: EventType
     message: str
     frame_id: int
@@ -39,13 +43,14 @@ class Event:
 
     @property
     def person_id(self) -> int | None:
+        # 현재 구조에서는 첫 번째 관련 탐지의 track_id를 대표 person_id로 사용합니다.
         if not self.related_detections:
             return None
         return self.related_detections[0].track_id
 
 
 class EventRule(ABC):
-    # 새로운 위험상황을 추가하려면 EventRule을 상속받고 check() 함수에서 Event 목록을 반환하면 된다.
+    # 새로운 위험상황을 추가하려면 EventRule을 상속받고 check()에서 Event 목록을 반환하면 됩니다.
 
     @abstractmethod
     def check(self, result) -> list[Event]:

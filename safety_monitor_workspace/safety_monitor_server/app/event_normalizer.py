@@ -3,8 +3,11 @@ from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import urlsplit
 
+# 이 파일은 POST /api/events로 들어온 이벤트를 저장 전에 정리합니다.
+# 특히 clip_url, clip_path, preferred_clip_source 같은 클립 접근 필드를 서버 기준으로 맞춰 줍니다.
 
 def normalize_event_record(event_record: dict[str, Any]) -> dict[str, Any]:
+    # 원본 dict는 최대한 보존하고, 클라이언트가 바로 쓰기 쉬운 보조 필드만 보강합니다.
     normalized = deepcopy(event_record)
 
     clip_url = _clean_string(normalized.get("clip_url"))
@@ -46,6 +49,7 @@ def _clean_string(value: Any) -> str:
 
 
 def _extract_clip_name_from_url(clip_url: str) -> str:
+    # /api/clips/sample.mp4 같은 상대 URL에서 파일명만 뽑아 server_clip_name 보강에 사용합니다.
     path_text = urlsplit(clip_url).path.strip()
     if not path_text:
         return ""

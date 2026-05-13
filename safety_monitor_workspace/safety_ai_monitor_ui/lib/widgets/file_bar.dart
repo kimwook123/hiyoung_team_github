@@ -2,6 +2,8 @@
 
 import 'package:flutter/material.dart';
 
+// 상단 입력 제어 패널입니다.
+// 영상 파일 선택, 스트림 주소 입력, 현재 연결된 로그 파일 힌트를 한 곳에 모아 둡니다.
 class FileBar extends StatelessWidget {
   const FileBar({
     super.key,
@@ -76,6 +78,7 @@ class FileBar extends StatelessWidget {
   }
 
   String _buildHelperText() {
+    // 파일 로그 모드에서는 어떤 txt 로그가 연결될지 사용자가 바로 알 수 있게 보여 줍니다.
     if (logPath.isEmpty) {
       return '로그 파일은 분석 시작 후 자동으로 연결됩니다.';
     }

@@ -1,3 +1,4 @@
+// 이 파일은 FastAPI /health 응답 모델입니다.
 class ApiServerHealth {
   const ApiServerHealth({
     required this.status,

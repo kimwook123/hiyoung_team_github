@@ -6,8 +6,11 @@ import numpy as np
 from core.detection_model import Box, Detection, DetectionModel, DetectionResult
 from core.path_helper import to_project_path
 
+# 이 파일은 Ultralytics YOLO 결과를 DetectionResult 공통 형식으로 바꾸는 어댑터입니다.
+
 
 class YoloModelSample(DetectionModel):
+    # 실제 YOLO 모델을 프로젝트 공통 인터페이스에 맞춰 감싼 구현체입니다.
     def __init__(self, model_path: str, min_confidence: float = 0.5) -> None:
         self.model_path = model_path
         self.min_confidence = min_confidence
@@ -33,6 +36,7 @@ class YoloModelSample(DetectionModel):
         self.model = YOLO(self.model_path)
 
     def predict(self, frame: np.ndarray, frame_id: int) -> DetectionResult:
+        # 모델 원본 출력은 그대로 흘리지 않고 Detection/Box 구조로 변환합니다.
         if self.model is None:
             raise RuntimeError("YoloModelSample.load()를 먼저 호출해야 합니다.")
 

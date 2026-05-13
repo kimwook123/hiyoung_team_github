@@ -4,9 +4,12 @@ from datetime import datetime
 from core.event_rule import Event
 from core.event_types import EventStatus
 
+# 이 파일은 프레임별 이벤트 후보를 START/ACTIVE/END 상태로 정리합니다.
+# 같은 사람의 같은 이벤트를 묶어 중복 알림과 종료 시점을 관리하는 계층입니다.
 
 @dataclass
 class ActiveEventState:
+    # 현재 진행 중인 이벤트를 메모리 안에서 추적하는 상태 구조입니다.
     event_type: str
     message: str
     level: str
@@ -23,6 +26,7 @@ class ActiveEventState:
 
 
 class EventFilter:
+    # EventRule이 만든 순간 이벤트를 실제 상태 이벤트로 바꾸는 필터입니다.
     def __init__(self, cooldown_seconds: int, end_missing_frames: int = 5) -> None:
         self.cooldown_seconds = cooldown_seconds
         self.end_missing_frames = max(1, end_missing_frames)
@@ -30,7 +34,8 @@ class EventFilter:
         self.closed_events: dict[str, ActiveEventState] = {}
 
     def update(self, events: list[Event]) -> list[Event]:
-        # 현재 프레임 이벤트를 바탕으로 시작/종료 이벤트를 만든다
+        # 현재 프레임 이벤트를 바탕으로 START와 END를 만든다.
+        # ACTIVE는 get_active_events()에서 별도로 만들어 로그와 클립 저장에 사용합니다.
         output_events = []
         current_event_map = {self._make_event_key(event): event for event in events}
 
@@ -134,6 +139,7 @@ class EventFilter:
         return output_events
 
     def get_active_events(self, frame_id: int, now: datetime) -> list[Event]:
+        # GUI와 로그에서 "지금도 계속 진행 중인 이벤트"를 보여줄 때 사용하는 목록입니다.
         active_events = []
         for event_key, active_state in self.active_events.items():
             active_events.append(
@@ -250,6 +256,7 @@ class EventFilter:
         event_key: str,
         event: Event,
     ) -> ActiveEventState | None:
+        # cooldown 안에 다시 나타난 이벤트는 완전히 새 이벤트로 보지 않고 이어서 처리합니다.
         closed_state = self.closed_events.get(event_key)
         if closed_state is None:
             return None

@@ -4,6 +4,8 @@ from pathlib import Path
 
 import requests
 
+# 이 파일은 서버 전송 실패로 쌓인 fallback JSONL을 나중에 다시 서버로 보내는 도구입니다.
+# 원본 fallback 파일은 지우지 않고, 성공/실패 결과만 별도 JSONL로 남깁니다.
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 if str(PROJECT_DIR) not in sys.path:
@@ -21,6 +23,8 @@ FAILED_LOG_PATH = "logs/events_post_repost_failed.jsonl"
 
 
 def main() -> None:
+    # HTTP 재전송 유틸리티의 진입점입니다.
+    # 각 줄의 JSON 이벤트를 POST /api/events로 다시 보내고 결과를 집계합니다.
     input_path = _to_project_path(HTTP_EVENT_FALLBACK_JSON_PATH)
     success_path = _to_project_path(SUCCESS_LOG_PATH)
     failed_path = _to_project_path(FAILED_LOG_PATH)

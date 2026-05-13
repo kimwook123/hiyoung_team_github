@@ -3,9 +3,11 @@ from abc import ABC, abstractmethod
 import cv2
 import numpy as np
 
+# 이 파일은 카메라, 영상 파일, 스트림 입력을 같은 방식으로 다루기 위한 추상화입니다.
+
 
 class FrameSource(ABC):
-    # 카메라나 영상 파일 입력이 따라야 하는 기본 구조
+    # 카메라나 영상 파일 입력이 따라야 하는 기본 구조입니다.
 
     @abstractmethod
     def open(self) -> None:
@@ -29,6 +31,7 @@ class FrameSource(ABC):
 
 
 class CameraFrameSource(FrameSource):
+    # 웹캠 같은 로컬 카메라 입력용 구현입니다.
     def __init__(self, camera_index: int) -> None:
         self.camera_index = camera_index
         self.cap = None
@@ -59,6 +62,7 @@ class CameraFrameSource(FrameSource):
 
 
 class VideoFileFrameSource(FrameSource):
+    # mp4 같은 로컬 영상 파일 입력용 구현입니다.
     def __init__(self, video_path: str) -> None:
         self.video_path = video_path
         self.cap = None
@@ -97,6 +101,7 @@ class VideoFileFrameSource(FrameSource):
 
 
 class StreamFrameSource(FrameSource):
+    # RTSP, HTTP 같은 스트림 입력용 구현입니다.
     def __init__(self, stream_url: str) -> None:
         self.stream_url = stream_url
         self.cap = None

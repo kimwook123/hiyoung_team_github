@@ -6,6 +6,7 @@ import '../models/api_server_health.dart';
 import '../models/event_log_item.dart';
 import '../services/event_api_service.dart';
 
+// FastAPI 서버에서 이벤트와 health 정보를 가져와 API 모드 상태를 관리하는 controller입니다.
 class ApiEventController extends ChangeNotifier {
   ApiEventController({EventApiService? service})
       : _service = service ?? EventApiService();
@@ -22,6 +23,7 @@ class ApiEventController extends ChangeNotifier {
   String? healthErrorMessage;
   DateTime? lastHealthCheckedAt;
 
+  // 화면 위젯은 기존 EventLogItem을 기대하므로 API 응답을 어댑터로 변환해서 노출합니다.
   List<EventLogItem> get logItems => apiEventsToLogItems(items);
 
   Future<void> loadLatestEvents({
@@ -43,6 +45,7 @@ class ApiEventController extends ChangeNotifier {
     String? eventType,
     String? status,
   }) async {
+    // GET /api/events 또는 latest_only=true 조회를 담당합니다.
     isLoading = true;
     errorMessage = null;
     notifyListeners();
@@ -65,6 +68,7 @@ class ApiEventController extends ChangeNotifier {
   }
 
   Future<ApiEventItem?> loadEventDetail(String eventKey) async {
+    // 선택한 이벤트 한 건의 상세 정보를 GET /api/events/detail로 조회합니다.
     final normalizedEventKey = eventKey.trim();
     if (normalizedEventKey.isEmpty) {
       errorMessage = 'eventKey is required.';
@@ -88,6 +92,7 @@ class ApiEventController extends ChangeNotifier {
   }
 
   Future<void> checkHealth() async {
+    // GET /health로 서버 상태와 events.jsonl 존재 여부를 확인합니다.
     isCheckingHealth = true;
     healthErrorMessage = null;
     notifyListeners();
@@ -110,6 +115,7 @@ class ApiEventController extends ChangeNotifier {
   }
 
   List<EventLogItem> getLogItemsForFrame(int frameValue) {
+    // API 목록도 기존 오버레이 위젯을 재사용할 수 있게 frame 기준으로 다시 걸러냅니다.
     final selectedMap = <String, EventLogItem>{};
     for (final item in logItems) {
       if (!item.matchesFrame(frameValue)) {

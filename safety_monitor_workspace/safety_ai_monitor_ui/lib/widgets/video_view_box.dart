@@ -5,6 +5,8 @@ import '../controllers/video_panel_controller.dart';
 import '../models/event_log_item.dart';
 import 'video_event_overlay.dart';
 
+// 메인 영상 표시 영역입니다.
+// 현재 영상 위에 overlayItems를 얹어서 위험 이벤트를 같은 화면에서 확인할 수 있게 합니다.
 class VideoViewBox extends StatelessWidget {
   const VideoViewBox({
     super.key,

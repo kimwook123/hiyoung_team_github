@@ -69,6 +69,11 @@ class EventLogController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void clearSelection() {
+    selectedKeys = <String>{};
+    notifyListeners();
+  }
+
   bool _isSameItems(List<EventLogItem> left, List<EventLogItem> right) {
     if (identical(left, right)) {
       return true;

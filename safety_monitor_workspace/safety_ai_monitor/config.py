@@ -38,7 +38,7 @@ ENABLE_HTTP_EVENT_FALLBACK_JSON = True
 HTTP_EVENT_FALLBACK_JSON_PATH = "logs/events_post_failed.jsonl"
 
 # 이벤트 클립 업로드 사용 여부
-ENABLE_EVENT_CLIP_UPLOAD = False
+ENABLE_EVENT_CLIP_UPLOAD = True
 
 # 이벤트 클립 업로드 대상 URL
 EVENT_CLIP_UPLOAD_URL = "http://127.0.0.1:8000/api/clips"

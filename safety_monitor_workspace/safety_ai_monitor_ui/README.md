@@ -106,7 +106,8 @@ Flutter UI는 이 파일을 읽어서 영상 경로와 로그 경로를 자동�
 - `HomeScreen`에서는 이제 파일 로그 모드와 API 서버 모드를 선택할 수 있습니다.
 - 기본값은 파일 로그 모드입니다.
 - 기본 서버 주소는 `http://127.0.0.1:8000` 입니다.
-- API 서버 모드는 FastAPI 서버가 실행 중이어야 하며, `API 새로고침` 버튼으로 이벤트를 가져옵니다.
+- API 서버 모드는 FastAPI 서버가 실행 중이어야 하며, 3초마다 자동 새로고침됩니다.
+- `API 새로고침` 버튼으로는 수동 재조회도 가능합니다.
 - API 서버 모드에서는 `/health`를 통해 서버 상태를 확인할 수 있습니다.
 - API 서버 모드로 전환하면 `/health`를 한 번 자동 확인합니다.
 - 이후에는 `상태 확인` 버튼으로 수동 재확인이 가능합니다.
@@ -117,16 +118,17 @@ Flutter UI는 이 파일을 읽어서 영상 경로와 로그 경로를 자동�
 - 표시 정보는 객체명, confidence score, `track_id`, `box` 좌표이며 이벤트 판단 근거를 빠르게 확인하기 위한 보조 정보입니다.
 - API 상세 패널에서 `clipPath`가 있는 이벤트는 `클립 열기` 버튼으로 저장된 이벤트 클립을 재생할 수 있습니다.
 - API 서버 모드에서는 `clip_url`이 있으면 서버 클립 URL을 우선 사용합니다.
+- API 상세 패널에서는 `clipAvailable`, `preferredClipSource`, `clipUploadOk`, `serverClipName`, `serverClipPath`도 함께 확인할 수 있습니다.
 - `clip_url`이 없으면 기존 `clipPath` 로컬 경로를 fallback으로 사용합니다.
 - 서버 클립 URL은 FastAPI 서버의 `/api/clips/{clip_name}`에서 제공됩니다.
 - `clipPath`는 Python AI 파이프라인이 저장한 로컬 클립 경로를 사용합니다.
 - 경로가 잘못되었거나 파일이 없으면 재생되지 않을 수 있습니다.
 - 서버가 꺼져 있거나 `events.jsonl` 파일이 없으면 API 이벤트 목록이 비어 있거나 오류 메시지가 표시될 수 있습니다.
-- 현재 API 모드는 수동 새로고침 방식만 지원하며 자동 polling은 아직 없습니다.
+- 현재 API 모드는 3초 간격 자동 polling과 수동 `API 새로고침`을 함께 지원합니다.
 - 서버가 꺼져 있어도 파일 로그 모드는 기존대로 계속 사용할 수 있습니다.
 - 기존 파일 로그 기반 흐름은 그대로 유지됩니다.
 - `EventLogBox`, `VideoViewBox`의 표시 모델은 계속 `EventLogItem`이고, API 데이터는 `ApiEventItem -> EventLogItem` 어댑터를 거쳐 표시됩니다.
-- 이번 단계는 API 모드 선택과 수동 조회까지만 포함하며, 자동 polling, 서버 상태 감시, API 기반 영상 소스 제어는 아직 하지 않습니다.
+- 현재 단계는 API 모드 자동 polling, 상태 확인, 상세 조회, 클립 재생까지 포함하며, API 기반 영상 소스 제어는 아직 하지 않습니다.
 
 ## 참고 패키지
 

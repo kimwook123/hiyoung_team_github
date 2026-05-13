@@ -42,20 +42,22 @@
 - 누적된 fallback 이벤트는 `run_repost_failed_events.bat` 또는 `tools/repost_failed_events.py`로 나중에 수동 재전송할 수 있다.
 - 재전송 스크립트는 원본 fallback 파일을 수정하지 않고, 성공/실패 결과를 별도 JSONL 파일로 남긴다.
 - 현재 단계에서는 서버가 `data/events.jsonl`과 `data/clips/` 구조를 소유하도록 준비되어 있다.
+- 서버 전송과 클립 업로드 모드를 함께 켰을 때 서버가 이벤트와 클립의 소유권을 더 직접적으로 갖게 된다.
 
 ## 현재 역할 분리
-- Python AI Worker는 `Event Producer` 역할을 맡는다.
-- FastAPI Server는 `Event Store`이자 `API Provider` 역할을 맡는다.
-- Flutter GUI는 파일 로그 또는 서버 API를 소비하는 `Event Consumer` 역할을 맡는다.
+- Python AI Worker는 `Event/Clip Producer` 역할을 맡는다.
+- FastAPI Server는 `Event/Clip Store`이자 `API Provider` 역할을 맡는다.
+- Flutter GUI는 파일 로그 또는 서버 API를 소비하는 `Event/Clip Consumer` 역할을 맡는다.
 - `events.jsonl`은 현재 프로토타입 저장소이며, 추후 DB로 교체될 수 있다.
 - fallback JSONL은 서버 장애 시 이벤트 유실을 줄이기 위한 안전장치다.
 - 이벤트 데이터와 클립 파일의 최종 소유권은 서버로 이동하는 방향이다.
 - 기존 `safety_ai_monitor/logs`는 로컬 실행 로그와 fallback 용도로 유지된다.
-- 서버는 `data/events.jsonl`과 `data/clips/`를 소유한다.
+- 서버는 `safety_monitor_server/data/events.jsonl`과 `safety_monitor_server/data/clips/`를 소유한다.
 - 서버 전송 모드에서 Python은 이벤트를 `POST /api/events`로 보내고, 클립은 `POST /api/clips`로 업로드할 수 있다.
 - 서버가 반환한 `clip_url`은 Flutter가 서버 클립을 재생하는 데 사용된다.
 - 서버는 이벤트 저장 시 clip 접근 필드를 정규화해 클라이언트 소비를 단순화한다.
 - 서버 클립이 있으면 `preferred_clip_source="server"`를, 없으면 로컬 fallback 기준으로 `preferred_clip_source="local"` 또는 빈 값을 기록할 수 있다.
+- 현재 저장 구조는 파일 기반 프로토타입이며, 추후 DB, Object Storage, WebSocket 구조로 확장할 수 있다.
 
 ## 파일 입출력 기반 통신을 사용하는 경우의 장점과 한계
 ### 장점

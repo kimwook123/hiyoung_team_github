@@ -28,17 +28,21 @@
 
 확인 항목:
 - [ ] `safety_ai_monitor/config.py`에서 `ENABLE_HTTP_EVENT_POST = True` 설정 확인
+- [ ] 필요 시 `ENABLE_EVENT_CLIP_UPLOAD = True` 설정 확인
 - [ ] `run_server.bat` 실행
 - [ ] `http://127.0.0.1:8000/health` 응답 확인
 - [ ] Python AI Worker 실행
 - [ ] `POST /api/events`로 이벤트가 들어오는지 확인
-- [ ] `logs/events.jsonl` 생성 또는 갱신 여부 확인
+- [ ] `safety_monitor_server/data/events.jsonl` 생성 또는 갱신 여부 확인
+- [ ] `ENABLE_EVENT_CLIP_UPLOAD = True`인 경우 `safety_monitor_server/data/clips/`에 mp4 저장 여부 확인
 - [ ] Flutter GUI에서 API 서버 모드 선택
 - [ ] API 서버 상태 확인 버튼 동작 확인
 - [ ] API 새로고침 버튼 동작 확인
 - [ ] 이벤트 상세 패널 표시 확인
+- [ ] 이벤트 상세 패널에서 `preferredClipSource` 표시 확인
 - [ ] `relatedDetections` 표시 확인
-- [ ] `clipPath`가 있는 경우 클립 열기 동작 확인
+- [ ] `clipUrl`이 있으면 `클립 열기`로 서버 클립 재생 가능한지 확인
+- [ ] `clipUrl`이 없으면 `clipPath` fallback 동작을 확인
 
 ## 4. 장애 대응 체크리스트
 
@@ -54,6 +58,6 @@
 
 ## 5. 발표 때 말할 핵심 한 줄
 - [ ] Python AI Worker는 이벤트를 생성한다.
-- [ ] FastAPI Server는 이벤트를 저장하고 API로 제공한다.
+- [ ] FastAPI Server는 `data/events.jsonl`과 `data/clips/`를 저장소로 사용하고 API로 제공한다.
 - [ ] Flutter GUI는 파일 로그 모드와 API 서버 모드를 모두 지원한다.
-- [ ] 현재 저장소는 파일 기반 프로토타입이며, 추후 DB/WebSocket 구조로 확장 가능하다.
+- [ ] 현재 저장소는 파일 기반 프로토타입이며, 추후 DB/Object Storage/WebSocket 구조로 확장 가능하다.

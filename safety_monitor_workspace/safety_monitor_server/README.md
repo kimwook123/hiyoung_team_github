@@ -14,6 +14,8 @@
 python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
+워크스페이스 루트에서는 `run_server.bat`로 같은 서버를 바로 실행할 수 있습니다.
+
 ## API 목록
 
 - `GET /health`

@@ -87,11 +87,25 @@ Flutter UI는 이 파일을 읽어서 영상 경로와 로그 경로를 자동�
 
 로그 형식은 현재 Python 프로젝트의 콘솔/로그 출력 형식을 기준으로 읽습니다.
 
+## FastAPI 연동 준비 상태
+
+- 현재 GUI의 기본 동작은 기존 파일 로그 기반 구조를 유지합니다.
+- 이벤트 목록과 오버레이는 여전히 txt 로그 파일 파싱 흐름을 사용합니다.
+- `lib/models/api_event_item.dart`는 서버 JSON 응답 모델입니다.
+- `lib/models/event_log_item.dart`는 기존 UI 표시 모델입니다.
+- `lib/services/event_api_service.dart`는 향후 FastAPI 서버 기반 이벤트 조회로 전환하기 위한 준비 계층입니다.
+- `lib/controllers/api_event_controller.dart`는 향후 파일 로그 모드와 API 모드를 스위칭할 때 사용할 API 전용 controller입니다.
+- `lib/adapters/api_event_log_adapter.dart`는 API 이벤트를 기존 UI 모델로 변환하기 위한 준비 계층입니다.
+- 기본 서버 주소는 `http://127.0.0.1:8000` 입니다.
+- 이번 단계에서는 실제 화면 연결은 아직 하지 않았고, 다음 단계에서 진행합니다.
+
 ## 참고 패키지
 
 - `media_kit`, `media_kit_video`, `media_kit_libs_video`
   - Flutter desktop 영상 재생용
 - `file_selector`
   - 영상 파일과 로그 파일 선택용
+- `http`
+  - FastAPI 이벤트 조회 API 호출 준비용
 
 패키지 정보는 pub.dev 기준으로 반영했습니다.

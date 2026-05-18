@@ -23,12 +23,16 @@ class VideoPanelController extends ChangeNotifier {
   Duration currentPosition = Duration.zero;
   Duration totalDuration = Duration.zero;
   double frameRate = 30.0;
+  int videoWidth = 0;
+  int videoHeight = 0;
   String errorText = '';
   bool isReplayMode = false;
 
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<Duration>? _durationSub;
   StreamSubscription<bool>? _playingSub;
+  StreamSubscription<int?>? _videoWidthSub;
+  StreamSubscription<int?>? _videoHeightSub;
 
   VideoController get videoController => _service.videoController;
 
@@ -121,6 +125,8 @@ class VideoPanelController extends ChangeNotifier {
     unawaited(_positionSub?.cancel());
     unawaited(_durationSub?.cancel());
     unawaited(_playingSub?.cancel());
+    unawaited(_videoWidthSub?.cancel());
+    unawaited(_videoHeightSub?.cancel());
     unawaited(_service.dispose());
   }
 
@@ -138,6 +144,24 @@ class VideoPanelController extends ChangeNotifier {
 
     _playingSub = _service.playingStream.listen((value) {
       isPlaying = value;
+      notifyListeners();
+    });
+
+    _videoWidthSub = _service.videoWidthStream.listen((value) {
+      final nextWidth = value ?? 0;
+      if (videoWidth == nextWidth) {
+        return;
+      }
+      videoWidth = nextWidth;
+      notifyListeners();
+    });
+
+    _videoHeightSub = _service.videoHeightStream.listen((value) {
+      final nextHeight = value ?? 0;
+      if (videoHeight == nextHeight) {
+        return;
+      }
+      videoHeight = nextHeight;
       notifyListeners();
     });
   }

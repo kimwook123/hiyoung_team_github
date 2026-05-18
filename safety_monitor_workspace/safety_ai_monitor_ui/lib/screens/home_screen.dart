@@ -10,9 +10,11 @@ import '../controllers/api_event_feed_source.dart';
 import '../controllers/event_feed_source.dart';
 import '../controllers/event_log_controller.dart';
 import '../controllers/file_event_feed_source.dart';
+import '../controllers/local_event_json_controller.dart';
 import '../controllers/video_panel_controller.dart';
 import '../models/api_event_item.dart';
 import '../models/event_log_item.dart';
+import '../models/video_overlay_detection.dart';
 import '../services/app_link_service.dart';
 import '../widgets/event_log_box.dart';
 import '../widgets/file_bar.dart';
@@ -39,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late final VideoPanelController videoController;
   late final EventLogController logController;
   late final FileEventFeedSource fileEventFeed;
+  late final LocalEventJsonController localEventJsonController;
   late final ApiEventController apiEventController;
   late final ApiEventFeedSource apiEventFeed;
   late final AppLinkService appLinkService;
@@ -67,6 +70,7 @@ class _HomeScreenState extends State<HomeScreen> {
     videoController = VideoPanelController();
     logController = EventLogController();
     fileEventFeed = FileEventFeedSource(logController);
+    localEventJsonController = LocalEventJsonController();
     apiEventController = ApiEventController();
     apiEventFeed = ApiEventFeedSource(apiEventController);
     appLinkService = AppLinkService();
@@ -80,6 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
     apiAutoRefreshTimer?.cancel();
     videoController.disposeController();
     fileEventFeed.dispose();
+    localEventJsonController.disposeController();
     apiEventFeed.dispose();
     logController.disposeController();
     pageScrollController.dispose();
@@ -135,15 +140,21 @@ class _HomeScreenState extends State<HomeScreen> {
                                 Expanded(
                                   child: AnimatedBuilder(
                                         animation: Listenable.merge(
-                                          [videoController, fileEventFeed, apiEventFeed],
+                                          [
+                                            videoController,
+                                            fileEventFeed,
+                                            localEventJsonController,
+                                            apiEventFeed,
+                                          ],
                                         ),
                                         builder: (context, _) {
                                           // 오버레이는 현재 활성 feed에서 프레임 기준 이벤트만 받아 재사용합니다.
                                           return VideoViewBox(
-                                        controller: videoController,
-                                        overlayItems: _getOverlayItems(),
-                                      );
-                                    },
+                                            controller: videoController,
+                                            overlayItems: _getOverlayItems(),
+                                            overlayDetections: _getOverlayDetections(),
+                                          );
+                                        },
                                   ),
                                 ),
                                 const SizedBox(height: 12),
@@ -536,6 +547,47 @@ class _HomeScreenState extends State<HomeScreen> {
     return '-';
   }
 
+  double? _toDoubleValue(Object? value) {
+    if (value is double) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    if (value is String) {
+      return double.tryParse(value);
+    }
+
+    return null;
+  }
+
+  String _buildDetectionLabel(
+    ApiEventItem item,
+    Map<String, dynamic> detection,
+  ) {
+    final name = (detection['name']?.toString().trim().isNotEmpty ?? false)
+        ? detection['name'].toString().trim()
+        : item.eventType;
+    final trackId = detection['track_id']?.toString().trim();
+    if (trackId != null && trackId.isNotEmpty) {
+      return '$name #$trackId';
+    }
+    return name;
+  }
+
+  Color _colorForLevel(String level) {
+    switch (level.trim().toUpperCase()) {
+      case 'DANGER':
+        return Colors.redAccent;
+      case 'WARNING':
+        return Colors.orangeAccent;
+      default:
+        return Colors.lightBlueAccent;
+    }
+  }
+
   String _formatBox(Object? box) {
     if (box is! Map) {
       return '-';
@@ -617,6 +669,56 @@ class _HomeScreenState extends State<HomeScreen> {
 
   List<EventLogItem> _getOverlayItems() {
     return activeEventFeed.getLogItemsForFrame(videoController.currentFrameValue);
+  }
+
+  List<VideoOverlayDetection> _getOverlayDetections() {
+    final items = eventSourceMode == EventSourceMode.api
+        ? apiEventController.getItemsForFrame(videoController.currentFrameValue)
+        : localEventJsonController.getItemsForFrame(
+            videoController.currentFrameValue,
+          );
+    if (items.isEmpty) {
+      return const [];
+    }
+
+    final detections = <VideoOverlayDetection>[];
+    final seenKeys = <String>{};
+    for (final item in items) {
+      for (final detection in item.relatedDetections) {
+        final box = detection['box'];
+        if (box is! Map) {
+          continue;
+        }
+
+        final x1 = _toDoubleValue(box['x1']);
+        final y1 = _toDoubleValue(box['y1']);
+        final x2 = _toDoubleValue(box['x2']);
+        final y2 = _toDoubleValue(box['y2']);
+        if (x1 == null || y1 == null || x2 == null || y2 == null) {
+          continue;
+        }
+
+        final key =
+            '${item.eventKey}:${detection['track_id']}:${detection['name']}:$x1:$y1:$x2:$y2';
+        if (!seenKeys.add(key)) {
+          continue;
+        }
+
+        detections.add(
+          VideoOverlayDetection(
+            key: key,
+            label: _buildDetectionLabel(item, detection),
+            color: _colorForLevel(item.level),
+            x1: x1,
+            y1: y1,
+            x2: x2,
+            y2: y2,
+          ),
+        );
+      }
+    }
+
+    return detections;
   }
 
   Future<void> _onTapEventItem(EventLogItem item) async {
@@ -832,5 +934,7 @@ class _HomeScreenState extends State<HomeScreen> {
       sourceValue: sourceValue,
     );
     await logController.loadLog(logPath);
+    final jsonEventLogPath = await appLinkService.buildJsonEventLogPath();
+    await localEventJsonController.loadLog(jsonEventLogPath);
   }
 }

@@ -79,6 +79,11 @@ class AppLinkService {
     return '${logsDir.path}${Platform.pathSeparator}event_log.txt';
   }
 
+  Future<String> buildJsonEventLogPath() async {
+    final logsDir = await _getLogsDirectory();
+    return '${logsDir.path}${Platform.pathSeparator}events.jsonl';
+  }
+
   Future<void> clearLogFile({
     required String sourceType,
     required String sourceValue,

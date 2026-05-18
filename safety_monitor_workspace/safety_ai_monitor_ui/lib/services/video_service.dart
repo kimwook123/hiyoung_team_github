@@ -12,6 +12,8 @@ class VideoService {
   Stream<Duration> get positionStream => player.stream.position;
   Stream<Duration> get durationStream => player.stream.duration;
   Stream<bool> get playingStream => player.stream.playing;
+  Stream<int?> get videoWidthStream => player.stream.width;
+  Stream<int?> get videoHeightStream => player.stream.height;
 
   Future<void> openVideo(String source) async {
     // 로컬 파일이나 RTSP/HTTP 주소를 연다

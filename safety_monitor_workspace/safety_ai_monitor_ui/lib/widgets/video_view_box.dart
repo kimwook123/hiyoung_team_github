@@ -3,6 +3,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../controllers/video_panel_controller.dart';
 import '../models/event_log_item.dart';
+import '../models/video_overlay_detection.dart';
 import 'video_event_overlay.dart';
 
 // 메인 영상 표시 영역입니다.
@@ -12,10 +13,12 @@ class VideoViewBox extends StatelessWidget {
     super.key,
     required this.controller,
     required this.overlayItems,
+    required this.overlayDetections,
   });
 
   final VideoPanelController controller;
   final List<EventLogItem> overlayItems;
+  final List<VideoOverlayDetection> overlayDetections;
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +44,12 @@ class VideoViewBox extends StatelessWidget {
                     ),
                   ),
           ),
-          VideoEventOverlay(items: overlayItems),
+          VideoEventOverlay(
+            items: overlayItems,
+            detections: overlayDetections,
+            sourceWidth: controller.videoWidth.toDouble(),
+            sourceHeight: controller.videoHeight.toDouble(),
+          ),
         ],
       ),
     );

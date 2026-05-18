@@ -126,6 +126,17 @@ class ApiEventController extends ChangeNotifier {
     return selectedMap.values.toList();
   }
 
+  List<ApiEventItem> getItemsForFrame(int frameValue) {
+    final selectedMap = <String, ApiEventItem>{};
+    for (final item in items) {
+      if (!_matchesFrame(item, frameValue)) {
+        continue;
+      }
+      selectedMap[item.eventKey] = item;
+    }
+    return selectedMap.values.toList();
+  }
+
   void selectLogItem(EventLogItem item) {
     selectedKeys = {item.eventKeyText};
     notifyListeners();
@@ -142,5 +153,19 @@ class ApiEventController extends ChangeNotifier {
     errorMessage = null;
     lastUpdatedAt = null;
     notifyListeners();
+  }
+
+  bool _matchesFrame(ApiEventItem item, int frameValue) {
+    final startFrame = item.startedFrameId;
+    final endFrame = item.endedFrameId;
+    if (startFrame == null) {
+      return false;
+    }
+
+    if (endFrame != null) {
+      return frameValue >= startFrame && frameValue <= endFrame;
+    }
+
+    return item.frameId == frameValue || frameValue >= startFrame;
   }
 }

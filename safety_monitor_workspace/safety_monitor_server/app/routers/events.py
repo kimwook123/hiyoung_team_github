@@ -16,6 +16,8 @@ from app.schemas import (
     EventDetailResponse,
     EventHistoryResponse,
     EventListResponse,
+    SourceSummaryItem,
+    SourceSummaryListResponse,
 )
 
 # 이 파일은 이벤트 저장/조회 API를 담당합니다.
@@ -72,6 +74,10 @@ def list_events(
     limit: int | None = Query(default=None, ge=1),
     event_type: str | None = None,
     status: str | None = None,
+    source_key: str | None = None,
+    source_type: str | None = None,
+    client_id: str | None = None,
+    session_id: str | None = None,
 ) -> EventListResponse:
     # GET은 서버에서 데이터를 가져오는 요청입니다.
     if latest_only:
@@ -79,7 +85,15 @@ def list_events(
     else:
         items = read_event_records(DEFAULT_EVENT_LOG_PATH)
 
-    items = _filter_items(items, event_type=event_type, status=status)
+    items = _filter_items(
+        items,
+        event_type=event_type,
+        status=status,
+        source_key=source_key,
+        source_type=source_type,
+        client_id=client_id,
+        session_id=session_id,
+    )
 
     if limit is not None:
         items = items[-limit:]
@@ -92,14 +106,79 @@ def list_latest_events(
     limit: int | None = Query(default=None, ge=1),
     event_type: str | None = None,
     status: str | None = None,
+    source_key: str | None = None,
+    source_type: str | None = None,
+    client_id: str | None = None,
+    session_id: str | None = None,
 ) -> EventListResponse:
     items = get_latest_events_by_key(DEFAULT_EVENT_LOG_PATH)
-    items = _filter_items(items, event_type=event_type, status=status)
+    items = _filter_items(
+        items,
+        event_type=event_type,
+        status=status,
+        source_key=source_key,
+        source_type=source_type,
+        client_id=client_id,
+        session_id=session_id,
+    )
 
     if limit is not None:
         items = items[-limit:]
 
     return EventListResponse(count=len(items), items=items)
+
+
+@router.get("/sources", response_model=SourceSummaryListResponse)
+def list_sources(
+    client_id: str | None = None,
+    session_id: str | None = None,
+) -> SourceSummaryListResponse:
+    items = read_event_records(DEFAULT_EVENT_LOG_PATH)
+    items = _filter_items(
+        items,
+        event_type=None,
+        status=None,
+        source_key=None,
+        source_type=None,
+        client_id=client_id,
+        session_id=session_id,
+    )
+
+    summary_by_key: dict[str, SourceSummaryItem] = {}
+    for item in items:
+        source_key = str(item.get("source_key", "")).strip()
+        if not source_key:
+            continue
+
+        source_type = str(item.get("source_type", "")).strip()
+        source_value = str(item.get("source_value", "")).strip()
+        latest_received_at = str(item.get("received_at", "")).strip()
+
+        previous = summary_by_key.get(source_key)
+        if previous is None:
+            summary_by_key[source_key] = SourceSummaryItem(
+                source_key=source_key,
+                source_type=source_type,
+                source_value=source_value,
+                event_count=1,
+                latest_received_at=latest_received_at,
+            )
+            continue
+
+        summary_by_key[source_key] = SourceSummaryItem(
+            source_key=source_key,
+            source_type=previous.source_type or source_type,
+            source_value=previous.source_value or source_value,
+            event_count=previous.event_count + 1,
+            latest_received_at=max(previous.latest_received_at, latest_received_at),
+        )
+
+    ordered_items = sorted(
+        summary_by_key.values(),
+        key=lambda item: (item.latest_received_at, item.source_key),
+        reverse=True,
+    )
+    return SourceSummaryListResponse(count=len(ordered_items), items=ordered_items)
 
 
 @router.get("/detail", response_model=EventDetailResponse | EventHistoryResponse)
@@ -134,6 +213,10 @@ def _filter_items(
     items: list[dict],
     event_type: str | None,
     status: str | None,
+    source_key: str | None,
+    source_type: str | None,
+    client_id: str | None,
+    session_id: str | None,
 ) -> list[dict]:
     filtered_items = items
 
@@ -145,6 +228,26 @@ def _filter_items(
     if status is not None:
         filtered_items = [
             item for item in filtered_items if item.get("status") == status
+        ]
+
+    if source_key is not None:
+        filtered_items = [
+            item for item in filtered_items if item.get("source_key") == source_key
+        ]
+
+    if source_type is not None:
+        filtered_items = [
+            item for item in filtered_items if item.get("source_type") == source_type
+        ]
+
+    if client_id is not None:
+        filtered_items = [
+            item for item in filtered_items if item.get("client_id") == client_id
+        ]
+
+    if session_id is not None:
+        filtered_items = [
+            item for item in filtered_items if item.get("session_id") == session_id
         ]
 
     return filtered_items

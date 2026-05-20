@@ -33,6 +33,8 @@ class VideoPipeline:
         source_value: str = "",
         source_key: str = "",
         source_slug: str = "",
+        client_id: str = "",
+        session_id: str = "",
     ) -> None:
         self.frame_source = frame_source
         self.model = model
@@ -50,6 +52,8 @@ class VideoPipeline:
         self.source_value = source_value
         self.source_key = source_key
         self.source_slug = source_slug
+        self.client_id = client_id
+        self.session_id = session_id
 
     def run(self) -> str:
         # 이 함수가 실제 분석 루프입니다.
@@ -253,3 +257,5 @@ class VideoPipeline:
             setattr(event, "source_value", self.source_value)
             setattr(event, "source_key", self.source_key)
             setattr(event, "source_slug", self.source_slug)
+            setattr(event, "client_id", self.client_id)
+            setattr(event, "session_id", self.session_id)

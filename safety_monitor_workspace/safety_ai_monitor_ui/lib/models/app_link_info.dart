@@ -1,5 +1,6 @@
 class AppLinkInfo {
   const AppLinkInfo({
+    required this.sourceKey,
     required this.sourceType,
     required this.sourceValue,
     required this.logPath,
@@ -7,6 +8,7 @@ class AppLinkInfo {
     required this.sourceFps,
   });
 
+  final String sourceKey;
   final String sourceType;
   final String sourceValue;
   final String logPath;
@@ -19,6 +21,7 @@ class AppLinkInfo {
     final oldVideoPath = (data['video_path'] ?? '') as String;
 
     return AppLinkInfo(
+      sourceKey: (data['source_key'] ?? '') as String,
       sourceType: sourceType.isEmpty
           ? (oldVideoPath.isEmpty ? '' : 'video')
           : sourceType,

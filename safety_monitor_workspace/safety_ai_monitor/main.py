@@ -1,8 +1,10 @@
-﻿from pathlib import Path
+from pathlib import Path
+import threading
 import time
 
 from config import (
     BRIDGE_PATH,
+    BRIDGES_PATH,
     CAMERA_INDEX,
     DANGER_ZONE_ROI,
     ENABLE_EVENT_CLIP_UPLOAD,
@@ -32,15 +34,16 @@ from config import (
     SAVE_EVENT_CLIP,
     SHOW_SCREEN,
     SOURCE_STATE_PATH,
+    SOURCES_STATE_PATH,
     TRACK_MAX_DISTANCE,
     TRACK_MAX_MISSING_FRAMES,
     USE_DANGER_ZONE_RULE,
     USE_NO_HELMET_RULE,
 )
+from core.detection_model import DetectionModel
 from core.event_clip_recorder import EventClipRecorder
 from core.event_filter import EventFilter
 from core.frame_detection_recorder import FrameDetectionRecorder
-from core.detection_model import DetectionModel
 from core.frame_source import CameraFrameSource, StreamFrameSource, VideoFileFrameSource
 from core.object_tracker import PersonTracker
 from core.path_helper import to_abs_path, to_project_path
@@ -50,9 +53,14 @@ from core.source_identity import (
     build_source_slug,
     normalize_video_source_value,
 )
-from core.ui_bridge import SourceStateReader, UiBridgeWriter
-from handlers.console_event_handler import ConsoleEventHandler
+from core.ui_bridge import (
+    SourceStateReader,
+    SourcesStateReader,
+    UiBridgeRegistry,
+    UiBridgeWriter,
+)
 from handlers.clip_upload_client import ClipUploadClient
+from handlers.console_event_handler import ConsoleEventHandler
 from handlers.http_event_handler import HttpEventHandler
 from handlers.json_event_handler import JsonEventHandler
 from handlers.log_event_handler import LogEventHandler
@@ -63,12 +71,10 @@ from rules.danger_zone_rule import DangerZoneRule
 from rules.no_helmet_rule import NoHelmetRule
 
 # 이 파일은 Python AI Worker의 진입점입니다.
-# 입력 소스, 모델, 이벤트 룰, 로그 핸들러를 조립해 하나의 파이프라인으로 실행합니다.
+# 입력 소스, 모델, 룰, 핸들러를 조립하고 필요하면 소스별 worker thread를 띄웁니다.
+
 
 def build_model() -> DetectionModel:
-    # 모델 계층은 DetectionModel 공통 인터페이스를 따릅니다.
-    # 그래서 여기 분기만 바꿔도 룰, 로그, 서버 전송 구조는 그대로 재사용할 수 있습니다.
-    # config.py의 MODEL_TYPE 값으로 모델 구현체를 고른다
     if MODEL_TYPE == "dummy":
         return DummyDetectionModel(min_confidence=MIN_CONFIDENCE)
 
@@ -103,17 +109,22 @@ def build_pipeline(
     source_state: dict[str, str] | None = None,
     restart_checker=None,
 ) -> VideoPipeline:
-    # 이 함수는 전체 AI 분석 파이프라인을 조립합니다.
-    # DetectionResult -> EventRule -> EventFilter -> EventHandler 흐름이 여기서 연결됩니다.
     if INPUT_MODE == "camera":
         frame_source = CameraFrameSource(camera_index=CAMERA_INDEX)
         source_type = "camera"
         source_value = str(CAMERA_INDEX)
+        slot_id = "camera_0"
+        client_id = ""
+        session_id = ""
     else:
         if source_state is None:
             source_state = _get_source_state_reader().read()
         source_type = source_state["source_type"]
         source_value = source_state["source_value"]
+        slot_id = str(source_state.get("slot_id", "")).strip() or "default"
+        client_id = str(source_state.get("client_id", "")).strip()
+        session_id = str(source_state.get("session_id", "")).strip() or slot_id
+
         if source_type == "stream":
             frame_source = StreamFrameSource(stream_url=source_value)
         elif source_type == "video":
@@ -128,12 +139,14 @@ def build_pipeline(
     normalized_source_value = source_value
     if source_type == "video":
         normalized_source_value = normalize_video_source_value(source_value)
-    source_key = build_source_key(source_type=source_type, source_value=normalized_source_value)
+    source_key = build_source_key(
+        source_type=source_type,
+        source_value=normalized_source_value,
+    )
     source_slug = build_source_slug(
         source_type=source_type,
         source_value=normalized_source_value,
     )
-
     log_path = _build_log_path(source_type=source_type, source_value=source_value)
 
     rules = []
@@ -144,7 +157,6 @@ def build_pipeline(
                 overlap_ratio=NO_HELMET_OVERLAP_RATIO,
             )
         )
-
     if USE_DANGER_ZONE_RULE:
         rules.append(DangerZoneRule(roi=DANGER_ZONE_ROI))
 
@@ -153,8 +165,6 @@ def build_pipeline(
         LogEventHandler(log_path=log_path),
     ]
     if ENABLE_HTTP_EVENT_POST:
-        # 서버 전송 모드에서는 이벤트를 POST /api/events로 보냅니다.
-        # fallback은 서버 전송 실패 시 대신 로컬 JSON Lines에 남기는 예비 처리입니다.
         fallback_handler = None
         clip_upload_client = None
         if ENABLE_HTTP_EVENT_FALLBACK_JSON:
@@ -175,7 +185,6 @@ def build_pipeline(
             )
         )
     elif ENABLE_JSON_EVENT_LOG:
-        # 로컬 JSONL 모드는 Python이 직접 events.jsonl을 기록하는 방식입니다.
         handlers.append(
             JsonEventHandler(log_path=to_project_path(JSON_EVENT_LOG_PATH))
         )
@@ -207,6 +216,14 @@ def build_pipeline(
         model_type=MODEL_TYPE,
         source_fps=source_fps,
     )
+    UiBridgeRegistry(bridges_path=to_project_path(BRIDGES_PATH)).write_entry(
+        source_key=source_key,
+        source_type=source_type,
+        source_value=source_value,
+        log_path=log_path,
+        model_type=MODEL_TYPE,
+        source_fps=source_fps,
+    )
 
     return VideoPipeline(
         frame_source=frame_source,
@@ -223,6 +240,8 @@ def build_pipeline(
         source_value=normalized_source_value,
         source_key=source_key,
         source_slug=source_slug,
+        client_id=client_id,
+        session_id=session_id,
     )
 
 
@@ -236,8 +255,11 @@ def main() -> None:
 
 
 def _run_gui_mode() -> None:
-    # GUI 모드에서는 Flutter가 source_state.json에 입력을 쓰고,
-    # Python은 그 파일을 감시하다가 값이 바뀌면 파이프라인을 다시 시작합니다.
+    source_states = _get_sources_state_reader().read_all()
+    if source_states:
+        _run_multi_source_gui_mode()
+        return
+
     source_reader = _get_source_state_reader()
     current_state = source_reader.read()
 
@@ -256,6 +278,73 @@ def _run_gui_mode() -> None:
         current_state = source_reader.wait_for_change(current_state)
 
 
+class _SourceWorker:
+    def __init__(self, source_state: dict[str, str]) -> None:
+        self.source_state = dict(source_state)
+        self.stop_event = threading.Event()
+        self.thread = threading.Thread(
+            target=self._run,
+            name=f"source-worker-{self.worker_id}",
+            daemon=True,
+        )
+
+    @property
+    def worker_id(self) -> str:
+        return self.source_state.get("slot_id", "default")
+
+    def start(self) -> None:
+        self.thread.start()
+
+    def stop(self) -> None:
+        self.stop_event.set()
+
+    def is_alive(self) -> bool:
+        return self.thread.is_alive()
+
+    def _run(self) -> None:
+        while not self.stop_event.is_set():
+            pipeline = build_pipeline(
+                source_state=self.source_state,
+                restart_checker=lambda: self.stop_event.is_set(),
+            )
+            stop_reason = pipeline.run()
+            if stop_reason != "source_changed":
+                break
+
+
+def _run_multi_source_gui_mode() -> None:
+    reader = _get_sources_state_reader()
+    workers: dict[str, _SourceWorker] = {}
+
+    while True:
+        next_states = reader.read_all()
+        next_by_slot = {
+            str(item.get("slot_id", "")).strip() or f"slot_{index + 1}": item
+            for index, item in enumerate(next_states)
+        }
+
+        for slot_id, worker in list(workers.items()):
+            next_state = next_by_slot.get(slot_id)
+            if next_state == worker.source_state:
+                continue
+            worker.stop()
+            workers.pop(slot_id, None)
+
+        for slot_id, next_state in next_by_slot.items():
+            if slot_id in workers:
+                continue
+            worker = _SourceWorker(next_state)
+            workers[slot_id] = worker
+            worker.start()
+
+        for slot_id, worker in list(workers.items()):
+            if worker.is_alive():
+                continue
+            workers.pop(slot_id, None)
+
+        time.sleep(1.0)
+
+
 def _get_source_state_reader() -> SourceStateReader:
     return SourceStateReader(
         state_path=to_project_path(SOURCE_STATE_PATH),
@@ -263,9 +352,14 @@ def _get_source_state_reader() -> SourceStateReader:
     )
 
 
+def _get_sources_state_reader() -> SourcesStateReader:
+    return SourcesStateReader(
+        state_path=to_project_path(SOURCES_STATE_PATH),
+        min_updated_at=time.time(),
+    )
+
+
 def _build_log_path(source_type: str, source_value: str) -> str:
-    # 영상 파일은 파일명별 로그를 나누고, 스트림은 고정 이름 로그를 사용합니다.
-    # 이렇게 해야 Flutter 파일 로그 모드가 현재 입력과 맞는 txt 로그를 쉽게 찾을 수 있습니다.
     if source_type == "video":
         video_name = Path(source_value).stem
         return str(

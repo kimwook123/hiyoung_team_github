@@ -98,12 +98,18 @@ class VideoPanelController extends ChangeNotifier {
     String path, {
     double replayStartSeconds = 0.0,
     String sourceKey = '',
+    bool preserveReturnContext = true,
   }) async {
     // 이벤트 상세나 로그 클릭으로 클립 재생 모드로 전환할 때 사용합니다.
-    if (!isReplayMode && videoPath.isNotEmpty) {
+    if (preserveReturnContext && !isReplayMode && videoPath.isNotEmpty) {
       replayReturnPath = videoPath;
       replayReturnSourceType = sourceType;
       replayReturnPosition = currentPosition;
+      replayReturnFrameRate = frameRate;
+    } else if (!preserveReturnContext) {
+      replayReturnPath = '';
+      replayReturnSourceType = '';
+      replayReturnPosition = Duration.zero;
       replayReturnFrameRate = frameRate;
     }
 

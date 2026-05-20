@@ -3,6 +3,7 @@ import 'dart:io';
 
 import '../models/app_link_info.dart';
 import '../models/frame_detection_snapshot.dart';
+import '../models/source_slot_state.dart';
 
 // 이 파일은 Flutter와 Python AI Worker 사이의 파일 기반 연결 도구입니다.
 // source_state.json, ui_bridge.json, 로그 파일 경로 규칙을 여기서 다룹니다.
@@ -19,8 +20,30 @@ class AppLinkService {
     return AppLinkInfo.fromMap(data);
   }
 
-  Future<File?> _findBridgeFile() async {
-    final candidates = await _buildCandidateFiles('ui_bridge.json');
+  Future<List<AppLinkInfo>> readBridgeEntries() async {
+    final bridgeFile = await _findBridgeFile(fileName: 'ui_bridges.json');
+    if (bridgeFile == null || !await bridgeFile.exists()) {
+      return const [];
+    }
+
+    try {
+      final text = await bridgeFile.readAsString();
+      final data = jsonDecode(text);
+      if (data is! List) {
+        return const [];
+      }
+
+      return data
+          .whereType<Map>()
+          .map((item) => AppLinkInfo.fromMap(Map<String, dynamic>.from(item)))
+          .toList(growable: false);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<File?> _findBridgeFile({String fileName = 'ui_bridge.json'}) async {
+    final candidates = await _buildCandidateFiles(fileName);
 
     for (final file in candidates) {
       if (await file.exists()) {
@@ -35,26 +58,88 @@ class AppLinkService {
     required String sourceType,
     required String sourceValue,
   }) async {
-    // Flutter가 선택한 입력을 source_state.json에 써 주면 Python이 그 값을 읽어 분석을 시작합니다.
-    final stateFile = await _getSourceStateFile();
-    await stateFile.parent.create(recursive: true);
-    final data = {
-      'source_type': sourceType,
-      'source_value': sourceValue,
-    };
-    await stateFile.writeAsString(
-      jsonEncode(data),
-      encoding: utf8,
+    // 단일 소스 호환용 메서드입니다.
+    // 멀티 소스 화면에서는 writeSourceSelection을 사용해 전체 목록과 활성 소스를 함께 갱신합니다.
+    await _writePrimarySourceState(
+      sourceType: sourceType,
+      sourceValue: sourceValue,
+    );
+    await writeSourcesState(
+      [
+        SourceSlotState(
+          slotId: 'default',
+          sourceType: sourceType,
+          sourceValue: sourceValue,
+          sessionId: 'default',
+        ),
+      ],
     );
   }
 
   Future<void> clearSourceState() async {
+    await _writePrimarySourceState(sourceType: '', sourceValue: '');
+    await _writeSourcesStateFile(const []);
+  }
+
+  Future<void> writeSourcesState(List<SourceSlotState> slots) async {
+    await _writeSourcesStateFile(slots);
+  }
+
+  Future<void> writeSourceSelection({
+    required List<SourceSlotState> slots,
+    String activeSlotId = '',
+  }) async {
+    if (slots.isEmpty) {
+      await clearSourceState();
+      return;
+    }
+
+    await _writeSourcesStateFile(slots);
+    if (activeSlotId.trim().isEmpty) {
+      await _writePrimarySourceState(sourceType: '', sourceValue: '');
+      return;
+    }
+
+    var activeSlot = slots.first;
+    var foundActiveSlot = false;
+    for (final slot in slots) {
+      if (slot.slotId == activeSlotId) {
+        activeSlot = slot;
+        foundActiveSlot = true;
+        break;
+      }
+    }
+
+    if (!foundActiveSlot) {
+      await _writePrimarySourceState(sourceType: '', sourceValue: '');
+      return;
+    }
+
+    await _writePrimarySourceState(
+      sourceType: activeSlot.sourceType,
+      sourceValue: activeSlot.sourceValue,
+    );
+  }
+
+  Future<void> _writeSourcesStateFile(List<SourceSlotState> slots) async {
+    final stateFile = await _getSourcesStateFile();
+    await stateFile.parent.create(recursive: true);
+    await stateFile.writeAsString(
+      jsonEncode(slots.map((slot) => slot.toJson()).toList(growable: false)),
+      encoding: utf8,
+    );
+  }
+
+  Future<void> _writePrimarySourceState({
+    required String sourceType,
+    required String sourceValue,
+  }) async {
     final stateFile = await _getSourceStateFile();
     await stateFile.parent.create(recursive: true);
     await stateFile.writeAsString(
       jsonEncode({
-        'source_type': '',
-        'source_value': '',
+        'source_type': sourceType,
+        'source_value': sourceValue,
       }),
       encoding: utf8,
     );
@@ -225,6 +310,18 @@ class AppLinkService {
     }
 
     final candidates = await _buildCandidateFiles('source_state.json');
+    return candidates.first;
+  }
+
+  Future<File> _getSourcesStateFile() async {
+    final bridgeFile = await _findBridgeFile(fileName: 'ui_bridges.json');
+    if (bridgeFile != null) {
+      return File(
+        '${bridgeFile.parent.path}${Platform.pathSeparator}sources_state.json',
+      );
+    }
+
+    final candidates = await _buildCandidateFiles('sources_state.json');
     return candidates.first;
   }
 

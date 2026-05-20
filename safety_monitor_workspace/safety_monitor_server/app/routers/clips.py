@@ -16,6 +16,8 @@ router = APIRouter(prefix="/api/clips", tags=["clips"])
 async def upload_clip(
     file: UploadFile = File(...),
     event_key: str | None = Form(default=None),
+    source_key: str | None = Form(default=None),
+    source_slug: str | None = Form(default=None),
 ) -> ClipUploadResponse:
     # multipart/form-data는 파일 업로드용 HTTP 요청 형식입니다.
     # 업로드된 mp4는 반드시 서버 data/clips 아래에만 저장되도록 제한합니다.
@@ -27,7 +29,12 @@ async def upload_clip(
     if not original_name.lower().endswith(".mp4"):
         raise HTTPException(status_code=400, detail="only mp4 files are allowed")
 
-    clip_path = _build_unique_clip_path(original_name)
+    normalized_source_slug = str(source_slug or "").strip()
+    clip_file_name = original_name
+    if normalized_source_slug:
+        clip_file_name = f"{normalized_source_slug}__{original_name}"
+
+    clip_path = _build_unique_clip_path(clip_file_name)
 
     size_bytes = 0
     try:

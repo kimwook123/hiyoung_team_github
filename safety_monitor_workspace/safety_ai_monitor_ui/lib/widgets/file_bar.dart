@@ -1,28 +1,32 @@
-﻿import 'dart:io';
-
 import 'package:flutter/material.dart';
 
 // 상단 입력 제어 패널입니다.
-// 영상 파일 선택, 스트림 주소 입력, 현재 연결된 로그 파일 힌트를 한 곳에 모아 둡니다.
+// 영상 파일 선택, 스트림 주소 입력, API 서버 사용 안내를 한 곳에 모아 둡니다.
 class FileBar extends StatelessWidget {
   const FileBar({
     super.key,
     required this.videoPath,
     required this.sourceType,
-    required this.logPath,
-    required this.isReplayMode,
+    required this.sourceHint,
+    required this.hasSelectedSource,
+    required this.canReturnFromReplay,
+    required this.returnButtonText,
     required this.streamTextController,
     required this.onPickVideo,
+    required this.onClearSelectedSource,
     required this.onOpenStream,
     required this.onReturnLive,
   });
 
   final String videoPath;
   final String sourceType;
-  final String logPath;
-  final bool isReplayMode;
+  final String sourceHint;
+  final bool hasSelectedSource;
+  final bool canReturnFromReplay;
+  final String returnButtonText;
   final TextEditingController streamTextController;
   final VoidCallback onPickVideo;
+  final VoidCallback onClearSelectedSource;
   final VoidCallback onOpenStream;
   final VoidCallback onReturnLive;
 
@@ -35,8 +39,13 @@ class FileBar extends StatelessWidget {
           title: sourceType == 'stream' ? '현재 스트림 주소' : '영상 파일',
           value: videoPath.isEmpty ? '선택되지 않음' : videoPath,
           buttonText: '영상 열기',
-          helperText: _buildHelperText(),
+          helperText: sourceHint,
           onPressed: onPickVideo,
+          hasSelectedSource: hasSelectedSource,
+          onClearSelectedSource: onClearSelectedSource,
+          canReturnFromReplay: canReturnFromReplay,
+          returnButtonText: returnButtonText,
+          onReturnLive: onReturnLive,
         ),
         const SizedBox(height: 12),
         Container(
@@ -63,30 +72,11 @@ class FileBar extends StatelessWidget {
                 onPressed: onOpenStream,
                 child: const Text('스트림 열기'),
               ),
-              if (isReplayMode) ...[
-                const SizedBox(width: 12),
-                OutlinedButton(
-                  onPressed: onReturnLive,
-                  child: const Text('라이브 복귀'),
-                ),
-              ],
             ],
           ),
         ),
       ],
     );
-  }
-
-  String _buildHelperText() {
-    // 파일 로그 모드에서는 어떤 txt 로그가 연결될지 사용자가 바로 알 수 있게 보여 줍니다.
-    if (logPath.isEmpty) {
-      return '로그 파일은 분석 시작 후 자동으로 연결됩니다.';
-    }
-
-    final fileName = File(logPath).uri.pathSegments.isEmpty
-        ? logPath
-        : File(logPath).uri.pathSegments.last;
-    return '로그: $fileName';
   }
 }
 
@@ -97,6 +87,11 @@ class _PathCard extends StatelessWidget {
     required this.buttonText,
     required this.helperText,
     required this.onPressed,
+    required this.hasSelectedSource,
+    required this.onClearSelectedSource,
+    required this.canReturnFromReplay,
+    required this.returnButtonText,
+    required this.onReturnLive,
   });
 
   final String title;
@@ -104,6 +99,11 @@ class _PathCard extends StatelessWidget {
   final String buttonText;
   final String helperText;
   final VoidCallback onPressed;
+  final bool hasSelectedSource;
+  final VoidCallback onClearSelectedSource;
+  final bool canReturnFromReplay;
+  final String returnButtonText;
+  final VoidCallback onReturnLive;
 
   @override
   Widget build(BuildContext context) {
@@ -136,9 +136,27 @@ class _PathCard extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 8),
-          FilledButton(
-            onPressed: onPressed,
-            child: Text(buttonText),
+          Row(
+            children: [
+              FilledButton(
+                onPressed: onPressed,
+                child: Text(buttonText),
+              ),
+              if (hasSelectedSource) ...[
+                const SizedBox(width: 12),
+                OutlinedButton(
+                  onPressed: onClearSelectedSource,
+                  child: const Text('선택 해제'),
+                ),
+              ],
+              if (canReturnFromReplay) ...[
+                const SizedBox(width: 12),
+                OutlinedButton(
+                  onPressed: onReturnLive,
+                  child: Text(returnButtonText),
+                ),
+              ],
+            ],
           ),
         ],
       ),

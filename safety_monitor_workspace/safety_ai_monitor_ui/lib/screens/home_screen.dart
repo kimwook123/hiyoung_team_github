@@ -7,26 +7,20 @@ import 'package:flutter/material.dart';
 
 import '../controllers/api_event_controller.dart';
 import '../controllers/api_event_feed_source.dart';
-import '../controllers/event_feed_source.dart';
-import '../controllers/event_log_controller.dart';
-import '../controllers/file_event_feed_source.dart';
-import '../controllers/local_event_json_controller.dart';
 import '../controllers/video_panel_controller.dart';
 import '../models/api_event_item.dart';
 import '../models/event_log_item.dart';
+import '../models/frame_detection_snapshot.dart';
 import '../models/video_overlay_detection.dart';
 import '../services/app_link_service.dart';
+import '../services/input_source_resolver_service.dart';
 import '../widgets/event_log_box.dart';
 import '../widgets/file_bar.dart';
 import '../widgets/video_control_bar.dart';
 import '../widgets/video_view_box.dart';
 
 // 메인 화면입니다.
-// 파일 로그 모드와 API 서버 모드를 모두 품고 있으며, 실제 화면 조합은 여기서 결정합니다.
-enum EventSourceMode {
-  fileLog,
-  api,
-}
+// API 서버 기준 이벤트 표시와 영상 재생을 함께 조합합니다.
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -39,54 +33,48 @@ class _HomeScreenState extends State<HomeScreen> {
   static const String _apiServerBaseUrl = 'http://127.0.0.1:8000';
   static const Duration _apiAutoRefreshInterval = Duration(seconds: 3);
   late final VideoPanelController videoController;
-  late final EventLogController logController;
-  late final FileEventFeedSource fileEventFeed;
-  late final LocalEventJsonController localEventJsonController;
   late final ApiEventController apiEventController;
   late final ApiEventFeedSource apiEventFeed;
   late final AppLinkService appLinkService;
+  late final InputSourceResolverService inputSourceResolverService;
   final ScrollController pageScrollController = ScrollController();
   final ScrollController rightPanelScrollController = ScrollController();
   final TextEditingController streamTextController = TextEditingController();
-  EventSourceMode eventSourceMode = EventSourceMode.fileLog;
+  String selectedSourceType = '';
+  String selectedSourceValue = '';
+  String selectedSourceKey = '';
   ApiEventItem? selectedApiEventDetail;
   bool isLoadingApiDetail = false;
   String? apiDetailErrorMessage;
   Timer? apiAutoRefreshTimer;
-
-  EventFeedSource get activeEventFeed {
-    // 화면 위젯은 이 getter만 보면 현재 어떤 모드인지 몰라도 같은 방식으로 동작합니다.
-    switch (eventSourceMode) {
-      case EventSourceMode.fileLog:
-        return fileEventFeed;
-      case EventSourceMode.api:
-        return apiEventFeed;
-    }
-  }
+  Timer? frameDetectionRefreshTimer;
+  DateTime? frameDetectionLogModifiedAt;
+  String frameDetectionSourceKey = '';
+  List<FrameDetectionSnapshot> frameDetectionSnapshots = const [];
 
   @override
   void initState() {
     super.initState();
     videoController = VideoPanelController();
-    logController = EventLogController();
-    fileEventFeed = FileEventFeedSource(logController);
-    localEventJsonController = LocalEventJsonController();
     apiEventController = ApiEventController();
     apiEventFeed = ApiEventFeedSource(apiEventController);
     appLinkService = AppLinkService();
+    inputSourceResolverService = InputSourceResolverService();
 
     // GUI가 열릴 때 이전 선택 상태는 비운다
     appLinkService.clearSourceState();
+    unawaited(apiEventController.checkHealth());
+    unawaited(_refreshApiEventsIfNeeded());
+    _startApiAutoRefresh();
+    _startFrameDetectionRefresh();
   }
 
   @override
   void dispose() {
     apiAutoRefreshTimer?.cancel();
+    frameDetectionRefreshTimer?.cancel();
     videoController.disposeController();
-    fileEventFeed.dispose();
-    localEventJsonController.disposeController();
     apiEventFeed.dispose();
-    logController.disposeController();
     pageScrollController.dispose();
     rightPanelScrollController.dispose();
     streamTextController.dispose();
@@ -116,18 +104,26 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   children: [
                     // 상단 입력 영역은 기존 파일 기반 흐름을 그대로 유지합니다.
-                    FileBar(
-                      videoPath: videoController.videoPath,
-                      sourceType: videoController.sourceType,
-                      logPath: logController.logPath,
-                      isReplayMode: videoController.isReplayMode,
-                      streamTextController: streamTextController,
-                      onPickVideo: _pickVideoFile,
-                      onOpenStream: _openStream,
-                      onReturnLive: _returnToLive,
+                    AnimatedBuilder(
+                      animation: videoController,
+                      builder: (context, _) {
+                        return FileBar(
+                          videoPath: videoController.videoPath,
+                          sourceType: videoController.sourceType,
+                          sourceHint: _buildSourceHint(),
+                          hasSelectedSource: selectedSourceKey.isNotEmpty,
+                          canReturnFromReplay: videoController.canReturnFromReplay,
+                          returnButtonText: videoController.replayReturnButtonText,
+                          streamTextController: streamTextController,
+                          onPickVideo: _pickVideoFile,
+                          onClearSelectedSource: _clearSelectedSource,
+                          onOpenStream: _openStream,
+                          onReturnLive: _returnToLive,
+                        );
+                      },
                     ),
                     const SizedBox(height: 16),
-                    _buildEventSourceControls(),
+                    _buildApiControls(),
                     const SizedBox(height: 16),
                     SizedBox(
                       height: contentAreaHeight,
@@ -142,8 +138,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                         animation: Listenable.merge(
                                           [
                                             videoController,
-                                            fileEventFeed,
-                                            localEventJsonController,
                                             apiEventFeed,
                                           ],
                                         ),
@@ -153,6 +147,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                             controller: videoController,
                                             overlayItems: _getOverlayItems(),
                                             overlayDetections: _getOverlayDetections(),
+                                            overlaySourceWidth: _getOverlaySourceWidth(),
+                                            overlaySourceHeight: _getOverlaySourceHeight(),
                                           );
                                         },
                                   ),
@@ -174,34 +170,30 @@ class _HomeScreenState extends State<HomeScreen> {
                               builder: (context, constraints) {
                                 return Column(
                                   children: [
-                                    if (eventSourceMode == EventSourceMode.api)
-                                      Flexible(
-                                        fit: FlexFit.loose,
-                                        child: Scrollbar(
+                                    Flexible(
+                                      fit: FlexFit.loose,
+                                      child: Scrollbar(
+                                        controller: rightPanelScrollController,
+                                        thumbVisibility: true,
+                                        child: SingleChildScrollView(
                                           controller: rightPanelScrollController,
-                                          thumbVisibility: true,
-                                          child: SingleChildScrollView(
-                                            controller: rightPanelScrollController,
-                                            child: Column(
-                                              children: [
-                                                _buildApiServerHealthPanel(),
-                                                const SizedBox(height: 12),
-                                                _buildApiDetailPanel(),
-                                              ],
-                                            ),
+                                          child: Column(
+                                            children: [
+                                              _buildApiServerHealthPanel(),
+                                              const SizedBox(height: 12),
+                                              _buildApiDetailPanel(),
+                                            ],
                                           ),
                                         ),
                                       ),
-                                    if (eventSourceMode == EventSourceMode.api)
-                                      const SizedBox(height: 12),
+                                    ),
+                                    const SizedBox(height: 12),
                                     Expanded(
                                       child: AnimatedBuilder(
-                                        animation: Listenable.merge(
-                                          [fileEventFeed, apiEventFeed],
-                                        ),
+                                        animation: apiEventFeed,
                                         builder: (context, _) {
                                           return EventLogBox(
-                                            eventFeed: activeEventFeed,
+                                            eventFeed: apiEventFeed,
                                             onTapItem: _onTapEventItem,
                                           );
                                         },
@@ -225,8 +217,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildEventSourceControls() {
-    // 사용자가 파일 로그 모드와 API 서버 모드를 전환하는 최소 제어 영역입니다.
+  Widget _buildApiControls() {
+    // GUI는 API 서버를 기준으로 최신 이벤트를 polling 하며 재생 화면과 함께 보여 줍니다.
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -238,40 +230,25 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           Row(
             children: [
-              SegmentedButton<EventSourceMode>(
-                segments: const [
-                  ButtonSegment(
-                    value: EventSourceMode.fileLog,
-                    label: Text('파일 로그'),
-                  ),
-                  ButtonSegment(
-                    value: EventSourceMode.api,
-                    label: Text('API 서버'),
-                  ),
-                ],
-                selected: {eventSourceMode},
-                onSelectionChanged: (selection) {
-                  _changeEventSourceMode(selection.first);
-                },
+              Text(
+                '이벤트 소스: API 서버',
+                style: Theme.of(context).textTheme.titleSmall,
               ),
               const Spacer(),
-              if (eventSourceMode == EventSourceMode.api)
-                FilledButton(
-                  // 자동 polling이 있어도, 사용자가 즉시 다시 받고 싶을 때 수동 갱신할 수 있게 둡니다.
-                  onPressed: _refreshApiEvents,
-                  child: const Text('API 새로고침'),
-                ),
+              FilledButton(
+                // 자동 polling이 있어도, 사용자가 즉시 다시 받고 싶을 때 수동 갱신할 수 있게 둡니다.
+                onPressed: _refreshApiEvents,
+                child: const Text('API 새로고침'),
+              ),
             ],
           ),
-          if (eventSourceMode == EventSourceMode.api) ...[
-            const SizedBox(height: 8),
-            AnimatedBuilder(
-              animation: apiEventFeed,
-              builder: (context, _) {
-                return _buildApiStatusText();
-              },
-            ),
-          ],
+          const SizedBox(height: 8),
+          AnimatedBuilder(
+            animation: apiEventFeed,
+            builder: (context, _) {
+              return _buildApiStatusText();
+            },
+          ),
         ],
       ),
     );
@@ -279,7 +256,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildApiStatusText() {
     String text =
-        'API 모드가 선택되었습니다. 3초마다 자동 새로고침되며 "API 새로고침"으로 수동 갱신도 가능합니다.';
+        '3초마다 자동 새로고침되며 "API 새로고침"으로 수동 갱신도 가능합니다.';
 
     if (apiEventController.isLoading) {
       text = 'API 이벤트 불러오는 중...';
@@ -306,11 +283,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildApiDetailPanel() {
-    if (eventSourceMode != EventSourceMode.api) {
-      return const SizedBox.shrink();
-    }
-
-    // API 모드에서만 보이는 상세 패널입니다.
     // 이벤트 목록 클릭 후 GET /api/events/detail 결과를 요약해서 보여 줍니다.
     return Container(
       width: double.infinity,
@@ -341,10 +313,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildApiServerHealthPanel() {
-    if (eventSourceMode != EventSourceMode.api) {
-      return const SizedBox.shrink();
-    }
-
     // /health 호출 결과를 보여 주는 보조 패널입니다.
     // 서버가 꺼졌는지, events.jsonl을 찾았는지 빠르게 점검할 때 사용합니다.
     return Container(
@@ -577,6 +545,17 @@ class _HomeScreenState extends State<HomeScreen> {
     return name;
   }
 
+  String _buildFrameDetectionLabel(Map<String, dynamic> detection) {
+    final name = (detection['name']?.toString().trim().isNotEmpty ?? false)
+        ? detection['name'].toString().trim()
+        : 'object';
+    final trackId = detection['track_id']?.toString().trim();
+    if (trackId != null && trackId.isNotEmpty) {
+      return '$name #$trackId';
+    }
+    return name;
+  }
+
   Color _colorForLevel(String level) {
     switch (level.trim().toUpperCase()) {
       case 'DANGER':
@@ -585,6 +564,18 @@ class _HomeScreenState extends State<HomeScreen> {
         return Colors.orangeAccent;
       default:
         return Colors.lightBlueAccent;
+    }
+  }
+
+  Color _colorForDetectionName(String name) {
+    switch (name.trim().toLowerCase()) {
+      case 'person':
+        return Colors.lightBlueAccent;
+      case 'helmet':
+      case 'hardhat':
+        return Colors.greenAccent;
+      default:
+        return Colors.orangeAccent;
     }
   }
 
@@ -628,19 +619,24 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    await _resetAnalysisState(
+      sourceType: 'video',
+      sourceValue: file.path,
+    );
     await appLinkService.writeSourceState(
       sourceType: 'video',
       sourceValue: file.path,
     );
-    await appLinkService.clearLogFile(
-      sourceType: 'video',
-      sourceValue: file.path,
-    );
-    await _watchExpectedLog(
-      sourceType: 'video',
-      sourceValue: file.path,
-    );
     await videoController.openVideo(file.path);
+    _setSelectedSource(
+      sourceType: 'video',
+      sourceValue: file.path,
+    );
+    await _syncFrameRateFromBridge(
+      sourceType: 'video',
+      sourceValue: file.path,
+    );
+    unawaited(_refreshApiEventsIfNeeded());
   }
 
   Future<void> _openStream() async {
@@ -649,121 +645,196 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    final resolvedSource = await inputSourceResolverService.resolve(
+      sourceType: 'stream',
+      sourceValue: streamUrl,
+    );
+
+    await _resetAnalysisState(
+      sourceType: resolvedSource.sourceType,
+      sourceValue: resolvedSource.sourceValue,
+    );
     await appLinkService.writeSourceState(
-      sourceType: 'stream',
-      sourceValue: streamUrl,
+      sourceType: resolvedSource.sourceType,
+      sourceValue: resolvedSource.sourceValue,
     );
-    await appLinkService.clearLogFile(
-      sourceType: 'stream',
-      sourceValue: streamUrl,
+    await videoController.openVideo(resolvedSource.sourceValue,
+        nextSourceType: resolvedSource.sourceType);
+    _setSelectedSource(
+      sourceType: resolvedSource.sourceType,
+      sourceValue: resolvedSource.sourceValue,
     );
-    await _watchExpectedLog(
-      sourceType: 'stream',
-      sourceValue: streamUrl,
+    await _syncFrameRateFromBridge(
+      sourceType: resolvedSource.sourceType,
+      sourceValue: resolvedSource.sourceValue,
     );
-    await videoController.openVideo(
-      streamUrl,
-      nextSourceType: 'stream',
-    );
+    unawaited(_refreshApiEventsIfNeeded());
   }
 
   List<EventLogItem> _getOverlayItems() {
-    return activeEventFeed.getLogItemsForFrame(videoController.currentFrameValue);
+    if (!videoController.hasVideo || _effectiveOverlaySourceKey().isEmpty) {
+      return const [];
+    }
+
+    return apiEventController.getLogItemsForTime(
+      videoController.currentOverlaySeconds,
+    );
+  }
+
+  FrameDetectionSnapshot? _getOverlaySnapshot() {
+    if (_effectiveOverlaySourceKey().isEmpty || frameDetectionSnapshots.isEmpty) {
+      return null;
+    }
+
+    final currentSeconds = videoController.currentOverlaySeconds;
+    FrameDetectionSnapshot? beforeOrEqual;
+    FrameDetectionSnapshot? after;
+
+    for (final snapshot in frameDetectionSnapshots) {
+      if (snapshot.sourceTimeSeconds <= currentSeconds) {
+        beforeOrEqual = snapshot;
+        continue;
+      }
+      after = snapshot;
+      break;
+    }
+
+    final frameTolerance = math.max(
+      0.08,
+      (videoController.frameRate <= 0 ? 1 / 30 : 1 / videoController.frameRate) *
+          1.5,
+    );
+
+    FrameDetectionSnapshot? best;
+    if (beforeOrEqual != null &&
+        (currentSeconds - beforeOrEqual.sourceTimeSeconds).abs() <=
+            frameTolerance) {
+      best = beforeOrEqual;
+    }
+    if (after != null &&
+        (after.sourceTimeSeconds - currentSeconds).abs() <= frameTolerance) {
+      if (best == null ||
+          (after.sourceTimeSeconds - currentSeconds).abs() <
+              (best.sourceTimeSeconds - currentSeconds).abs()) {
+        best = after;
+      }
+    }
+
+    return best;
   }
 
   List<VideoOverlayDetection> _getOverlayDetections() {
-    final items = eventSourceMode == EventSourceMode.api
-        ? apiEventController.getItemsForFrame(videoController.currentFrameValue)
-        : localEventJsonController.getItemsForFrame(
-            videoController.currentFrameValue,
-          );
-    if (items.isEmpty) {
+    final snapshot = _getOverlaySnapshot();
+    if (snapshot == null) {
       return const [];
     }
 
     final detections = <VideoOverlayDetection>[];
     final seenKeys = <String>{};
-    for (final item in items) {
-      for (final detection in item.relatedDetections) {
-        final box = detection['box'];
-        if (box is! Map) {
-          continue;
-        }
-
-        final x1 = _toDoubleValue(box['x1']);
-        final y1 = _toDoubleValue(box['y1']);
-        final x2 = _toDoubleValue(box['x2']);
-        final y2 = _toDoubleValue(box['y2']);
-        if (x1 == null || y1 == null || x2 == null || y2 == null) {
-          continue;
-        }
-
-        final key =
-            '${item.eventKey}:${detection['track_id']}:${detection['name']}:$x1:$y1:$x2:$y2';
-        if (!seenKeys.add(key)) {
-          continue;
-        }
-
-        detections.add(
-          VideoOverlayDetection(
-            key: key,
-            label: _buildDetectionLabel(item, detection),
-            color: _colorForLevel(item.level),
-            x1: x1,
-            y1: y1,
-            x2: x2,
-            y2: y2,
-          ),
-        );
+    for (final detection in snapshot.detections) {
+      final box = detection['box'];
+      if (box is! Map) {
+        continue;
       }
+
+      final x1 = _toDoubleValue(box['x1']);
+      final y1 = _toDoubleValue(box['y1']);
+      final x2 = _toDoubleValue(box['x2']);
+      final y2 = _toDoubleValue(box['y2']);
+      if (x1 == null || y1 == null || x2 == null || y2 == null) {
+        continue;
+      }
+
+      final key =
+          '${snapshot.frameId}:${detection['track_id']}:${detection['name']}:$x1:$y1:$x2:$y2';
+      if (!seenKeys.add(key)) {
+        continue;
+      }
+
+      detections.add(
+        VideoOverlayDetection(
+          key: key,
+          label: _buildFrameDetectionLabel(detection),
+          color: _colorForDetectionName(detection['name']?.toString() ?? ''),
+          x1: x1,
+          y1: y1,
+          x2: x2,
+          y2: y2,
+        ),
+      );
     }
 
     return detections;
   }
 
+  double _getOverlaySourceWidth() {
+    final snapshot = _getOverlaySnapshot();
+    if (snapshot != null && snapshot.frameWidth > 0) {
+      return snapshot.frameWidth.toDouble();
+    }
+    return videoController.videoWidth.toDouble();
+  }
+
+  double _getOverlaySourceHeight() {
+    final snapshot = _getOverlaySnapshot();
+    if (snapshot != null && snapshot.frameHeight > 0) {
+      return snapshot.frameHeight.toDouble();
+    }
+    return videoController.videoHeight.toDouble();
+  }
+
+  String _effectiveOverlaySourceKey() {
+    if (videoController.isReplayMode && videoController.replaySourceKey.isNotEmpty) {
+      return videoController.replaySourceKey;
+    }
+    return selectedSourceKey;
+  }
+
   Future<void> _onTapEventItem(EventLogItem item) async {
     // 클릭 공통 동작:
     // 1) 선택 표시
-    // 2) API 모드면 상세 조회
-    // 3) 스트림 replay clip 또는 해당 프레임으로 이동
-    activeEventFeed.selectLogItem(item);
+    // 2) API 상세 조회
+    // 3) 이벤트 시작 시점으로 이동
+    apiEventFeed.selectLogItem(item);
 
-    if (eventSourceMode == EventSourceMode.api) {
-      final eventKey = item.eventKeyText.trim();
-      if (eventKey.isNotEmpty && eventKey != '-') {
+    final eventKey = item.eventKeyText.trim();
+    if (eventKey.isNotEmpty && eventKey != '-') {
+      setState(() {
+        isLoadingApiDetail = true;
+        apiDetailErrorMessage = null;
+        selectedApiEventDetail = null;
+      });
+
+      try {
+        final detail = await apiEventController.loadEventDetail(eventKey);
         setState(() {
-          isLoadingApiDetail = true;
-          apiDetailErrorMessage = null;
-          selectedApiEventDetail = null;
+          selectedApiEventDetail = detail;
+          if (detail == null) {
+            apiDetailErrorMessage = '상세 정보를 가져오지 못했습니다.';
+          }
         });
-
-        try {
-          final detail = await apiEventController.loadEventDetail(eventKey);
-          setState(() {
-            selectedApiEventDetail = detail;
-            if (detail == null) {
-              apiDetailErrorMessage = '상세 정보를 가져오지 못했습니다.';
-            }
-          });
-        } finally {
-          setState(() {
-            isLoadingApiDetail = false;
-          });
-        }
+      } finally {
+        setState(() {
+          isLoadingApiDetail = false;
+        });
       }
     }
 
-    if (videoController.isStreamMode && item.hasClip) {
-      await videoController.openReplayClip(item.clipPathText);
+    final sourceItem = apiEventController.findItemByEventKey(item.eventKeyText);
+    final targetSeconds = _resolveEventStartSeconds(sourceItem);
+    if (targetSeconds < 0) {
       return;
     }
 
-    final targetFrame = item.startFrameValue ?? item.frameValue;
-    if (targetFrame == null) {
+    if (videoController.isReplayMode && videoController.canReturnFromReplay) {
+      await videoController.returnToLive();
+    }
+
+    if (videoController.sourceType == 'stream') {
       return;
     }
 
-    final targetMs = ((targetFrame / videoController.frameRate) * 1000).round();
+    final targetMs = (targetSeconds * 1000).round();
     final ratio = videoController.totalDuration.inMilliseconds <= 0
         ? 0.0
         : targetMs / videoController.totalDuration.inMilliseconds;
@@ -788,7 +859,12 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     try {
-      await videoController.openReplayClip(resolvedPath);
+      await videoController.openReplayClip(
+        resolvedPath,
+        replayStartSeconds: _resolveEventStartSeconds(item),
+        sourceKey: item.sourceKey,
+      );
+      await _refreshFrameDetectionsForSource(item.sourceKey);
     } catch (error) {
       setState(() {
         apiDetailErrorMessage = '클립을 열 수 없습니다: $error';
@@ -796,37 +872,93 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  double _resolveEventStartSeconds(ApiEventItem? item) {
+    if (item == null) {
+      return 0.0;
+    }
+
+    final parsed = _parseVideoTimeText(item.startedSourceTimeText);
+    if (parsed != null) {
+      return parsed;
+    }
+    return item.sourceTimeSeconds < 0 ? 0.0 : item.sourceTimeSeconds;
+  }
+
+  double? _parseVideoTimeText(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty || trimmed == '-') {
+      return null;
+    }
+
+    final parts = trimmed.split(':');
+    if (parts.length < 2 || parts.length > 3) {
+      return null;
+    }
+
+    if (parts.length == 2) {
+      final minutes = int.tryParse(parts[0]);
+      final seconds = double.tryParse(parts[1]);
+      if (minutes == null || seconds == null) {
+        return null;
+      }
+      return (minutes * 60) + seconds;
+    }
+
+    final hours = int.tryParse(parts[0]);
+    final minutes = int.tryParse(parts[1]);
+    final seconds = double.tryParse(parts[2]);
+    if (hours == null || minutes == null || seconds == null) {
+      return null;
+    }
+    return (hours * 3600) + (minutes * 60) + seconds;
+  }
+
   Future<void> _refreshApiEvents() async {
-    await apiEventController.loadLatestEvents(limit: 200);
+    await apiEventController.loadEvents(limit: 5000);
   }
 
   Future<void> _checkApiHealth() async {
     await apiEventController.checkHealth();
   }
 
-  void _changeEventSourceMode(EventSourceMode nextMode) {
-    if (nextMode == eventSourceMode) {
-      return;
+  Future<void> _resetAnalysisState({
+    required String sourceType,
+    required String sourceValue,
+  }) async {
+    await appLinkService.clearAnalysisArtifactsForSource(
+      sourceType: sourceType,
+      sourceValue: sourceValue,
+    );
+
+    final sourceKey = appLinkService.buildSourceKey(
+      sourceType: sourceType,
+      sourceValue: sourceValue,
+    );
+    final sourceSlug = appLinkService.buildSourceSlug(
+      sourceType: sourceType,
+      sourceValue: sourceValue,
+    );
+    final resetOk = await apiEventController.resetServerData(
+      sourceKey: sourceKey,
+      sourceSlug: sourceSlug,
+    );
+    if (!resetOk && mounted) {
+      setState(() {
+        apiDetailErrorMessage = '서버 초기화에 실패해 이전 이벤트가 남아 있을 수 있습니다.';
+        selectedApiEventDetail = null;
+      });
+    } else if (mounted) {
+      setState(() {
+        apiDetailErrorMessage = null;
+        selectedApiEventDetail = null;
+      });
     }
 
-    // 모드 전환 시 선택 상태와 상세 패널 상태를 정리하고,
-    // API 모드 진입 시에는 health 확인과 자동 새로고침을 시작합니다.
-    _stopApiAutoRefresh();
-    fileEventFeed.clearSelection();
     apiEventFeed.clearSelection();
-
-    setState(() {
-      eventSourceMode = nextMode;
-      selectedApiEventDetail = null;
-      apiDetailErrorMessage = null;
-      isLoadingApiDetail = false;
-    });
-
-    if (nextMode == EventSourceMode.api) {
-      unawaited(apiEventController.checkHealth());
-      unawaited(_refreshApiEventsIfNeeded());
-      _startApiAutoRefresh();
-    }
+    apiEventController.items = apiEventController.items
+        .where((item) => item.sourceKey.trim() != sourceKey)
+        .toList(growable: false);
+    apiEventController.notifyListeners();
   }
 
   void _startApiAutoRefresh() {
@@ -837,13 +969,23 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _startFrameDetectionRefresh() {
+    frameDetectionRefreshTimer?.cancel();
+    frameDetectionRefreshTimer = Timer.periodic(
+      const Duration(milliseconds: 250),
+      (_) {
+        unawaited(_refreshFrameDetectionsIfNeeded());
+      },
+    );
+  }
+
   void _stopApiAutoRefresh() {
     apiAutoRefreshTimer?.cancel();
     apiAutoRefreshTimer = null;
   }
 
   Future<void> _refreshApiEventsIfNeeded() async {
-    if (!mounted || eventSourceMode != EventSourceMode.api) {
+    if (!mounted) {
       return;
     }
     if (apiEventController.isLoading) {
@@ -851,6 +993,76 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     await _refreshApiEvents();
+  }
+
+  Future<void> _refreshFrameDetectionsIfNeeded() async {
+    if (!mounted) {
+      return;
+    }
+
+    final sourceKey = _effectiveOverlaySourceKey();
+    if (sourceKey.isEmpty) {
+      if (frameDetectionSnapshots.isNotEmpty || frameDetectionSourceKey.isNotEmpty) {
+        setState(() {
+          frameDetectionSnapshots = const [];
+          frameDetectionLogModifiedAt = null;
+          frameDetectionSourceKey = '';
+        });
+      }
+      return;
+    }
+
+    final modifiedAt = await appLinkService.readFrameDetectionLogModifiedAt();
+    if (modifiedAt == null) {
+      if (frameDetectionSnapshots.isNotEmpty && mounted) {
+        setState(() {
+          frameDetectionSnapshots = const [];
+          frameDetectionLogModifiedAt = null;
+          frameDetectionSourceKey = '';
+        });
+      }
+      return;
+    }
+
+    if (frameDetectionSourceKey == sourceKey &&
+        frameDetectionLogModifiedAt != null &&
+        modifiedAt.isAtSameMomentAs(frameDetectionLogModifiedAt!)) {
+      return;
+    }
+
+    final snapshots = await appLinkService.readFrameDetectionSnapshots(
+      sourceKey: sourceKey,
+    );
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      frameDetectionSnapshots = snapshots;
+      frameDetectionLogModifiedAt = modifiedAt;
+      frameDetectionSourceKey = sourceKey;
+    });
+  }
+
+  Future<void> _refreshFrameDetectionsForSource(String sourceKey) async {
+    final normalizedSourceKey = sourceKey.trim();
+    if (normalizedSourceKey.isEmpty) {
+      return;
+    }
+
+    final snapshots = await appLinkService.readFrameDetectionSnapshots(
+      sourceKey: normalizedSourceKey,
+    );
+    final modifiedAt = await appLinkService.readFrameDetectionLogModifiedAt();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      frameDetectionSnapshots = snapshots;
+      frameDetectionLogModifiedAt = modifiedAt;
+      frameDetectionSourceKey = normalizedSourceKey;
+    });
   }
 
   String _resolveClipPath(String clipPath) {
@@ -924,17 +1136,76 @@ class _HomeScreenState extends State<HomeScreen> {
     return '$_apiServerBaseUrl/$trimmed';
   }
 
-  Future<void> _watchExpectedLog({
+  Future<void> _syncFrameRateFromBridge({
     required String sourceType,
     required String sourceValue,
   }) async {
-    // 파일 로그 모드에서는 입력 소스에 대응하는 txt 로그 경로를 계산해 watch를 시작합니다.
-    final logPath = await appLinkService.buildLogPath(
+    final linkInfo = await appLinkService.readDefaultLink();
+    if (linkInfo == null) {
+      return;
+    }
+
+    if (linkInfo.sourceType.trim() != sourceType.trim()) {
+      return;
+    }
+
+    if (!_isSameSourceValue(linkInfo.sourceValue, sourceValue)) {
+      return;
+    }
+
+    videoController.setFrameRate(linkInfo.sourceFps);
+  }
+
+  bool _isSameSourceValue(String left, String right) {
+    final normalizedLeft = left.trim().replaceAll('\\', '/').toLowerCase();
+    final normalizedRight = right.trim().replaceAll('\\', '/').toLowerCase();
+    return normalizedLeft == normalizedRight;
+  }
+
+  String _buildSourceHint() {
+    if (selectedSourceKey.isEmpty) {
+      return '선택된 소스가 없어서 서버의 전체 이벤트 로그를 표시합니다.';
+    }
+
+    return '현재 선택된 소스에 대한 이벤트 로그만 표시합니다.';
+  }
+
+  void _setSelectedSource({
+    required String sourceType,
+    required String sourceValue,
+  }) {
+    final sourceKey = appLinkService.buildSourceKey(
       sourceType: sourceType,
       sourceValue: sourceValue,
     );
-    await logController.loadLog(logPath);
-    final jsonEventLogPath = await appLinkService.buildJsonEventLogPath();
-    await localEventJsonController.loadLog(jsonEventLogPath);
+    setState(() {
+      selectedSourceType = sourceType;
+      selectedSourceValue = sourceValue;
+      selectedSourceKey = sourceKey;
+      selectedApiEventDetail = null;
+      apiDetailErrorMessage = null;
+      frameDetectionSnapshots = const [];
+      frameDetectionLogModifiedAt = null;
+      frameDetectionSourceKey = '';
+    });
+    apiEventController.setVisibleSourceKey(sourceKey);
+    unawaited(_refreshFrameDetectionsIfNeeded());
+  }
+
+  Future<void> _clearSelectedSource() async {
+    await appLinkService.clearSourceState();
+    apiEventFeed.clearSelection();
+    videoController.clearCurrentSource();
+    setState(() {
+      selectedSourceType = '';
+      selectedSourceValue = '';
+      selectedSourceKey = '';
+      selectedApiEventDetail = null;
+      apiDetailErrorMessage = null;
+      frameDetectionSnapshots = const [];
+      frameDetectionLogModifiedAt = null;
+      frameDetectionSourceKey = '';
+    });
+    apiEventController.setVisibleSourceKey('');
   }
 }

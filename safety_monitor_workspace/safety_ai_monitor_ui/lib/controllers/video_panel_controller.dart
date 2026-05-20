@@ -19,10 +19,16 @@ class VideoPanelController extends ChangeNotifier {
   String videoPath = '';
   String liveSourcePath = '';
   String sourceType = '';
+  String replayReturnPath = '';
+  String replayReturnSourceType = '';
+  String replaySourceKey = '';
   bool isPlaying = false;
   Duration currentPosition = Duration.zero;
   Duration totalDuration = Duration.zero;
+  Duration replayReturnPosition = Duration.zero;
   double frameRate = 30.0;
+  double replayReturnFrameRate = 30.0;
+  double replayBaseSourceSeconds = 0.0;
   int videoWidth = 0;
   int videoHeight = 0;
   String errorText = '';
@@ -38,12 +44,32 @@ class VideoPanelController extends ChangeNotifier {
 
   bool get hasVideo => videoPath.isNotEmpty;
   bool get isStreamMode => sourceType == 'stream';
+  bool get canReturnFromReplay => isReplayMode && replayReturnPath.isNotEmpty;
+  String get replayReturnButtonText =>
+      replayReturnSourceType == 'stream' ? '라이브 복귀' : '원래 영상 복귀';
   int get currentFrameValue =>
       ((currentPosition.inMilliseconds / 1000) * frameRate).round();
+  double get currentOverlaySeconds => isReplayMode
+      ? replayBaseSourceSeconds + (currentPosition.inMilliseconds / 1000)
+      : (currentPosition.inMilliseconds / 1000);
 
-  Future<void> openVideo(String path, {String nextSourceType = 'video'}) async {
+  Future<void> openVideo(
+    String path, {
+    String nextSourceType = 'video',
+    bool preserveReplayContext = false,
+  }) async {
     // 로컬 파일과 서버 clip URL을 같은 메서드로 열 수 있게 합니다.
     errorText = '';
+
+    if (!preserveReplayContext) {
+      isReplayMode = false;
+      replayBaseSourceSeconds = 0.0;
+      replaySourceKey = '';
+      replayReturnPath = '';
+      replayReturnSourceType = '';
+      replayReturnPosition = Duration.zero;
+      replayReturnFrameRate = frameRate;
+    }
 
     if (path.isEmpty) {
       notifyListeners();
@@ -63,24 +89,60 @@ class VideoPanelController extends ChangeNotifier {
     sourceType = nextSourceType;
     if (nextSourceType == 'stream') {
       liveSourcePath = path;
-      isReplayMode = false;
     }
     await _service.openVideo(path);
     notifyListeners();
   }
 
-  Future<void> openReplayClip(String path) async {
+  Future<void> openReplayClip(
+    String path, {
+    double replayStartSeconds = 0.0,
+    String sourceKey = '',
+  }) async {
     // 이벤트 상세나 로그 클릭으로 클립 재생 모드로 전환할 때 사용합니다.
-    await openVideo(path, nextSourceType: 'video');
+    if (!isReplayMode && videoPath.isNotEmpty) {
+      replayReturnPath = videoPath;
+      replayReturnSourceType = sourceType;
+      replayReturnPosition = currentPosition;
+      replayReturnFrameRate = frameRate;
+    }
+
+    await openVideo(
+      path,
+      nextSourceType: 'video',
+      preserveReplayContext: true,
+    );
     isReplayMode = true;
+    replayBaseSourceSeconds = replayStartSeconds < 0 ? 0.0 : replayStartSeconds;
+    replaySourceKey = sourceKey.trim();
     notifyListeners();
   }
 
   Future<void> returnToLive() async {
-    if (liveSourcePath.isEmpty) {
+    if (!canReturnFromReplay) {
       return;
     }
-    await openVideo(liveSourcePath, nextSourceType: 'stream');
+
+    final returnPath = replayReturnPath;
+    final returnSourceType = replayReturnSourceType;
+    final returnPosition = replayReturnPosition;
+    final returnFrameRate = replayReturnFrameRate;
+
+    replayReturnPath = '';
+    replayReturnSourceType = '';
+    replayReturnPosition = Duration.zero;
+    replayReturnFrameRate = frameRate;
+    replayBaseSourceSeconds = 0.0;
+    replaySourceKey = '';
+    isReplayMode = false;
+
+    await openVideo(returnPath, nextSourceType: returnSourceType);
+    setFrameRate(returnFrameRate);
+    if (returnSourceType != 'stream' && returnPosition > Duration.zero) {
+      await _service.seek(returnPosition);
+    }
+
+    notifyListeners();
   }
 
   Future<void> togglePlay() async {
@@ -111,6 +173,22 @@ class VideoPanelController extends ChangeNotifier {
     final safeRatio = ratio.clamp(0.0, 1.0);
     final nextMs = (totalDuration.inMilliseconds * safeRatio).round();
     await _service.seek(Duration(milliseconds: nextMs));
+  }
+
+  void clearCurrentSource() {
+    videoPath = '';
+    liveSourcePath = '';
+    sourceType = '';
+    replayReturnPath = '';
+    replayReturnSourceType = '';
+    replaySourceKey = '';
+    currentPosition = Duration.zero;
+    totalDuration = Duration.zero;
+    replayReturnPosition = Duration.zero;
+    replayBaseSourceSeconds = 0.0;
+    errorText = '';
+    isReplayMode = false;
+    notifyListeners();
   }
 
   void setFrameRate(double value) {

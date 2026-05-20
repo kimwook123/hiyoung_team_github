@@ -50,3 +50,11 @@ class HealthResponse(BaseModel):
     status: str
     event_log_path: str
     event_log_exists: bool
+
+
+class ResetDataResponse(BaseModel):
+    ok: bool
+    source_key: str
+    cleared_events: bool
+    deleted_event_count: int
+    deleted_clip_count: int

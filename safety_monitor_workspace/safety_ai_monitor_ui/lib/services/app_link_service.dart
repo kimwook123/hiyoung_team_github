@@ -2,6 +2,7 @@
 import 'dart:io';
 
 import '../models/app_link_info.dart';
+import '../models/frame_detection_snapshot.dart';
 
 // 이 파일은 Flutter와 Python AI Worker 사이의 파일 기반 연결 도구입니다.
 // source_state.json, ui_bridge.json, 로그 파일 경로 규칙을 여기서 다룹니다.
@@ -84,6 +85,59 @@ class AppLinkService {
     return '${logsDir.path}${Platform.pathSeparator}events.jsonl';
   }
 
+  Future<String> buildFrameDetectionLogPath() async {
+    final logsDir = await _getLogsDirectory();
+    return '${logsDir.path}${Platform.pathSeparator}frame_detections.jsonl';
+  }
+
+  Future<DateTime?> readFrameDetectionLogModifiedAt() async {
+    final file = File(await buildFrameDetectionLogPath());
+    if (!await file.exists()) {
+      return null;
+    }
+    return (await file.stat()).modified;
+  }
+
+  Future<List<FrameDetectionSnapshot>> readFrameDetectionSnapshots({
+    required String sourceKey,
+  }) async {
+    final normalizedSourceKey = sourceKey.trim();
+    if (normalizedSourceKey.isEmpty) {
+      return const [];
+    }
+
+    final file = File(await buildFrameDetectionLogPath());
+    if (!await file.exists()) {
+      return const [];
+    }
+
+    final lines = await file.readAsLines();
+    final items = <FrameDetectionSnapshot>[];
+    for (final line in lines) {
+      final trimmedLine = line.trim();
+      if (trimmedLine.isEmpty) {
+        continue;
+      }
+
+      try {
+        final decoded = jsonDecode(trimmedLine);
+        if (decoded is Map &&
+            decoded['source_key']?.toString().trim() == normalizedSourceKey) {
+          items.add(
+            FrameDetectionSnapshot.fromJson(Map<String, dynamic>.from(decoded)),
+          );
+        }
+      } catch (_) {
+        // 파싱 실패 줄은 건너뜁니다.
+      }
+    }
+
+    items.sort(
+      (left, right) => left.sourceTimeSeconds.compareTo(right.sourceTimeSeconds),
+    );
+    return items;
+  }
+
   Future<void> clearLogFile({
     required String sourceType,
     required String sourceValue,
@@ -95,6 +149,71 @@ class AppLinkService {
     final file = File(logPath);
     await file.parent.create(recursive: true);
     await file.writeAsString('', encoding: utf8);
+  }
+
+  String buildSourceKey({
+    required String sourceType,
+    required String sourceValue,
+  }) {
+    final normalizedType = sourceType.trim().toLowerCase();
+    final normalizedValue = sourceValue.trim().replaceAll('\\', '/').toLowerCase();
+    return '$normalizedType|$normalizedValue';
+  }
+
+  String buildSourceSlug({
+    required String sourceType,
+    required String sourceValue,
+  }) {
+    final sourceKey = buildSourceKey(
+      sourceType: sourceType,
+      sourceValue: sourceValue,
+    );
+    return 'src_${_fnv1a32(sourceKey).toRadixString(16).padLeft(8, '0')}';
+  }
+
+  Future<void> clearAnalysisArtifactsForSource({
+    required String sourceType,
+    required String sourceValue,
+  }) async {
+    final logsDir = await _getLogsDirectory();
+    await logsDir.create(recursive: true);
+    final sourceKey = buildSourceKey(
+      sourceType: sourceType,
+      sourceValue: sourceValue,
+    );
+    final sourceSlug = buildSourceSlug(
+      sourceType: sourceType,
+      sourceValue: sourceValue,
+    );
+
+    final sourceLogPath = await buildLogPath(
+      sourceType: sourceType,
+      sourceValue: sourceValue,
+    );
+    final sourceLogFile = File(sourceLogPath);
+    await sourceLogFile.parent.create(recursive: true);
+    await sourceLogFile.writeAsString('', encoding: utf8);
+
+    for (final fileName in [
+      'events.jsonl',
+      'events_post_failed.jsonl',
+      'frame_detections.jsonl',
+    ]) {
+      final file = File('${logsDir.path}${Platform.pathSeparator}$fileName');
+      await _filterJsonLinesBySourceKey(file, sourceKey);
+    }
+
+    final clipsDir =
+        Directory('${logsDir.path}${Platform.pathSeparator}clips');
+    if (await clipsDir.exists()) {
+      await for (final entity in clipsDir.list()) {
+        if (entity is File &&
+            entity.path.toLowerCase().endsWith('.mp4') &&
+            _getFileName(entity.path).startsWith('${sourceSlug}__')) {
+          await entity.delete();
+        }
+      }
+    }
   }
 
   Future<File> _getSourceStateFile() async {
@@ -153,5 +272,44 @@ class AppLinkService {
       return fileName;
     }
     return fileName.substring(0, dotIndex);
+  }
+
+  Future<void> _filterJsonLinesBySourceKey(File file, String sourceKey) async {
+    if (!await file.exists()) {
+      return;
+    }
+
+    final lines = await file.readAsLines();
+    final keptLines = <String>[];
+    for (final line in lines) {
+      final trimmedLine = line.trim();
+      if (trimmedLine.isEmpty) {
+        continue;
+      }
+
+      try {
+        final decoded = jsonDecode(trimmedLine);
+        if (decoded is Map &&
+            decoded['source_key']?.toString().trim() == sourceKey) {
+          continue;
+        }
+      } catch (_) {
+        // 파싱 실패 줄은 보존합니다.
+      }
+
+      keptLines.add(trimmedLine);
+    }
+
+    final nextText = keptLines.isEmpty ? '' : '${keptLines.join('\n')}\n';
+    await file.writeAsString(nextText, encoding: utf8);
+  }
+
+  int _fnv1a32(String text) {
+    var result = 0x811C9DC5;
+    for (final codeUnit in text.codeUnits) {
+      result ^= codeUnit;
+      result = (result * 0x01000193) & 0xFFFFFFFF;
+    }
+    return result;
   }
 }

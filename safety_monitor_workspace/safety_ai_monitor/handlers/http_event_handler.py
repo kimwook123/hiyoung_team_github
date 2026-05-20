@@ -64,6 +64,8 @@ class HttpEventHandler(EventHandler):
         upload_result = self.clip_upload_client.upload_clip(
             clip_path=clip_path,
             event_key=event.event_key,
+            source_key=str(getattr(event, "source_key", "") or "").strip() or None,
+            source_slug=str(getattr(event, "source_slug", "") or "").strip() or None,
         )
         if upload_result is None:
             payload["clip_upload_ok"] = False

@@ -7,6 +7,7 @@ from core.event_clip_recorder import EventClipRecorder
 from core.event_filter import EventFilter
 from core.event_handler import EventHandler
 from core.event_rule import EventRule
+from core.frame_detection_recorder import FrameDetectionRecorder
 from core.frame_source import FrameSource
 from core.object_tracker import PersonTracker
 
@@ -25,8 +26,13 @@ class VideoPipeline:
         event_filter: EventFilter,
         tracker: PersonTracker,
         clip_recorder: EventClipRecorder,
+        frame_detection_recorder: FrameDetectionRecorder,
         show_screen: bool,
         restart_checker=None,
+        source_type: str = "",
+        source_value: str = "",
+        source_key: str = "",
+        source_slug: str = "",
     ) -> None:
         self.frame_source = frame_source
         self.model = model
@@ -35,10 +41,15 @@ class VideoPipeline:
         self.event_filter = event_filter
         self.tracker = tracker
         self.clip_recorder = clip_recorder
+        self.frame_detection_recorder = frame_detection_recorder
         self.show_screen = show_screen
         self.screen_available = show_screen
         self.source_time_mode = "real"
         self.restart_checker = restart_checker
+        self.source_type = source_type
+        self.source_value = source_value
+        self.source_key = source_key
+        self.source_slug = source_slug
 
     def run(self) -> str:
         # 이 함수가 실제 분석 루프입니다.
@@ -66,6 +77,15 @@ class VideoPipeline:
                 result = self.model.predict(frame, frame_id)
                 self._fill_result_time(result=result, now=now, frame_id=frame_id)
                 result = self.tracker.update(result)
+                self.frame_detection_recorder.write(
+                    result,
+                    source_type=self.source_type,
+                    source_value=self.source_value,
+                    source_key=self.source_key,
+                    source_slug=self.source_slug,
+                    frame_width=frame.shape[1],
+                    frame_height=frame.shape[0],
+                )
 
                 events = []
                 for rule in self.rules:
@@ -79,6 +99,8 @@ class VideoPipeline:
                     frame_id=frame_id,
                     now=now,
                 )
+                self._attach_source_context(state_events)
+                self._attach_source_context(active_events)
                 # 클립 저장은 EventFilter가 만든 상태 이벤트를 기준으로 시작/종료됩니다.
                 self.clip_recorder.update(
                     frame=frame,
@@ -91,10 +113,15 @@ class VideoPipeline:
                         # EventHandler는 txt 로그, JSONL, HTTP 전송 같은 후처리를 담당합니다.
                         handler.handle(event)
 
-                # 진행 중인 ACTIVE 이벤트도 txt 로그에는 계속 반영해 GUI 파일 로그 모드가 최신 상태를 읽게 합니다.
+                # 진행 중인 ACTIVE 이벤트도 파일 기반 GUI가 현재 프레임 박스를 갱신할 수 있게
+                # txt 로그와 로컬 JSONL에는 계속 반영합니다.
                 for event in active_events:
                     for handler in self.handlers:
-                        if handler.__class__.__name__ == "LogEventHandler":
+                        if handler.__class__.__name__ in {
+                            "LogEventHandler",
+                            "JsonEventHandler",
+                            "HttpEventHandler",
+                        }:
                             handler.handle(event)
 
                 if self.screen_available:
@@ -111,6 +138,7 @@ class VideoPipeline:
                 frame_id += 1
         finally:
             closed_events = self.event_filter.close_all()
+            self._attach_source_context(closed_events)
             self.clip_recorder.finalize(closed_events)
             for event in closed_events:
                 for handler in self.handlers:
@@ -218,3 +246,10 @@ class VideoPipeline:
         if hours > 0:
             return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
         return f"{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
+
+    def _attach_source_context(self, events: list[object]) -> None:
+        for event in events:
+            setattr(event, "source_type", self.source_type)
+            setattr(event, "source_value", self.source_value)
+            setattr(event, "source_key", self.source_key)
+            setattr(event, "source_slug", self.source_slug)

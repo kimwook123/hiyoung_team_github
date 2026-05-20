@@ -15,6 +15,7 @@ class ApiEventController extends ChangeNotifier {
 
   List<ApiEventItem> items = const [];
   Set<String> selectedKeys = <String>{};
+  String visibleSourceKey = '';
   bool isLoading = false;
   String? errorMessage;
   DateTime? lastUpdatedAt;
@@ -24,7 +25,17 @@ class ApiEventController extends ChangeNotifier {
   DateTime? lastHealthCheckedAt;
 
   // 화면 위젯은 기존 EventLogItem을 기대하므로 API 응답을 어댑터로 변환해서 노출합니다.
-  List<EventLogItem> get logItems => apiEventsToLogItems(items);
+  List<EventLogItem> get logItems =>
+      apiEventsToLogItems(_latestItemsByEventKey(filteredItems));
+  List<ApiEventItem> get filteredItems {
+    final sourceKey = visibleSourceKey.trim();
+    if (sourceKey.isEmpty) {
+      return items;
+    }
+    return items
+        .where((item) => item.sourceKey.trim() == sourceKey)
+        .toList(growable: false);
+  }
 
   Future<void> loadLatestEvents({
     int? limit,
@@ -114,27 +125,75 @@ class ApiEventController extends ChangeNotifier {
     }
   }
 
-  List<EventLogItem> getLogItemsForFrame(int frameValue) {
-    // API 목록도 기존 오버레이 위젯을 재사용할 수 있게 frame 기준으로 다시 걸러냅니다.
-    final selectedMap = <String, EventLogItem>{};
-    for (final item in logItems) {
-      if (!item.matchesFrame(frameValue)) {
-        continue;
+  Future<bool> resetServerData({
+    required String sourceKey,
+    required String sourceSlug,
+  }) async {
+    try {
+      final ok = await _service.resetServerData(
+        sourceKey: sourceKey,
+        sourceSlug: sourceSlug,
+      );
+      if (!ok) {
+        errorMessage = '서버 이벤트/클립 초기화에 실패했습니다.';
+        notifyListeners();
       }
-      selectedMap[item.eventKeyText] = item;
+      return ok;
+    } catch (error) {
+      errorMessage = '서버 이벤트/클립 초기화에 실패했습니다: $error';
+      notifyListeners();
+      return false;
     }
-    return selectedMap.values.toList();
   }
 
-  List<ApiEventItem> getItemsForFrame(int frameValue) {
+  List<EventLogItem> getLogItemsForTime(double secondsValue) {
+    return apiEventsToLogItems(getItemsForTime(secondsValue));
+  }
+
+  List<EventLogItem> getLogItemsForFrame(int frameValue) {
+    // 기존 공통 인터페이스 호환용 메서드입니다.
+    // 현재 화면의 실제 오버레이/이동은 source_time_seconds 기준을 사용합니다.
+    return logItems;
+  }
+
+  List<ApiEventItem> getItemsForTime(double secondsValue) {
     final selectedMap = <String, ApiEventItem>{};
-    for (final item in items) {
-      if (!_matchesFrame(item, frameValue)) {
+    final orderedItems = [...filteredItems]..sort(_compareByTimeline);
+    for (final item in orderedItems) {
+      if (item.sourceTimeSeconds.isNaN || item.sourceTimeSeconds > secondsValue) {
         continue;
+      }
+      if (selectedMap.containsKey(item.eventKey)) {
+        selectedMap.remove(item.eventKey);
       }
       selectedMap[item.eventKey] = item;
     }
-    return selectedMap.values.toList();
+    selectedMap.removeWhere((_, item) => !_isVisibleAtTime(item, secondsValue));
+    return selectedMap.values.toList(growable: false);
+  }
+
+  ApiEventItem? findItemByEventKey(String eventKey) {
+    final normalizedEventKey = eventKey.trim();
+    if (normalizedEventKey.isEmpty) {
+      return null;
+    }
+
+    final orderedItems = [...filteredItems]..sort(_compareByTimeline);
+    for (final item in orderedItems.reversed) {
+      if (item.eventKey == normalizedEventKey) {
+        return item;
+      }
+    }
+    return null;
+  }
+
+  void setVisibleSourceKey(String sourceKey) {
+    if (visibleSourceKey == sourceKey) {
+      return;
+    }
+    visibleSourceKey = sourceKey;
+    selectedKeys = <String>{};
+    notifyListeners();
   }
 
   void selectLogItem(EventLogItem item) {
@@ -150,22 +209,107 @@ class ApiEventController extends ChangeNotifier {
   void clear() {
     items = const [];
     selectedKeys = <String>{};
+    visibleSourceKey = '';
     errorMessage = null;
     lastUpdatedAt = null;
     notifyListeners();
   }
 
-  bool _matchesFrame(ApiEventItem item, int frameValue) {
-    final startFrame = item.startedFrameId;
-    final endFrame = item.endedFrameId;
-    if (startFrame == null) {
+  List<ApiEventItem> _latestItemsByEventKey(List<ApiEventItem> sourceItems) {
+    final selectedMap = <String, ApiEventItem>{};
+    final orderedItems = [...sourceItems]..sort(_compareByTimeline);
+    for (final item in orderedItems) {
+      if (selectedMap.containsKey(item.eventKey)) {
+        selectedMap.remove(item.eventKey);
+      }
+      selectedMap[item.eventKey] = item;
+    }
+    return selectedMap.values.toList(growable: false);
+  }
+
+  int _compareByTimeline(ApiEventItem left, ApiEventItem right) {
+    final timeCompare = left.sourceTimeSeconds.compareTo(right.sourceTimeSeconds);
+    if (timeCompare != 0) {
+      return timeCompare;
+    }
+    return _statusOrder(left.status).compareTo(_statusOrder(right.status));
+  }
+
+  bool _isVisibleAtTime(ApiEventItem item, double secondsValue) {
+    final startTime = _resolveStartTime(item);
+    if (startTime == null || secondsValue < startTime) {
       return false;
     }
 
-    if (endFrame != null) {
-      return frameValue >= startFrame && frameValue <= endFrame;
+    final endTime = _resolveEndTime(item);
+    if (endTime != null && secondsValue > endTime) {
+      return false;
     }
 
-    return item.frameId == frameValue || frameValue >= startFrame;
+    return true;
+  }
+
+  double? _resolveStartTime(ApiEventItem item) {
+    final parsed = _parseVideoTime(item.startedSourceTimeText);
+    if (parsed != null) {
+      return parsed;
+    }
+    if (!item.sourceTimeSeconds.isNaN) {
+      return item.sourceTimeSeconds;
+    }
+    return null;
+  }
+
+  double? _resolveEndTime(ApiEventItem item) {
+    final parsed = _parseVideoTime(item.endedSourceTimeText);
+    if (parsed != null) {
+      return parsed;
+    }
+    if (item.status.trim().toUpperCase() == 'END' && !item.sourceTimeSeconds.isNaN) {
+      return item.sourceTimeSeconds;
+    }
+    return null;
+  }
+
+  double? _parseVideoTime(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty || trimmed == '-') {
+      return null;
+    }
+
+    final parts = trimmed.split(':');
+    if (parts.length < 2 || parts.length > 3) {
+      return null;
+    }
+
+    if (parts.length == 2) {
+      final minutes = int.tryParse(parts[0]);
+      final seconds = double.tryParse(parts[1]);
+      if (minutes == null || seconds == null) {
+        return null;
+      }
+      return (minutes * 60) + seconds;
+    }
+
+    final hours = int.tryParse(parts[0]);
+    final minutes = int.tryParse(parts[1]);
+    final seconds = double.tryParse(parts[2]);
+    if (hours == null || minutes == null || seconds == null) {
+      return null;
+    }
+    return (hours * 3600) + (minutes * 60) + seconds;
+  }
+
+  int _statusOrder(String status) {
+    switch (status.trim().toUpperCase()) {
+      case 'START':
+        return 0;
+      case 'ACTIVE':
+        return 1;
+      case 'END':
+        return 2;
+      default:
+        return 3;
+    }
   }
 }

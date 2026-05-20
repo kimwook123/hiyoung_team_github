@@ -119,6 +119,27 @@ class EventApiService {
     return null;
   }
 
+  Future<bool> resetServerData({
+    required String sourceKey,
+    required String sourceSlug,
+  }) async {
+    final uri = _buildUri('/api/admin/reset-data', const {});
+
+    try {
+      final response = await _client.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'source_key': sourceKey,
+          'source_slug': sourceSlug,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<List<ApiEventItem>> _fetchEventList(Uri uri) async {
     // 네트워크 실패나 JSON 파싱 실패가 나도 앱이 바로 죽지 않게 빈 목록으로 처리합니다.
     try {

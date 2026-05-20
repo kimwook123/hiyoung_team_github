@@ -7,12 +7,12 @@ import cv2
 from core.event_rule import Event
 from core.event_types import EventStatus
 
-# 이 파일은 이벤트 시작 전후 프레임을 묶어 MP4 클립으로 저장합니다.
+# 이 파일은 이벤트 시작부터 종료까지의 프레임을 MP4 클립으로 저장합니다.
 # 종료 이벤트가 발생하면 clip_path가 Event에 연결되어 이후 로그나 서버 업로드에 사용됩니다.
 
 @dataclass
 class ClipFrame:
-    # 시작 직전 몇 초를 같이 저장하기 위해 잠시 버퍼에 쌓아 두는 프레임입니다.
+    # 현재는 과거 프레임 버퍼를 직접 쓰지 않지만 구조는 유지합니다.
     frame_id: int
     frame: object
 
@@ -33,8 +33,9 @@ class EventClipRecorder:
         clip_dir: str,
         fps: float,
         before_seconds: float,
+        source_slug: str = "",
     ) -> None:
-        # before_seconds만큼 이전 프레임을 버퍼에 담아 시작 직전 상황도 같이 저장합니다.
+        # 현재 요구사항은 이벤트 시작~종료 구간 저장이므로, pre-roll은 사용하지 않습니다.
         self.enabled = enabled
         self.clip_dir = Path(clip_dir)
         self.fps = fps if fps > 0 else 30.0
@@ -42,6 +43,7 @@ class EventClipRecorder:
         self.before_frame_count = max(1, int(self.fps * self.before_seconds))
         self.frame_buffer: deque[ClipFrame] = deque(maxlen=self.before_frame_count)
         self.clip_states: dict[str, ClipState] = {}
+        self.source_slug = source_slug.strip()
 
     def update(
         self,
@@ -80,7 +82,11 @@ class EventClipRecorder:
 
         height, width = frame.shape[:2]
         self.clip_dir.mkdir(parents=True, exist_ok=True)
-        clip_name = f"{event.event_type.value}_{event.person_id or 'x'}_{event.started_frame_id}.mp4"
+        clip_name = (
+            f"{event.event_type.value}_{event.person_id or 'x'}_{event.started_frame_id}.mp4"
+        )
+        if self.source_slug:
+            clip_name = f"{self.source_slug}__{clip_name}"
         clip_path = str((self.clip_dir / clip_name).resolve())
         writer = cv2.VideoWriter(
             clip_path,
@@ -97,11 +103,6 @@ class EventClipRecorder:
             last_frame_id=-1,
         )
         self.clip_states[event.event_key] = clip_state
-
-        for clip_frame in self.frame_buffer:
-            if clip_frame.frame_id < (event.started_frame_id or 0):
-                writer.write(clip_frame.frame)
-                clip_state.last_frame_id = clip_frame.frame_id
 
         writer.write(frame)
         clip_state.last_frame_id = frame_id

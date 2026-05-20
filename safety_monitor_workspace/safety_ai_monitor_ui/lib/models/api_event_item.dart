@@ -10,8 +10,12 @@ class ApiEventItem {
     required this.message,
     required this.frameId,
     required this.personId,
+    required this.sourceKey,
+    required this.sourceType,
+    required this.sourceValue,
     required this.createdAt,
     required this.durationSeconds,
+    required this.sourceTimeSeconds,
     required this.clipPath,
     required this.clipUrl,
     required this.serverClipPath,
@@ -34,8 +38,12 @@ class ApiEventItem {
   final String message;
   final int frameId;
   final int? personId;
+  final String sourceKey;
+  final String sourceType;
+  final String sourceValue;
   final String createdAt;
   final double durationSeconds;
+  final double sourceTimeSeconds;
   final String clipPath;
   final String clipUrl;
   final String serverClipPath;
@@ -63,8 +71,12 @@ class ApiEventItem {
       message: _toStringValue(json['message']),
       frameId: _toIntValue(json['frame_id']) ?? 0,
       personId: _toIntValue(json['person_id']),
+      sourceKey: _toStringValue(json['source_key']),
+      sourceType: _toStringValue(json['source_type']),
+      sourceValue: _toStringValue(json['source_value']),
       createdAt: _toStringValue(json['created_at']),
       durationSeconds: _toDoubleValue(json['duration_seconds']) ?? 0.0,
+      sourceTimeSeconds: _toDoubleValue(json['source_time_seconds']) ?? 0.0,
       clipPath: _toStringValue(json['clip_path']),
       clipUrl: _toStringValue(json['clip_url']),
       serverClipPath: _toStringValue(json['server_clip_path']),

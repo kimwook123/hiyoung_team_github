@@ -52,6 +52,7 @@ safety_ai_monitor/.yolo_config/
 build/
 
 # Flutter Windows generated artifacts
+flutter/
 safety_ai_monitor_ui/build/
 safety_ai_monitor_ui/windows/flutter/ephemeral/
 

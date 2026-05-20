@@ -58,8 +58,14 @@ EVENT_CLIP_UPLOAD_TIMEOUT_SECONDS = 5.0
 # Flutter UI와 연결할 정보 파일 경로
 BRIDGE_PATH = "logs/ui_bridge.json"
 
+# Flutter UI와 연결할 다중 소스 브리지 목록 파일 경로
+BRIDGES_PATH = "logs/ui_bridges.json"
+
 # Flutter UI가 선택한 입력 소스 상태 파일
 SOURCE_STATE_PATH = "logs/source_state.json"
+
+# Flutter UI가 선택한 다중 입력 소스 상태 파일
+SOURCES_STATE_PATH = "logs/sources_state.json"
 
 # 이벤트 클립 저장 폴더
 EVENT_CLIP_DIR = "logs/clips"

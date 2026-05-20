@@ -146,3 +146,11 @@
 - 이미지 입력 전용 경로 또는 학습/평가 파이프라인 존재 여부
 - 다중 모델 비교용 현재 코드 존재 여부
 - `ui_bridge.json` 자동 연결 기능을 GUI가 실제 초기화에 사용하도록 설계할 계획 여부
+
+## 멀티소스 확장 메모
+- 다중 소스 상태 파일은 `sources_state.json`이며, 각 항목은 `slot_id`, `source_type`, `source_value`, `client_id`, `session_id`를 가질 수 있다.
+- Python GUI 모드는 이 목록을 읽고 소스별 worker thread를 띄우는 방향으로 확장되었다.
+- 단일 소스 호환을 위해 기존 `source_state.json`과 `ui_bridge.json`도 유지한다.
+- 다중 소스 브리지 목록은 `ui_bridges.json`에 source_key별로 기록된다.
+- 서버는 `source_key`, `source_type`, `client_id`, `session_id` 기준 이벤트 필터를 지원하고, `GET /api/events/sources`로 소스 요약 목록을 제공한다.
+- 현재 Flutter 메인 화면은 여전히 단일 패널 중심이며, 멀티 패널 모니터 월 UI는 후속 리팩터링이 필요하다.

@@ -51,6 +51,8 @@ def serialize_event(event: Event) -> dict[str, object]:
         "source_type": getattr(event, "source_type", None),
         "source_value": getattr(event, "source_value", None),
         "source_key": getattr(event, "source_key", None),
+        "client_id": getattr(event, "client_id", None),
+        "session_id": getattr(event, "session_id", None),
         "source_time_seconds": getattr(event, "source_time_seconds", None),
         "source_time_text": getattr(event, "source_time_text", None),
         "started_source_time_text": getattr(

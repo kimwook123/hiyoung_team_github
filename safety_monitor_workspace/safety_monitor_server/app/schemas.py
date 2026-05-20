@@ -10,6 +10,19 @@ class EventListResponse(BaseModel):
     items: list[dict[str, Any]]
 
 
+class SourceSummaryItem(BaseModel):
+    source_key: str
+    source_type: str
+    source_value: str
+    event_count: int
+    latest_received_at: str
+
+
+class SourceSummaryListResponse(BaseModel):
+    count: int
+    items: list[SourceSummaryItem]
+
+
 class EventDetailResponse(BaseModel):
     event_key: str
     item: dict[str, Any]

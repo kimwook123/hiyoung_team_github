@@ -16,6 +16,7 @@ class VideoViewBox extends StatelessWidget {
     required this.overlayDetections,
     required this.overlaySourceWidth,
     required this.overlaySourceHeight,
+    required this.overlayStatusText,
   });
 
   final VideoPanelController controller;
@@ -23,6 +24,7 @@ class VideoViewBox extends StatelessWidget {
   final List<VideoOverlayDetection> overlayDetections;
   final double overlaySourceWidth;
   final double overlaySourceHeight;
+  final String overlayStatusText;
 
   @override
   Widget build(BuildContext context) {
@@ -54,6 +56,31 @@ class VideoViewBox extends StatelessWidget {
             sourceWidth: overlaySourceWidth,
             sourceHeight: overlaySourceHeight,
           ),
+          if (controller.hasVideo && overlayStatusText.isNotEmpty)
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 12,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.black87,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  child: Text(
+                    overlayStatusText,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

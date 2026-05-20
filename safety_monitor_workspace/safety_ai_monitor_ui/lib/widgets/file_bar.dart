@@ -8,6 +8,8 @@ class FileBar extends StatelessWidget {
     required this.videoPath,
     required this.sourceType,
     required this.sourceHint,
+    required this.sourceCount,
+    required this.activeSourceLabel,
     required this.hasSelectedSource,
     required this.canReturnFromReplay,
     required this.returnButtonText,
@@ -21,6 +23,8 @@ class FileBar extends StatelessWidget {
   final String videoPath;
   final String sourceType;
   final String sourceHint;
+  final int sourceCount;
+  final String activeSourceLabel;
   final bool hasSelectedSource;
   final bool canReturnFromReplay;
   final String returnButtonText;
@@ -38,8 +42,10 @@ class FileBar extends StatelessWidget {
         _PathCard(
           title: sourceType == 'stream' ? '현재 스트림 주소' : '영상 파일',
           value: videoPath.isEmpty ? '선택되지 않음' : videoPath,
-          buttonText: '영상 열기',
+          buttonText: '영상 추가',
           helperText: sourceHint,
+          sourceCount: sourceCount,
+          activeSourceLabel: activeSourceLabel,
           onPressed: onPickVideo,
           hasSelectedSource: hasSelectedSource,
           onClearSelectedSource: onClearSelectedSource,
@@ -70,7 +76,7 @@ class FileBar extends StatelessWidget {
               const SizedBox(width: 12),
               FilledButton(
                 onPressed: onOpenStream,
-                child: const Text('스트림 열기'),
+                child: const Text('스트림 추가'),
               ),
             ],
           ),
@@ -86,6 +92,8 @@ class _PathCard extends StatelessWidget {
     required this.value,
     required this.buttonText,
     required this.helperText,
+    required this.sourceCount,
+    required this.activeSourceLabel,
     required this.onPressed,
     required this.hasSelectedSource,
     required this.onClearSelectedSource,
@@ -98,6 +106,8 @@ class _PathCard extends StatelessWidget {
   final String value;
   final String buttonText;
   final String helperText;
+  final int sourceCount;
+  final String activeSourceLabel;
   final VoidCallback onPressed;
   final bool hasSelectedSource;
   final VoidCallback onClearSelectedSource;
@@ -129,6 +139,17 @@ class _PathCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             helperText,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Colors.black54,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            sourceCount <= 0
+                ? '등록된 소스가 없습니다.'
+                : '등록된 소스 $sourceCount개 / 현재 화면: $activeSourceLabel',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: Colors.black54,
             ),

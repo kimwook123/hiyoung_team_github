@@ -23,6 +23,10 @@ class EventApiService {
     int? limit,
     String? eventType,
     String? status,
+    String? sourceKey,
+    String? sourceType,
+    String? clientId,
+    String? sessionId,
   }) async {
     // /api/events는 전체 기록 또는 최신 상태 목록을 가져오는 기본 조회 API입니다.
     final uri = _buildUri(
@@ -32,6 +36,10 @@ class EventApiService {
         'limit': limit?.toString(),
         'event_type': _normalizeQueryValue(eventType),
         'status': _normalizeQueryValue(status),
+        'source_key': _normalizeQueryValue(sourceKey),
+        'source_type': _normalizeQueryValue(sourceType),
+        'client_id': _normalizeQueryValue(clientId),
+        'session_id': _normalizeQueryValue(sessionId),
       },
     );
 
@@ -42,6 +50,10 @@ class EventApiService {
     int? limit,
     String? eventType,
     String? status,
+    String? sourceKey,
+    String? sourceType,
+    String? clientId,
+    String? sessionId,
   }) async {
     final uri = _buildUri(
       '/api/events/latest',
@@ -49,6 +61,10 @@ class EventApiService {
         'limit': limit?.toString(),
         'event_type': _normalizeQueryValue(eventType),
         'status': _normalizeQueryValue(status),
+        'source_key': _normalizeQueryValue(sourceKey),
+        'source_type': _normalizeQueryValue(sourceType),
+        'client_id': _normalizeQueryValue(clientId),
+        'session_id': _normalizeQueryValue(sessionId),
       },
     );
 

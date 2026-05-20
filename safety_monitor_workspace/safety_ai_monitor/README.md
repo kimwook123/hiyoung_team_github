@@ -54,6 +54,8 @@ GUI를 직접 렌더링하지 않고, 설정에 따라 로컬 로그를 남기�
 - `INPUT_MODE`
 - `MODEL_TYPE`
 - `MODEL_PATH`
+- `PERSON_MODEL_PATH`
+- `SAFETY_MODEL_PATH`
 - `ENABLE_JSON_EVENT_LOG`
 - `ENABLE_HTTP_EVENT_POST`
 - `EVENT_POST_URL`
@@ -63,6 +65,16 @@ GUI를 직접 렌더링하지 않고, 설정에 따라 로컬 로그를 남기�
 - `SAVE_EVENT_CLIP`
 
 설정값은 실험 중 바뀔 수 있으므로, 실행 전 실제 `config.py`를 다시 확인하는 것을 권장합니다.
+
+현재 기본 `MODEL_TYPE`은 `yolo_ensemble`이며:
+
+- `PERSON_MODEL_PATH`: 사람 전용 YOLO 가중치
+- `SAFETY_MODEL_PATH`: 안전모 전용 YOLO 가중치
+
+를 함께 로드해 한 프레임에서 동시에 추론합니다.
+
+유튜브 링크 입력을 지원하려면 `requirements.txt`의 `yt-dlp`가 설치되어 있어야 합니다.
+GUI에서 유튜브 링크를 열면 Python helper가 먼저 영상을 내려받고, 이후 일반 video 입력처럼 분석합니다.
 
 ## 실행
 

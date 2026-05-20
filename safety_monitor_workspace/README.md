@@ -3,12 +3,12 @@
 Python 기반 위험 감지 파이프라인과 Flutter 기반 GUI를 함께 사용하는 Windows 프로젝트입니다.
 
 - Python 레이어: 영상/스트림 입력, 객체 검출, 추적, 위험 이벤트 판정, 로그/클립 저장
-- Flutter 레이어: 영상 재생, 스트림 열기, 로그 모니터링, 이벤트 오버레이 표시
+- Flutter 레이어: 영상 재생, 스트림 열기, API 서버 이벤트 조회, 이벤트 오버레이 표시
 
 ## 처음 보는 팀원을 위한 30초 시작 가이드
 
-- 안정적으로 기존 기능만 확인하려면: `run_python_and_gui.bat`를 사용하고 Flutter는 파일 로그 모드로 보면 됩니다. 서버 없이 기존 영상 분석, 로그, 클립 흐름을 확인할 수 있습니다.
-- 서버-클라이언트 분리 구조까지 확인하려면: `run_server.bat`와 `run_python_only.bat`를 각각 실행한 뒤, Flutter에서 API 서버 모드를 선택합니다. `API 새로고침`, 상세, `클립 열기`로 서버 조회 흐름을 볼 수 있습니다.
+- 기본 구조를 확인하려면: `run_python_server_and_gui.bat`를 사용합니다. Python AI Worker, FastAPI Server, Flutter GUI를 함께 실행해 API 기반 이벤트/클립 흐름을 볼 수 있습니다.
+- 서버-클라이언트 분리 구조를 따로 확인하려면: `run_server.bat`와 `run_python_only.bat`를 각각 실행한 뒤 GUI를 열어 `API 새로고침`, 상세, `클립 열기` 흐름을 보면 됩니다.
 - 서버 전송 실패 이벤트를 다시 보내려면: `run_repost_failed_events.bat`를 사용합니다. `events_post_failed.jsonl`에 쌓인 실패 이벤트를 `POST /api/events`로 재전송합니다.
 
 요약하면 Python AI Worker가 이벤트를 만들고, FastAPI Server가 저장/조회하며, Flutter GUI가 이를 표시합니다.
@@ -33,12 +33,11 @@ Python 기반 위험 감지 파이프라인과 Flutter 기반 GUI를 함께 사�
 | 모드 | 목적 | 사용하는 배치 파일 | 필요한 선행 조건 | 데이터 흐름 |
 | --- | --- | --- | --- | --- |
 | Python AI Worker만 실행 | 영상/스트림 분석과 이벤트 생성만 단독 실행 | `run_python_only.bat` | Python 환경, `safety_ai_monitor` requirements 설치 | Python AI -> txt 로그, JSONL 또는 HTTP POST |
-| 기존 로컬 실행 | Python AI와 기존 GUI 파일 로그 흐름 사용 | `run_python_and_gui.bat` | Python 환경, 빌드된 GUI | Python AI -> `*_event_log.txt`, 필요 시 `events.jsonl` -> Flutter 파일 로그 모드 |
+| 기존 로컬 실행 | Python AI와 GUI를 함께 실행 | `run_python_and_gui.bat` | Python 환경, 빌드된 GUI | Python AI -> FastAPI Server/API -> Flutter |
 | 서버만 실행 | 서버 소유 이벤트/클립 저장소와 API만 단독 실행 | `run_server.bat` | 서버 requirements 설치, 필요 시 Python AI Worker 또는 기존 서버 data 파일 존재 | `data/events.jsonl`, `data/clips/` <-> FastAPI API |
 | 전체 실행 | Python AI, FastAPI 서버, Flutter GUI 동시 실행 | `run_python_server_and_gui.bat` | Python 환경, 서버 requirements, 빌드된 GUI | Python AI -> 서버 또는 파일 로그 -> FastAPI/Flutter |
 | fallback 재전송 | 서버 전송 실패 이벤트 수동 재전송 | `run_repost_failed_events.bat` | `logs/events_post_failed.jsonl` 존재, FastAPI 서버 실행 중 | fallback JSONL -> `POST /api/events` -> 서버 저장 |
-| Flutter 파일 로그 모드 | 기존 txt 로그 기반 이벤트 확인 | `run_gui_only.bat` 또는 전체 실행 배치 | Python AI가 `*_event_log.txt` 생성 중이어야 함 | `*_event_log.txt` -> Flutter |
-| Flutter API 서버 모드 | 서버 API 기반 이벤트 목록/상세/health/클립 확인 | `run_gui_only.bat` 또는 전체 실행 배치 | FastAPI 서버 실행 중, 필요 시 Python AI 또는 기존 서버 data 파일 존재 | `POST /api/events`, `POST /api/clips` -> FastAPI API -> Flutter |
+| Flutter GUI | 서버 API 기반 이벤트 목록/상세/health/클립 확인 | `run_gui_only.bat` 또는 전체 실행 배치 | FastAPI 서버 실행 중, 필요 시 Python AI 또는 기존 서버 data 파일 존재 | `POST /api/events`, `POST /api/clips` -> FastAPI API -> Flutter |
 
 ## 현재 확인한 상태
 
@@ -95,8 +94,8 @@ Python 기반 위험 감지 파이프라인과 Flutter 기반 GUI를 함께 사�
 ### Flutter GUI
 
 - 폴더: `safety_ai_monitor_ui`
-- 역할: 영상 재생, 스트림 입력, 로그 모니터링, 이벤트 오버레이 표시
-- 현재 GUI는 파일 로그 모드와 API 서버 모드를 모두 지원합니다.
+- 역할: 영상 재생, 스트림 입력, API 서버 이벤트 조회, 이벤트 오버레이 표시
+- 유튜브 링크를 스트림 입력칸에 넣으면 내부적으로 영상 다운로드 후 일반 video 입력처럼 처리합니다.
 
 ## Python 설치 및 실행
 

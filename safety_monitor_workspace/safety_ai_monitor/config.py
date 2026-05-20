@@ -6,12 +6,18 @@ CAMERA_INDEX = 0
 INPUT_MODE = "gui"
 
 # 사용할 모델 종류
-# "dummy", "yolo"처럼 짧은 이름으로 고른다
-MODEL_TYPE = "yolo"
+# "dummy", "yolo", "yolo_ensemble"처럼 짧은 이름으로 고른다
+MODEL_TYPE = "yolo_ensemble"
 
 # 학습된 모델 파일 경로
 # dummy 모델에서는 사용하지 않는다
 MODEL_PATH = "models/weights/best.pt"
+
+# 앙상블 모드에서 사용할 사람 전용 모델 경로
+PERSON_MODEL_PATH = "models/weights/person_detect.pt"
+
+# 앙상블 모드에서 사용할 안전모 전용 모델 경로
+SAFETY_MODEL_PATH = "models/weights/good1.pt"
 
 # 이벤트 로그 저장 경로
 LOG_PATH = "logs/event_log.txt"
@@ -21,6 +27,9 @@ ENABLE_JSON_EVENT_LOG = True
 
 # JSON 이벤트 로그 저장 경로
 JSON_EVENT_LOG_PATH = "logs/events.jsonl"
+
+# 프레임 단위 탐지 스냅샷 저장 경로
+FRAME_DETECTION_LOG_PATH = "logs/frame_detections.jsonl"
 
 # HTTP 이벤트 전송 사용 여부
 ENABLE_HTTP_EVENT_POST = True
@@ -56,7 +65,7 @@ SOURCE_STATE_PATH = "logs/source_state.json"
 EVENT_CLIP_DIR = "logs/clips"
 
 # 이벤트 시작 전 몇 초를 클립에 같이 저장할지 정한다
-EVENT_CLIP_BEFORE_SECONDS = 3
+EVENT_CLIP_BEFORE_SECONDS = 1
 
 # 이벤트 클립 저장 여부
 SAVE_EVENT_CLIP = True
@@ -77,13 +86,13 @@ EVENT_COOLDOWN_SECONDS = 3
 TRACK_MAX_DISTANCE = 100
 
 # 사람이 잠시 안 보여도 같은 ID를 유지할 최대 프레임 수
-TRACK_MAX_MISSING_FRAMES = 30
+TRACK_MAX_MISSING_FRAMES = 60
 
 # 이벤트가 몇 프레임 연속으로 안 보일 때 종료로 볼지 정한다
-EVENT_END_MISSING_FRAMES = 5
+EVENT_END_MISSING_FRAMES = 30
 
 # 객체 탐지 결과를 사용할 최소 신뢰도
-MIN_CONFIDENCE = 0.5
+MIN_CONFIDENCE = 0.3
 
 # 사람 박스 상단에서 머리 영역으로 볼 비율
 NO_HELMET_HEAD_RATIO = 0.3

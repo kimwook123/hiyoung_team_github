@@ -9,18 +9,56 @@ from core.event_types import EventLevel, EventType
 
 class NoHelmetRule(EventRule):
     # 사람 박스의 상단 일부를 머리 영역으로 보고, 그 안에 helmet이 있는지 확인합니다.
-    def __init__(self, head_ratio: float = 0.3, overlap_ratio: float = 0.2) -> None:
+    def __init__(
+        self,
+        head_ratio: float = 0.3,
+        overlap_ratio: float = 0.2,
+        person_labels: set[str] | None = None,
+        helmet_labels: set[str] | None = None,
+        head_labels: set[str] | None = None,
+    ) -> None:
         self.head_ratio = min(max(head_ratio, 0.1), 0.5)
         self.overlap_ratio = min(max(overlap_ratio, 0.0), 1.0)
+        self.person_labels = {
+            label.strip().lower()
+            for label in (person_labels or {"person"})
+            if label.strip()
+        }
+        self.helmet_labels = {
+            label.strip().lower()
+            for label in (helmet_labels or {"helmet", "hardhat"})
+            if label.strip()
+        }
+        self.head_labels = {
+            label.strip().lower()
+            for label in (head_labels or {"head"})
+            if label.strip()
+        }
 
     def check(self, result: DetectionResult) -> list[Event]:
         # DetectionResult에서 person과 helmet만 골라 Event 목록으로 바꾸는 단계입니다.
-        persons = [d for d in result.detections if d.name == "person"]
-        helmets = [d for d in result.detections if d.name == "helmet"]
+        persons = [
+            detection
+            for detection in result.detections
+            if detection.name.strip().lower() in self.person_labels
+        ]
+        helmets = [
+            detection
+            for detection in result.detections
+            if detection.name.strip().lower() in self.helmet_labels
+        ]
+        heads = [
+            detection
+            for detection in result.detections
+            if detection.name.strip().lower() in self.head_labels
+        ]
 
         events = []
         for person in persons:
             if self._has_matching_helmet(person=person, helmets=helmets):
+                continue
+
+            if heads and not self._has_matching_head(person=person, heads=heads):
                 continue
 
             events.append(
@@ -42,6 +80,13 @@ class NoHelmetRule(EventRule):
         head_box = self._make_head_box(person.box)
         for helmet in helmets:
             if self._is_helmet_in_head_box(head_box=head_box, helmet=helmet):
+                return True
+        return False
+
+    def _has_matching_head(self, person: Detection, heads: list[Detection]) -> bool:
+        head_box = self._make_head_box(person.box)
+        for head in heads:
+            if self._is_helmet_in_head_box(head_box=head_box, helmet=head):
                 return True
         return False
 

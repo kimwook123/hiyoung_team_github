@@ -7,6 +7,7 @@ from app.config import (
     SERVER_DATA_DIR,
     ensure_server_dirs,
 )
+from app.routers.admin import router as admin_router
 from app.routers.clips import router as clips_router
 from app.routers.events import router as events_router
 from app.schemas import HealthResponse
@@ -30,6 +31,7 @@ app.add_middleware(
 
 app.include_router(events_router)
 app.include_router(clips_router)
+app.include_router(admin_router)
 
 
 @app.get("/health", response_model=HealthResponse)

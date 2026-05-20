@@ -14,11 +14,15 @@ class VideoViewBox extends StatelessWidget {
     required this.controller,
     required this.overlayItems,
     required this.overlayDetections,
+    required this.overlaySourceWidth,
+    required this.overlaySourceHeight,
   });
 
   final VideoPanelController controller;
   final List<EventLogItem> overlayItems;
   final List<VideoOverlayDetection> overlayDetections;
+  final double overlaySourceWidth;
+  final double overlaySourceHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -47,8 +51,8 @@ class VideoViewBox extends StatelessWidget {
           VideoEventOverlay(
             items: overlayItems,
             detections: overlayDetections,
-            sourceWidth: controller.videoWidth.toDouble(),
-            sourceHeight: controller.videoHeight.toDouble(),
+            sourceWidth: overlaySourceWidth,
+            sourceHeight: overlaySourceHeight,
           ),
         ],
       ),

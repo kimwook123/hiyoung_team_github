@@ -44,7 +44,7 @@ class LocalEventJsonController extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<ApiEventItem> getItemsForFrame(int frameValue) {
+  List<ApiEventItem> getItemsForTime(double secondsValue) {
     final selectedMap = <String, ApiEventItem>{};
     for (final item in items) {
       final eventKey = item.eventKey.trim();
@@ -52,7 +52,7 @@ class LocalEventJsonController extends ChangeNotifier {
         continue;
       }
 
-      if (item.frameId > frameValue) {
+      if (item.sourceTimeSeconds > secondsValue) {
         continue;
       }
 
@@ -60,7 +60,7 @@ class LocalEventJsonController extends ChangeNotifier {
     }
 
     return selectedMap.values
-        .where((item) => _isActiveAtFrame(item, frameValue))
+        .where((item) => _isActiveAtTime(item, secondsValue))
         .toList(growable: false);
   }
 
@@ -68,19 +68,17 @@ class LocalEventJsonController extends ChangeNotifier {
     _service.stopWatch();
   }
 
-  bool _isActiveAtFrame(ApiEventItem item, int frameValue) {
-    final startFrame = item.startedFrameId;
-    if (startFrame == null) {
+  bool _isActiveAtTime(ApiEventItem item, double secondsValue) {
+    if (item.sourceTimeSeconds.isNaN) {
       return false;
     }
 
     final normalizedStatus = item.status.trim().toUpperCase();
     if (normalizedStatus == 'END') {
-      final endFrame = item.endedFrameId ?? item.frameId;
-      return frameValue >= startFrame && frameValue <= endFrame;
+      return false;
     }
 
-    return frameValue >= startFrame;
+    return secondsValue >= item.sourceTimeSeconds;
   }
 
   bool _isSameItems(List<ApiEventItem> left, List<ApiEventItem> right) {
@@ -97,6 +95,7 @@ class LocalEventJsonController extends ChangeNotifier {
       if (leftItem.eventKey != rightItem.eventKey ||
           leftItem.frameId != rightItem.frameId ||
           leftItem.status != rightItem.status ||
+          leftItem.sourceTimeSeconds != rightItem.sourceTimeSeconds ||
           leftItem.sourceTimeText != rightItem.sourceTimeText ||
           leftItem.relatedDetections.length != rightItem.relatedDetections.length) {
         return false;

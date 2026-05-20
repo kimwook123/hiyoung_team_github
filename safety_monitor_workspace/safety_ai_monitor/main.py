@@ -17,6 +17,7 @@ from config import (
     EVENT_CLIP_BEFORE_SECONDS,
     EVENT_CLIP_DIR,
     EVENT_END_MISSING_FRAMES,
+    FRAME_DETECTION_LOG_PATH,
     HTTP_EVENT_FALLBACK_JSON_PATH,
     INPUT_MODE,
     JSON_EVENT_LOG_PATH,
@@ -24,8 +25,10 @@ from config import (
     MIN_CONFIDENCE,
     MODEL_PATH,
     MODEL_TYPE,
+    PERSON_MODEL_PATH,
     NO_HELMET_HEAD_RATIO,
     NO_HELMET_OVERLAP_RATIO,
+    SAFETY_MODEL_PATH,
     SAVE_EVENT_CLIP,
     SHOW_SCREEN,
     SOURCE_STATE_PATH,
@@ -36,11 +39,17 @@ from config import (
 )
 from core.event_clip_recorder import EventClipRecorder
 from core.event_filter import EventFilter
+from core.frame_detection_recorder import FrameDetectionRecorder
 from core.detection_model import DetectionModel
 from core.frame_source import CameraFrameSource, StreamFrameSource, VideoFileFrameSource
 from core.object_tracker import PersonTracker
 from core.path_helper import to_abs_path, to_project_path
 from core.pipeline import VideoPipeline
+from core.source_identity import (
+    build_source_key,
+    build_source_slug,
+    normalize_video_source_value,
+)
 from core.ui_bridge import SourceStateReader, UiBridgeWriter
 from handlers.console_event_handler import ConsoleEventHandler
 from handlers.clip_upload_client import ClipUploadClient
@@ -48,6 +57,7 @@ from handlers.http_event_handler import HttpEventHandler
 from handlers.json_event_handler import JsonEventHandler
 from handlers.log_event_handler import LogEventHandler
 from models.dummy_model import DummyDetectionModel
+from models.ensemble_yolo_model import EnsembleYoloModel
 from models.yolo_model_sample import YoloModelSample
 from rules.danger_zone_rule import DangerZoneRule
 from rules.no_helmet_rule import NoHelmetRule
@@ -68,9 +78,24 @@ def build_model() -> DetectionModel:
             min_confidence=MIN_CONFIDENCE,
         )
 
+    if MODEL_TYPE == "yolo_ensemble":
+        return EnsembleYoloModel(
+            person_model_path=to_abs_path(PERSON_MODEL_PATH),
+            safety_model_path=to_abs_path(SAFETY_MODEL_PATH),
+            min_confidence=MIN_CONFIDENCE,
+            person_class_map={
+                "person": "person",
+            },
+            safety_class_map={
+                "helmet": "helmet",
+                "hardhat": "helmet",
+                "head": "head",
+            },
+        )
+
     raise ValueError(
         f"지원하지 않는 MODEL_TYPE입니다: {MODEL_TYPE}. "
-        "현재 지원: dummy, yolo"
+        "현재 지원: dummy, yolo, yolo_ensemble"
     )
 
 
@@ -100,6 +125,14 @@ def build_pipeline(
             )
 
     model = build_model()
+    normalized_source_value = source_value
+    if source_type == "video":
+        normalized_source_value = normalize_video_source_value(source_value)
+    source_key = build_source_key(source_type=source_type, source_value=normalized_source_value)
+    source_slug = build_source_slug(
+        source_type=source_type,
+        source_value=normalized_source_value,
+    )
 
     log_path = _build_log_path(source_type=source_type, source_value=source_value)
 
@@ -161,6 +194,10 @@ def build_pipeline(
         clip_dir=to_project_path(EVENT_CLIP_DIR),
         fps=source_fps,
         before_seconds=EVENT_CLIP_BEFORE_SECONDS,
+        source_slug=source_slug,
+    )
+    frame_detection_recorder = FrameDetectionRecorder(
+        log_path=to_project_path(FRAME_DETECTION_LOG_PATH),
     )
 
     UiBridgeWriter(bridge_path=to_project_path(BRIDGE_PATH)).write(
@@ -179,8 +216,13 @@ def build_pipeline(
         event_filter=event_filter,
         tracker=tracker,
         clip_recorder=clip_recorder,
+        frame_detection_recorder=frame_detection_recorder,
         show_screen=SHOW_SCREEN,
         restart_checker=restart_checker,
+        source_type=source_type,
+        source_value=normalized_source_value,
+        source_key=source_key,
+        source_slug=source_slug,
     )
 
 

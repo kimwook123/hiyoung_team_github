@@ -48,6 +48,9 @@ def serialize_event(event: Event) -> dict[str, object]:
         "started_frame_id": getattr(event, "started_frame_id", None),
         "ended_frame_id": getattr(event, "ended_frame_id", None),
         "clip_path": getattr(event, "clip_path", None),
+        "source_type": getattr(event, "source_type", None),
+        "source_value": getattr(event, "source_value", None),
+        "source_key": getattr(event, "source_key", None),
         "source_time_seconds": getattr(event, "source_time_seconds", None),
         "source_time_text": getattr(event, "source_time_text", None),
         "started_source_time_text": getattr(

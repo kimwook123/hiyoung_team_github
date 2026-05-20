@@ -19,6 +19,8 @@ class ClipUploadClient:
         self,
         clip_path: str,
         event_key: str | None = None,
+        source_key: str | None = None,
+        source_slug: str | None = None,
     ) -> dict | None:
         # 서버가 꺼져 있거나 응답이 잘못 와도 앱이 죽지 않게 None으로 실패를 돌려줍니다.
         normalized_path = clip_path.strip()
@@ -34,6 +36,10 @@ class ClipUploadClient:
         data = {}
         if event_key:
             data["event_key"] = event_key
+        if source_key:
+            data["source_key"] = source_key
+        if source_slug:
+            data["source_slug"] = source_slug
 
         try:
             with file_path.open("rb") as clip_file:

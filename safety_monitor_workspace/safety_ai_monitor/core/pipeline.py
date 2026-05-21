@@ -10,6 +10,7 @@ from core.event_rule import EventRule
 from core.frame_detection_recorder import FrameDetectionRecorder
 from core.frame_source import FrameSource
 from core.object_tracker import PersonTracker
+from core.source_status_publisher import SourceStatusPublisher
 
 # 이 파일은 실제 프레임 처리 루프를 담당합니다.
 # 프레임을 읽고, DetectionResult를 만들고, EventRule/EventFilter/EventHandler 흐름을 순서대로 실행합니다.
@@ -35,6 +36,8 @@ class VideoPipeline:
         source_slug: str = "",
         client_id: str = "",
         session_id: str = "",
+        source_fps: float = 0.0,
+        source_status_publisher: SourceStatusPublisher | None = None,
     ) -> None:
         self.frame_source = frame_source
         self.model = model
@@ -54,6 +57,10 @@ class VideoPipeline:
         self.source_slug = source_slug
         self.client_id = client_id
         self.session_id = session_id
+        self.source_fps = source_fps
+        self.source_status_publisher = source_status_publisher
+        self.last_processed_frame_id = -1
+        self.last_processed_source_time_seconds = 0.0
 
     def run(self) -> str:
         # 이 함수가 실제 분석 루프입니다.
@@ -65,6 +72,11 @@ class VideoPipeline:
         self.model.load()
         if self.frame_source.__class__.__name__ == "VideoFileFrameSource":
             self.source_time_mode = "video"
+        self._publish_source_status(
+            state="running",
+            is_running=True,
+            force=True,
+        )
 
         try:
             while True:
@@ -89,6 +101,14 @@ class VideoPipeline:
                     source_slug=self.source_slug,
                     frame_width=frame.shape[1],
                     frame_height=frame.shape[0],
+                )
+                self.last_processed_frame_id = result.frame_id
+                self.last_processed_source_time_seconds = result.source_time_seconds
+                self._publish_source_status(
+                    state="running",
+                    is_running=True,
+                    last_frame_id=result.frame_id,
+                    last_source_time_seconds=result.source_time_seconds,
                 )
 
                 events = []
@@ -149,6 +169,13 @@ class VideoPipeline:
                     handler.handle(event)
             self.frame_source.release()
             self._close_screen()
+            self._publish_source_status(
+                state=stop_reason if stop_reason != "completed" else "completed",
+                is_running=False,
+                last_frame_id=self.last_processed_frame_id,
+                last_source_time_seconds=self.last_processed_source_time_seconds,
+                force=True,
+            )
 
         return stop_reason
 
@@ -259,3 +286,31 @@ class VideoPipeline:
             setattr(event, "source_slug", self.source_slug)
             setattr(event, "client_id", self.client_id)
             setattr(event, "session_id", self.session_id)
+
+    def _publish_source_status(
+        self,
+        *,
+        state: str,
+        is_running: bool,
+        last_frame_id: int = -1,
+        last_source_time_seconds: float = 0.0,
+        error_message: str = "",
+        force: bool = False,
+    ) -> None:
+        if self.source_status_publisher is None:
+            return
+
+        self.source_status_publisher.publish(
+            source_key=self.source_key,
+            source_type=self.source_type,
+            source_value=self.source_value,
+            source_fps=self.source_fps,
+            client_id=self.client_id,
+            session_id=self.session_id,
+            state=state,
+            is_running=is_running,
+            last_frame_id=last_frame_id,
+            last_source_time_seconds=last_source_time_seconds,
+            error_message=error_message,
+            force=force,
+        )

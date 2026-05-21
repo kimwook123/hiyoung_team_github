@@ -23,6 +23,31 @@ class SourceSummaryListResponse(BaseModel):
     items: list[SourceSummaryItem]
 
 
+class SourceStatusItem(BaseModel):
+    source_key: str
+    source_type: str
+    source_value: str
+    client_id: str = ""
+    session_id: str = ""
+    state: str
+    is_running: bool
+    source_fps: float = 0.0
+    last_frame_id: int = -1
+    last_source_time_seconds: float = 0.0
+    error_message: str = ""
+    updated_at: str
+
+
+class SourceStatusListResponse(BaseModel):
+    count: int
+    items: list[SourceStatusItem]
+
+
+class SourceStatusUpsertResponse(BaseModel):
+    ok: bool
+    item: dict[str, Any]
+
+
 class EventDetailResponse(BaseModel):
     event_key: str
     item: dict[str, Any]
@@ -57,6 +82,16 @@ class ClipUploadResponse(BaseModel):
     url: str
     size_bytes: int
     event_key: str | None = None
+
+
+class FrameDetectionCreateResponse(BaseModel):
+    ok: bool
+    item: dict[str, Any]
+
+
+class FrameDetectionSnapshotResponse(BaseModel):
+    found: bool
+    item: dict[str, Any] | None
 
 
 class HealthResponse(BaseModel):

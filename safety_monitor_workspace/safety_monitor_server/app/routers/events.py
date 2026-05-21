@@ -2,15 +2,16 @@ from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException, Query
 
-from app.config import DEFAULT_EVENT_LOG_PATH
-from app.event_normalizer import normalize_event_record
-from app.event_store import (
-    append_event_record,
+from app.config import DATABASE_PATH
+from app.database import (
     find_events_by_key,
     get_latest_event_by_key,
-    get_latest_events_by_key,
-    read_event_records,
+    insert_event,
+    list_events as list_events_from_db,
+    list_latest_events as list_latest_events_from_db,
+    list_source_summaries,
 )
+from app.event_normalizer import normalize_event_record
 from app.schemas import (
     EventCreateResponse,
     EventDetailResponse,
@@ -21,7 +22,7 @@ from app.schemas import (
 )
 
 # 이 파일은 이벤트 저장/조회 API를 담당합니다.
-# POST /api/events -> normalize_event_record -> append_event_record -> data/events.jsonl 저장 흐름이 핵심입니다.
+# POST /api/events -> normalize_event_record -> SQLite 저장 흐름이 핵심입니다.
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 
@@ -58,8 +59,7 @@ def create_event(
     normalized_record = normalize_event_record(normalized_record)
 
     try:
-        # 정규화된 이벤트를 서버 소유 JSON Lines 저장소에 append합니다.
-        saved_record = append_event_record(DEFAULT_EVENT_LOG_PATH, normalized_record)
+        saved_record = insert_event(DATABASE_PATH, normalized_record)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     except Exception as error:
@@ -81,19 +81,25 @@ def list_events(
 ) -> EventListResponse:
     # GET은 서버에서 데이터를 가져오는 요청입니다.
     if latest_only:
-        items = get_latest_events_by_key(DEFAULT_EVENT_LOG_PATH)
+        items = list_latest_events_from_db(
+            DATABASE_PATH,
+            event_type=event_type,
+            status=status,
+            source_key=source_key,
+            source_type=source_type,
+            client_id=client_id,
+            session_id=session_id,
+        )
     else:
-        items = read_event_records(DEFAULT_EVENT_LOG_PATH)
-
-    items = _filter_items(
-        items,
-        event_type=event_type,
-        status=status,
-        source_key=source_key,
-        source_type=source_type,
-        client_id=client_id,
-        session_id=session_id,
-    )
+        items = list_events_from_db(
+            DATABASE_PATH,
+            event_type=event_type,
+            status=status,
+            source_key=source_key,
+            source_type=source_type,
+            client_id=client_id,
+            session_id=session_id,
+        )
 
     if limit is not None:
         items = items[-limit:]
@@ -111,9 +117,8 @@ def list_latest_events(
     client_id: str | None = None,
     session_id: str | None = None,
 ) -> EventListResponse:
-    items = get_latest_events_by_key(DEFAULT_EVENT_LOG_PATH)
-    items = _filter_items(
-        items,
+    items = list_latest_events_from_db(
+        DATABASE_PATH,
         event_type=event_type,
         status=status,
         source_key=source_key,
@@ -133,51 +138,12 @@ def list_sources(
     client_id: str | None = None,
     session_id: str | None = None,
 ) -> SourceSummaryListResponse:
-    items = read_event_records(DEFAULT_EVENT_LOG_PATH)
-    items = _filter_items(
-        items,
-        event_type=None,
-        status=None,
-        source_key=None,
-        source_type=None,
+    items = list_source_summaries(
+        DATABASE_PATH,
         client_id=client_id,
         session_id=session_id,
     )
-
-    summary_by_key: dict[str, SourceSummaryItem] = {}
-    for item in items:
-        source_key = str(item.get("source_key", "")).strip()
-        if not source_key:
-            continue
-
-        source_type = str(item.get("source_type", "")).strip()
-        source_value = str(item.get("source_value", "")).strip()
-        latest_received_at = str(item.get("received_at", "")).strip()
-
-        previous = summary_by_key.get(source_key)
-        if previous is None:
-            summary_by_key[source_key] = SourceSummaryItem(
-                source_key=source_key,
-                source_type=source_type,
-                source_value=source_value,
-                event_count=1,
-                latest_received_at=latest_received_at,
-            )
-            continue
-
-        summary_by_key[source_key] = SourceSummaryItem(
-            source_key=source_key,
-            source_type=previous.source_type or source_type,
-            source_value=previous.source_value or source_value,
-            event_count=previous.event_count + 1,
-            latest_received_at=max(previous.latest_received_at, latest_received_at),
-        )
-
-    ordered_items = sorted(
-        summary_by_key.values(),
-        key=lambda item: (item.latest_received_at, item.source_key),
-        reverse=True,
-    )
+    ordered_items = [SourceSummaryItem(**item) for item in items]
     return SourceSummaryListResponse(count=len(ordered_items), items=ordered_items)
 
 
@@ -192,13 +158,13 @@ def get_event_detail(
         raise HTTPException(status_code=400, detail="event_key is required")
 
     if latest_only:
-        item = get_latest_event_by_key(DEFAULT_EVENT_LOG_PATH, normalized_event_key)
+        item = get_latest_event_by_key(DATABASE_PATH, normalized_event_key)
         if item is None:
             raise HTTPException(status_code=404, detail="event_key not found")
 
         return EventDetailResponse(event_key=normalized_event_key, item=item)
 
-    items = find_events_by_key(DEFAULT_EVENT_LOG_PATH, normalized_event_key)
+    items = find_events_by_key(DATABASE_PATH, normalized_event_key)
     if not items:
         raise HTTPException(status_code=404, detail="event_key not found")
 
@@ -207,47 +173,3 @@ def get_event_detail(
         count=len(items),
         items=items,
     )
-
-
-def _filter_items(
-    items: list[dict],
-    event_type: str | None,
-    status: str | None,
-    source_key: str | None,
-    source_type: str | None,
-    client_id: str | None,
-    session_id: str | None,
-) -> list[dict]:
-    filtered_items = items
-
-    if event_type is not None:
-        filtered_items = [
-            item for item in filtered_items if item.get("event_type") == event_type
-        ]
-
-    if status is not None:
-        filtered_items = [
-            item for item in filtered_items if item.get("status") == status
-        ]
-
-    if source_key is not None:
-        filtered_items = [
-            item for item in filtered_items if item.get("source_key") == source_key
-        ]
-
-    if source_type is not None:
-        filtered_items = [
-            item for item in filtered_items if item.get("source_type") == source_type
-        ]
-
-    if client_id is not None:
-        filtered_items = [
-            item for item in filtered_items if item.get("client_id") == client_id
-        ]
-
-    if session_id is not None:
-        filtered_items = [
-            item for item in filtered_items if item.get("session_id") == session_id
-        ]
-
-    return filtered_items

@@ -7,14 +7,15 @@ import 'package:flutter/material.dart';
 
 import '../controllers/api_event_controller.dart';
 import '../controllers/api_event_feed_source.dart';
-import '../models/app_link_info.dart';
 import '../controllers/video_panel_controller.dart';
 import '../models/api_event_item.dart';
 import '../models/event_log_item.dart';
 import '../models/frame_detection_snapshot.dart';
 import '../models/source_slot_state.dart';
+import '../models/source_runtime_status.dart';
 import '../models/video_overlay_detection.dart';
 import '../services/app_link_service.dart';
+import '../services/event_api_service.dart';
 import '../services/input_source_resolver_service.dart';
 import '../widgets/event_log_box.dart';
 import '../widgets/file_bar.dart';
@@ -38,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late final ApiEventController apiEventController;
   late final ApiEventFeedSource apiEventFeed;
   late final AppLinkService appLinkService;
+  late final EventApiService eventApiService;
   late final InputSourceResolverService inputSourceResolverService;
   final ScrollController pageScrollController = ScrollController();
   final ScrollController rightPanelScrollController = ScrollController();
@@ -53,7 +55,10 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime? frameDetectionLogModifiedAt;
   String frameDetectionSourceKey = '';
   List<FrameDetectionSnapshot> frameDetectionSnapshots = const [];
-  Map<String, AppLinkInfo> bridgeEntriesBySourceKey = const {};
+  Map<String, SourceRuntimeStatus> sourceStatusesByKey = const {};
+  String lastFrameDetectionRequestSourceKey = '';
+  double lastFrameDetectionRequestSeconds = -1;
+  String lastFrameDetectionStatusUpdatedAt = '';
 
   @override
   void initState() {
@@ -62,6 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
     apiEventController = ApiEventController();
     apiEventFeed = ApiEventFeedSource(apiEventController);
     appLinkService = AppLinkService();
+    eventApiService = EventApiService();
     inputSourceResolverService = InputSourceResolverService();
 
     // GUI가 열릴 때 이전 선택 상태는 비운다
@@ -71,7 +77,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _startApiAutoRefresh();
     _startFrameDetectionRefresh();
     _startBridgeSync();
-    unawaited(_refreshBridgeEntries());
+    unawaited(_refreshSourceStatuses());
   }
 
   @override
@@ -333,7 +339,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       backgroundColor: _colorForSlotStatus(slot),
                     ),
                     label: Text('${slot.label} · ${_describeSlotStatus(slot)}'),
-                    onSelected: (_) => _setActiveSlot(slot.slotId),
+                    onSelected: (_) => unawaited(_setActiveSlot(slot.slotId)),
                     onDeleted: () => _confirmRemoveSourceSlot(slot),
                   ),
               ],
@@ -717,8 +723,8 @@ class _HomeScreenState extends State<HomeScreen> {
           existingSlot.controller.canReturnFromReplay) {
         await existingSlot.controller.returnToLive();
       }
-      _setActiveSlot(existingSlot.slotId);
-      await _syncFrameRateFromBridge(
+      await _setActiveSlot(existingSlot.slotId);
+      await _syncFrameRateFromStatus(
         sourceType: existingSlot.sourceType,
         sourceValue: existingSlot.sourceValue,
         controller: existingSlot.controller,
@@ -738,7 +744,7 @@ class _HomeScreenState extends State<HomeScreen> {
       sourceValue: file.path,
       openPath: file.path,
     );
-    await _syncFrameRateFromBridge(
+    await _syncFrameRateFromStatus(
       sourceType: 'video',
       sourceValue: file.path,
       controller: slot.controller,
@@ -766,8 +772,8 @@ class _HomeScreenState extends State<HomeScreen> {
           existingSlot.controller.canReturnFromReplay) {
         await existingSlot.controller.returnToLive();
       }
-      _setActiveSlot(existingSlot.slotId);
-      await _syncFrameRateFromBridge(
+      await _setActiveSlot(existingSlot.slotId);
+      await _syncFrameRateFromStatus(
         sourceType: existingSlot.sourceType,
         sourceValue: existingSlot.sourceValue,
         controller: existingSlot.controller,
@@ -788,7 +794,7 @@ class _HomeScreenState extends State<HomeScreen> {
       openPath: resolvedSource.sourceValue,
       nextSourceType: resolvedSource.sourceType,
     );
-    await _syncFrameRateFromBridge(
+    await _syncFrameRateFromStatus(
       sourceType: resolvedSource.sourceType,
       sourceValue: resolvedSource.sourceValue,
       controller: slot.controller,
@@ -809,6 +815,10 @@ class _HomeScreenState extends State<HomeScreen> {
   FrameDetectionSnapshot? _getOverlaySnapshot() {
     if (_effectiveOverlaySourceKey().isEmpty || frameDetectionSnapshots.isEmpty) {
       return null;
+    }
+
+    if (frameDetectionSnapshots.length == 1) {
+      return frameDetectionSnapshots.first;
     }
 
     final currentSeconds = videoController.currentOverlaySeconds;
@@ -1126,7 +1136,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _startBridgeSync() {
     bridgeSyncTimer?.cancel();
     bridgeSyncTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      unawaited(_refreshBridgeEntries());
+      unawaited(_refreshSourceStatuses());
       unawaited(_syncActiveSlotFrameRateIfNeeded());
     });
   }
@@ -1159,40 +1169,48 @@ class _HomeScreenState extends State<HomeScreen> {
           frameDetectionSnapshots = const [];
           frameDetectionLogModifiedAt = null;
           frameDetectionSourceKey = '';
+          lastFrameDetectionRequestSourceKey = '';
+          lastFrameDetectionRequestSeconds = -1;
+          lastFrameDetectionStatusUpdatedAt = '';
         });
       }
       return;
     }
 
-    final modifiedAt = await appLinkService.readFrameDetectionLogModifiedAt();
-    if (modifiedAt == null) {
-      if (frameDetectionSnapshots.isNotEmpty && mounted) {
-        setState(() {
-          frameDetectionSnapshots = const [];
-          frameDetectionLogModifiedAt = null;
-          frameDetectionSourceKey = '';
-        });
-      }
+    final currentOverlaySeconds = videoController.currentOverlaySeconds;
+    final runtimeStatus = sourceStatusesByKey[sourceKey.trim()];
+    final frameIntervalSeconds = videoController.frameRate <= 0
+        ? (1 / 30)
+        : (1 / videoController.frameRate);
+    final movedEnough = lastFrameDetectionRequestSourceKey != sourceKey ||
+        (currentOverlaySeconds - lastFrameDetectionRequestSeconds).abs() >=
+            (frameIntervalSeconds * 0.5);
+    final statusChanged = (runtimeStatus?.updatedAt ?? '') !=
+        lastFrameDetectionStatusUpdatedAt;
+    if (!movedEnough && !statusChanged) {
       return;
     }
 
-    if (frameDetectionSourceKey == sourceKey &&
-        frameDetectionLogModifiedAt != null &&
-        modifiedAt.isAtSameMomentAs(frameDetectionLogModifiedAt!)) {
-      return;
-    }
-
-    final snapshots = await appLinkService.readFrameDetectionSnapshots(
+    final toleranceSeconds = math.max(
+      0.08,
+      frameIntervalSeconds * 1.5,
+    );
+    final snapshot = await eventApiService.fetchCurrentFrameDetection(
       sourceKey: sourceKey,
+      sourceTimeSeconds: currentOverlaySeconds,
+      toleranceSeconds: toleranceSeconds,
     );
     if (!mounted) {
       return;
     }
 
     setState(() {
-      frameDetectionSnapshots = snapshots;
-      frameDetectionLogModifiedAt = modifiedAt;
+      frameDetectionSnapshots = snapshot == null ? const [] : [snapshot];
+      frameDetectionLogModifiedAt = DateTime.now();
       frameDetectionSourceKey = sourceKey;
+      lastFrameDetectionRequestSourceKey = sourceKey;
+      lastFrameDetectionRequestSeconds = currentOverlaySeconds;
+      lastFrameDetectionStatusUpdatedAt = runtimeStatus?.updatedAt ?? '';
     });
   }
 
@@ -1202,18 +1220,27 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final snapshots = await appLinkService.readFrameDetectionSnapshots(
-      sourceKey: normalizedSourceKey,
+    final toleranceSeconds = math.max(
+      0.08,
+      (videoController.frameRate <= 0 ? 1 / 30 : 1 / videoController.frameRate) * 1.5,
     );
-    final modifiedAt = await appLinkService.readFrameDetectionLogModifiedAt();
+    final snapshot = await eventApiService.fetchCurrentFrameDetection(
+      sourceKey: normalizedSourceKey,
+      sourceTimeSeconds: videoController.currentOverlaySeconds,
+      toleranceSeconds: toleranceSeconds,
+    );
     if (!mounted) {
       return;
     }
 
     setState(() {
-      frameDetectionSnapshots = snapshots;
-      frameDetectionLogModifiedAt = modifiedAt;
+      frameDetectionSnapshots = snapshot == null ? const [] : [snapshot];
+      frameDetectionLogModifiedAt = DateTime.now();
       frameDetectionSourceKey = normalizedSourceKey;
+      lastFrameDetectionRequestSourceKey = normalizedSourceKey;
+      lastFrameDetectionRequestSeconds = videoController.currentOverlaySeconds;
+      lastFrameDetectionStatusUpdatedAt =
+          sourceStatusesByKey[normalizedSourceKey]?.updatedAt ?? '';
     });
   }
 
@@ -1302,9 +1329,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (slot.sourceKey != sourceKey) {
         continue;
       }
-      setState(() {
-        _activeSlotId = slot.slotId;
-      });
+      await _setActiveSlot(slot.slotId);
       apiEventController.setVisibleSourceKey(sourceKey);
       await _writeAllSourcesState();
       unawaited(_refreshFrameDetectionsIfNeeded());
@@ -1333,6 +1358,7 @@ class _HomeScreenState extends State<HomeScreen> {
       frameDetectionLogModifiedAt = null;
       frameDetectionSourceKey = '';
     });
+    await _pauseInactiveSlots(exceptSlotId: slot.slotId);
     apiEventController.setVisibleSourceKey(sourceKey);
     await _writeAllSourcesState();
     unawaited(_refreshFrameDetectionsIfNeeded());
@@ -1379,7 +1405,7 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_refreshFrameDetectionsIfNeeded());
   }
 
-  void _setActiveSlot(String slotId) {
+  Future<void> _setActiveSlot(String slotId) async {
     if (_activeSlotId == slotId) {
       return;
     }
@@ -1391,11 +1417,21 @@ class _HomeScreenState extends State<HomeScreen> {
       frameDetectionLogModifiedAt = null;
       frameDetectionSourceKey = '';
     });
+    await _pauseInactiveSlots(exceptSlotId: slotId);
     apiEventFeed.clearSelection();
     apiEventController.setVisibleSourceKey(selectedSourceKey);
     unawaited(_writeAllSourcesState());
     unawaited(_syncActiveSlotFrameRateIfNeeded());
     unawaited(_refreshFrameDetectionsIfNeeded());
+  }
+
+  Future<void> _pauseInactiveSlots({required String exceptSlotId}) async {
+    for (final slot in _sourceSlots) {
+      if (slot.slotId == exceptSlotId) {
+        continue;
+      }
+      await slot.controller.pausePlayback();
+    }
   }
 
   Future<void> _writeAllSourcesState() async {
@@ -1427,7 +1463,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return sourceValue;
   }
 
-  Future<void> _syncFrameRateFromBridge({
+  Future<void> _syncFrameRateFromStatus({
     required String sourceType,
     required String sourceValue,
     required VideoPanelController controller,
@@ -1436,39 +1472,29 @@ class _HomeScreenState extends State<HomeScreen> {
       sourceType: sourceType,
       sourceValue: sourceValue,
     );
-    final entries = await appLinkService.readBridgeEntries();
-    AppLinkInfo? linkInfo;
-    for (final entry in entries) {
-      if (entry.sourceKey.trim() == sourceKey.trim()) {
-        linkInfo = entry;
-      }
-    }
-
-    if (linkInfo == null) {
-      linkInfo = await appLinkService.readDefaultLink();
-    }
-    if (linkInfo == null) {
+    final runtimeStatus = sourceStatusesByKey[sourceKey.trim()];
+    if (runtimeStatus == null) {
       return;
     }
 
-    if (linkInfo.sourceType.trim() != sourceType.trim()) {
+    if (runtimeStatus.sourceType.trim() != sourceType.trim()) {
       return;
     }
 
-    if (!_isSameSourceValue(linkInfo.sourceValue, sourceValue)) {
+    if (!_isSameSourceValue(runtimeStatus.sourceValue, sourceValue)) {
       return;
     }
 
-    controller.setFrameRate(linkInfo.sourceFps);
+    controller.setFrameRate(runtimeStatus.sourceFps);
   }
 
-  Future<void> _refreshBridgeEntries() async {
-    final entries = await appLinkService.readBridgeEntries();
+  Future<void> _refreshSourceStatuses() async {
+    final entries = await eventApiService.fetchSourceStatuses();
     if (!mounted) {
       return;
     }
 
-    final nextMap = <String, AppLinkInfo>{};
+    final nextMap = <String, SourceRuntimeStatus>{};
     for (final entry in entries) {
       final sourceKey = entry.sourceKey.trim();
       if (sourceKey.isEmpty) {
@@ -1478,7 +1504,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     setState(() {
-      bridgeEntriesBySourceKey = nextMap;
+      sourceStatusesByKey = nextMap;
     });
   }
 
@@ -1514,17 +1540,36 @@ class _HomeScreenState extends State<HomeScreen> {
       return '클립 재생 중입니다. 박스는 원본 영상 시간축 기준으로 맞춰집니다.';
     }
 
-    if (!bridgeEntriesBySourceKey.containsKey(sourceKey)) {
-      return '이 소스 분석 준비 중입니다. Python worker가 브리지 정보를 쓰면 박스가 갱신됩니다.';
+    if (!sourceStatusesByKey.containsKey(sourceKey)) {
+      return '이 소스 분석 준비 중입니다. Python worker가 서버에 상태를 보내면 박스가 갱신됩니다.';
     }
+
+    final status = sourceStatusesByKey[sourceKey];
 
     if (frameDetectionSourceKey != sourceKey || frameDetectionSnapshots.isEmpty) {
       return '아직 이 소스의 프레임 탐지 결과를 기다리는 중입니다.';
     }
 
     final snapshot = _getOverlaySnapshot();
+    if (snapshot != null) {
+      final snapshotTimeDelta =
+          (snapshot.sourceTimeSeconds - videoController.currentOverlaySeconds).abs();
+      if (snapshotTimeDelta <= 0.15) {
+        if (snapshot.detections.isEmpty) {
+          return '현재 시점에는 탐지된 객체가 없습니다.';
+        }
+        return '';
+      }
+    }
+
     if (snapshot == null) {
       return '현재 재생 시점과 맞는 분석 프레임을 기다리는 중입니다.';
+    }
+
+    if (status != null &&
+        status.state.trim().toLowerCase() != 'completed' &&
+        status.lastSourceTimeSeconds + 0.02 < videoController.currentOverlaySeconds) {
+      return '현재 재생 시점은 아직 Python 분석이 끝나지 않았습니다.';
     }
 
     if (snapshot.detections.isEmpty) {
@@ -1579,7 +1624,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (slot == null) {
       return;
     }
-    await _syncFrameRateFromBridge(
+    await _syncFrameRateFromStatus(
       sourceType: slot.sourceType,
       sourceValue: slot.sourceValue,
       controller: slot.controller,
@@ -1592,9 +1637,9 @@ class _HomeScreenState extends State<HomeScreen> {
       return false;
     }
     if (_activeSlotId != targetSlot.slotId) {
-      _setActiveSlot(targetSlot.slotId);
+      await _setActiveSlot(targetSlot.slotId);
     }
-    await _syncFrameRateFromBridge(
+    await _syncFrameRateFromStatus(
       sourceType: targetSlot.sourceType,
       sourceValue: targetSlot.sourceValue,
       controller: targetSlot.controller,
@@ -1691,8 +1736,23 @@ class _HomeScreenState extends State<HomeScreen> {
     if (slot.controller.isReplayMode) {
       return '클립 재생';
     }
-    if (!bridgeEntriesBySourceKey.containsKey(sourceKey)) {
+    final runtimeStatus = sourceStatusesByKey[sourceKey];
+    if (runtimeStatus == null) {
       return '준비중';
+    }
+    if (runtimeStatus.errorMessage.trim().isNotEmpty ||
+        runtimeStatus.state.trim().toLowerCase() == 'error') {
+      return '오류';
+    }
+    final runtimeState = runtimeStatus.state.trim().toLowerCase();
+    if (runtimeState == 'completed') {
+      final hasEvents = apiEventController.items.any(
+        (item) => item.sourceKey.trim() == sourceKey,
+      );
+      return hasEvents ? '분석 완료 · 이벤트 있음' : '분석 완료';
+    }
+    if (runtimeState == 'source_changed' || runtimeState == 'stopped') {
+      return '중지됨';
     }
     if (slot.slotId == _activeSlotId &&
         frameDetectionSourceKey == sourceKey &&
@@ -1705,7 +1765,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (hasEvents) {
       return '이벤트 있음';
     }
-    return '백그라운드 분석';
+    if (runtimeStatus.isRunning) {
+      return '백그라운드 분석';
+    }
+    return '대기중';
   }
 
   Color _colorForSlotStatus(_SourcePanelSlot slot) {
@@ -1720,6 +1783,14 @@ class _HomeScreenState extends State<HomeScreen> {
         return Colors.orangeAccent;
       case '백그라운드 분석':
         return Colors.blueAccent;
+      case '대기중':
+        return Colors.blueGrey;
+      case '분석 완료':
+        return Colors.teal;
+      case '분석 완료 · 이벤트 있음':
+        return Colors.tealAccent.shade700;
+      case '중지됨':
+        return Colors.blueGrey;
       default:
         return Colors.grey;
     }

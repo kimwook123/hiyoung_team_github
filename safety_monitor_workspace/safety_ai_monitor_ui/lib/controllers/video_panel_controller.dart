@@ -163,6 +163,13 @@ class VideoPanelController extends ChangeNotifier {
     }
   }
 
+  Future<void> pausePlayback() async {
+    if (!hasVideo || !isPlaying) {
+      return;
+    }
+    await _service.pause();
+  }
+
   Future<void> movePrevFrame() async {
     await _moveByFrame(-1);
   }

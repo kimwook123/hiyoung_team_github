@@ -7,7 +7,10 @@ SERVER_DIR = Path(__file__).resolve().parents[1].resolve()
 WORKSPACE_DIR = SERVER_DIR.parent.resolve()
 SERVER_DATA_DIR = (SERVER_DIR / "data").resolve()
 SERVER_CLIP_DIR = (SERVER_DATA_DIR / "clips").resolve()
+DATABASE_PATH = (SERVER_DATA_DIR / "monitor.db").resolve()
 DEFAULT_EVENT_LOG_PATH = (SERVER_DATA_DIR / "events.jsonl").resolve()
+FRAME_DETECTION_LOG_PATH = (SERVER_DATA_DIR / "frame_detections.jsonl").resolve()
+SOURCE_STATUS_PATH = (SERVER_DATA_DIR / "source_status.json").resolve()
 
 
 def ensure_server_dirs() -> None:

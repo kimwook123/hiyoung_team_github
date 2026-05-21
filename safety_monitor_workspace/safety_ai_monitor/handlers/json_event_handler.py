@@ -23,12 +23,23 @@ class JsonEventHandler(EventHandler):
         # 같은 event_key의 완전히 같은 JSON 한 줄은 다시 쓰지 않습니다.
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
-        line = self._make_line(event)
-        if self.last_written_lines.get(event.event_key) == line:
+        event_data = serialize_event(event)
+        event_key = str(event_data.get("event_key", "") or "")
+        self.handle_payload(event_data, event_key=event_key)
+
+    def handle_payload(
+        self,
+        event_data: dict[str, object],
+        *,
+        event_key: str,
+    ) -> None:
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        line = json.dumps(event_data, ensure_ascii=False) + "\n"
+        if self.last_written_lines.get(event_key) == line:
             return
 
         self._append_line(line)
-        self.last_written_lines[event.event_key] = line
+        self.last_written_lines[event_key] = line
 
     def _append_line(self, line: str) -> None:
         last_error: Exception | None = None
@@ -44,7 +55,3 @@ class JsonEventHandler(EventHandler):
 
         if last_error is not None:
             raise last_error
-
-    def _make_line(self, event: Event) -> str:
-        event_data = serialize_event(event)
-        return json.dumps(event_data, ensure_ascii=False) + "\n"

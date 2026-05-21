@@ -178,29 +178,38 @@ class SourcesStateReader:
         if not self.state_path.exists() or not self._is_fresh_enough():
             return []
 
-        try:
-            data = json.loads(self.state_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return []
-
-        if isinstance(data, dict):
-            normalized = self._normalize_entry(data, default_slot_id="default")
-            return [] if normalized is None else [normalized]
-
-        if not isinstance(data, list):
-            return []
-
-        items: list[dict[str, str]] = []
-        for index, item in enumerate(data):
-            if not isinstance(item, dict):
+        for attempt in range(3):
+            try:
+                data = json.loads(self.state_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                if attempt >= 2:
+                    return []
+                time.sleep(0.1)
                 continue
-            normalized = self._normalize_entry(
-                item,
-                default_slot_id=f"slot_{index + 1}",
-            )
-            if normalized is not None:
-                items.append(normalized)
-        return items
+
+            if isinstance(data, dict):
+                normalized = self._normalize_entry(data, default_slot_id="default")
+                return [] if normalized is None else [normalized]
+
+            if not isinstance(data, list):
+                if attempt >= 2:
+                    return []
+                time.sleep(0.1)
+                continue
+
+            items: list[dict[str, str]] = []
+            for index, item in enumerate(data):
+                if not isinstance(item, dict):
+                    continue
+                normalized = self._normalize_entry(
+                    item,
+                    default_slot_id=f"slot_{index + 1}",
+                )
+                if normalized is not None:
+                    items.append(normalized)
+            return items
+
+        return []
 
     def _is_fresh_enough(self) -> bool:
         if self.min_updated_at is None:

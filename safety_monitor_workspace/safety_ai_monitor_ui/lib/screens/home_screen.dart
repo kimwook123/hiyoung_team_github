@@ -52,6 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? apiAutoRefreshTimer;
   Timer? frameDetectionRefreshTimer;
   Timer? bridgeSyncTimer;
+  Future<void>? bridgeStateReady;
   DateTime? frameDetectionLogModifiedAt;
   String frameDetectionSourceKey = '';
   List<FrameDetectionSnapshot> frameDetectionSnapshots = const [];
@@ -70,8 +71,9 @@ class _HomeScreenState extends State<HomeScreen> {
     eventApiService = EventApiService();
     inputSourceResolverService = InputSourceResolverService();
 
-    // GUI가 열릴 때 이전 선택 상태는 비운다
-    appLinkService.clearSourceState();
+    // GUI가 열릴 때 이전 선택 상태는 비우되, 이후 입력 동작이 이 작업과
+    // 경쟁하지 않도록 Future를 보관해 둡니다.
+    bridgeStateReady = appLinkService.clearSourceState();
     unawaited(apiEventController.checkHealth());
     unawaited(_refreshApiEventsIfNeeded());
     _startApiAutoRefresh();
@@ -704,6 +706,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _pickVideoFile() async {
+    await _ensureBridgeStateReady();
     const group = XTypeGroup(
       label: 'video',
       extensions: ['mp4', 'mov', 'avi', 'mkv'],
@@ -753,6 +756,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openStream() async {
+    await _ensureBridgeStateReady();
     final streamUrl = streamTextController.text.trim();
     if (streamUrl.isEmpty) {
       return;
@@ -934,6 +938,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final eventKey = item.eventKeyText.trim();
     ApiEventItem? detail;
+    final preferredSourceKey = selectedSourceKey.trim().isNotEmpty
+        ? selectedSourceKey.trim()
+        : apiEventController.visibleSourceKey.trim();
     if (eventKey.isNotEmpty && eventKey != '-') {
       setState(() {
         isLoadingApiDetail = true;
@@ -942,7 +949,10 @@ class _HomeScreenState extends State<HomeScreen> {
       });
 
       try {
-        detail = await apiEventController.loadEventDetail(eventKey);
+        detail = await apiEventController.loadEventDetail(
+          eventKey,
+          sourceKey: preferredSourceKey.isEmpty ? null : preferredSourceKey,
+        );
         setState(() {
           selectedApiEventDetail = detail;
           if (detail == null) {
@@ -956,8 +966,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    final sourceItem =
-        detail ?? apiEventController.findItemByEventKey(item.eventKeyText);
+    final sourceItem = apiEventController.findItemByEventKey(item.eventKeyText) ?? detail;
     if (sourceItem != null) {
       final activated = await _ensureSlotForEventSource(sourceItem);
       if (!activated &&
@@ -1182,24 +1191,49 @@ class _HomeScreenState extends State<HomeScreen> {
     final frameIntervalSeconds = videoController.frameRate <= 0
         ? (1 / 30)
         : (1 / videoController.frameRate);
+    final isLiveLikeSource = videoController.isStreamMode && !videoController.isReplayMode;
     final movedEnough = lastFrameDetectionRequestSourceKey != sourceKey ||
         (currentOverlaySeconds - lastFrameDetectionRequestSeconds).abs() >=
             (frameIntervalSeconds * 0.5);
     final statusChanged = (runtimeStatus?.updatedAt ?? '') !=
         lastFrameDetectionStatusUpdatedAt;
+    final isTerminalState = runtimeStatus != null &&
+        (runtimeStatus.state == 'completed' ||
+            runtimeStatus.state == 'stopped' ||
+            runtimeStatus.state == 'error');
+    final hasUsableSnapshot = frameDetectionSourceKey == sourceKey &&
+        frameDetectionSnapshots.isNotEmpty &&
+        (!isLiveLikeSource
+            ? (frameDetectionSnapshots.first.sourceTimeSeconds - currentOverlaySeconds)
+                    .abs() <=
+                math.max(0.08, frameIntervalSeconds * 1.5)
+            : true);
+    if (!videoController.isPlaying &&
+        !statusChanged &&
+        isTerminalState &&
+        hasUsableSnapshot) {
+      return;
+    }
     if (!movedEnough && !statusChanged) {
       return;
     }
 
-    final toleranceSeconds = math.max(
-      0.08,
-      frameIntervalSeconds * 1.5,
-    );
-    final snapshot = await eventApiService.fetchCurrentFrameDetection(
-      sourceKey: sourceKey,
-      sourceTimeSeconds: currentOverlaySeconds,
-      toleranceSeconds: toleranceSeconds,
-    );
+    final FrameDetectionSnapshot? snapshot;
+    if (isLiveLikeSource) {
+      snapshot = await eventApiService.fetchLatestFrameDetection(
+        sourceKey: sourceKey,
+      );
+    } else {
+      final toleranceSeconds = math.max(
+        0.20,
+        frameIntervalSeconds * 4.0,
+      );
+      snapshot = await eventApiService.fetchCurrentFrameDetection(
+        sourceKey: sourceKey,
+        sourceTimeSeconds: currentOverlaySeconds,
+        toleranceSeconds: toleranceSeconds,
+      );
+    }
     if (!mounted) {
       return;
     }
@@ -1220,15 +1254,24 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final toleranceSeconds = math.max(
-      0.08,
-      (videoController.frameRate <= 0 ? 1 / 30 : 1 / videoController.frameRate) * 1.5,
-    );
-    final snapshot = await eventApiService.fetchCurrentFrameDetection(
-      sourceKey: normalizedSourceKey,
-      sourceTimeSeconds: videoController.currentOverlaySeconds,
-      toleranceSeconds: toleranceSeconds,
-    );
+    final isLiveLikeSource = videoController.isStreamMode && !videoController.isReplayMode;
+    final FrameDetectionSnapshot? snapshot;
+    if (isLiveLikeSource) {
+      snapshot = await eventApiService.fetchLatestFrameDetection(
+        sourceKey: normalizedSourceKey,
+      );
+    } else {
+      final toleranceSeconds = math.max(
+        0.20,
+        (videoController.frameRate <= 0 ? 1 / 30 : 1 / videoController.frameRate) *
+            4.0,
+      );
+      snapshot = await eventApiService.fetchCurrentFrameDetection(
+        sourceKey: normalizedSourceKey,
+        sourceTimeSeconds: videoController.currentOverlaySeconds,
+        toleranceSeconds: toleranceSeconds,
+      );
+    }
     if (!mounted) {
       return;
     }
@@ -1332,6 +1375,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await _setActiveSlot(slot.slotId);
       apiEventController.setVisibleSourceKey(sourceKey);
       await _writeAllSourcesState();
+      unawaited(_refreshApiEventsIfNeeded());
       unawaited(_refreshFrameDetectionsIfNeeded());
       return slot;
     }
@@ -1361,6 +1405,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await _pauseInactiveSlots(exceptSlotId: slot.slotId);
     apiEventController.setVisibleSourceKey(sourceKey);
     await _writeAllSourcesState();
+    unawaited(_refreshApiEventsIfNeeded());
     unawaited(_refreshFrameDetectionsIfNeeded());
     return slot;
   }
@@ -1402,6 +1447,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await _writeAllSourcesState();
       await _syncActiveSlotFrameRateIfNeeded();
     }
+    unawaited(_refreshApiEventsIfNeeded());
     unawaited(_refreshFrameDetectionsIfNeeded());
   }
 
@@ -1420,6 +1466,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await _pauseInactiveSlots(exceptSlotId: slotId);
     apiEventFeed.clearSelection();
     apiEventController.setVisibleSourceKey(selectedSourceKey);
+    unawaited(_refreshApiEventsIfNeeded());
     unawaited(_writeAllSourcesState());
     unawaited(_syncActiveSlotFrameRateIfNeeded());
     unawaited(_refreshFrameDetectionsIfNeeded());
@@ -1435,6 +1482,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _writeAllSourcesState() async {
+    await _ensureBridgeStateReady();
     final slots = _sourceSlots
         .map(
           (slot) => SourceSlotState(
@@ -1648,6 +1696,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<bool> _ensureSlotForEventSource(ApiEventItem item) async {
+    await _ensureBridgeStateReady();
     final activated = await _activateSlotForSourceKey(item.sourceKey);
     if (activated) {
       return true;
@@ -1674,6 +1723,15 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {
       return false;
     }
+  }
+
+  Future<void> _ensureBridgeStateReady() async {
+    final pending = bridgeStateReady;
+    if (pending == null) {
+      return;
+    }
+    await pending;
+    bridgeStateReady = null;
   }
 
   Future<_ClipTargetBinding> _resolveClipTargetController(ApiEventItem item) async {
@@ -1823,6 +1881,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _showInfoSnack('소스 선택을 해제하고 전체 이벤트 로그 보기로 전환했습니다.');
       }
       apiEventController.setVisibleSourceKey('');
+      unawaited(_refreshApiEventsIfNeeded());
       return;
     }
 
@@ -1835,6 +1894,7 @@ class _HomeScreenState extends State<HomeScreen> {
       frameDetectionSourceKey = '';
     });
     apiEventController.setVisibleSourceKey('');
+    unawaited(_refreshApiEventsIfNeeded());
   }
 }
 

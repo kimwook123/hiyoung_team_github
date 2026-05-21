@@ -49,6 +49,14 @@ def init_db(db_path: Path) -> None:
             CREATE INDEX IF NOT EXISTS idx_frame_detections_source_time
             ON frame_detections(source_key, source_time_seconds, id);
 
+            CREATE TABLE IF NOT EXISTS frame_detections_latest (
+                source_key TEXT PRIMARY KEY,
+                source_time_seconds REAL NOT NULL,
+                frame_id INTEGER NOT NULL,
+                received_at TEXT NOT NULL,
+                payload_json TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS source_status (
                 source_key TEXT PRIMARY KEY,
                 source_type TEXT NOT NULL,
@@ -171,21 +179,37 @@ def list_latest_events(
     return list(latest_by_key.values())
 
 
-def find_events_by_key(db_path: Path, event_key: str) -> list[dict]:
+def find_events_by_key(
+    db_path: Path,
+    event_key: str,
+    *,
+    source_key: str | None = None,
+) -> list[dict]:
+    query = "SELECT payload_json FROM events WHERE event_key = ?"
+    parameters: list[object] = [event_key]
+    if source_key is not None:
+        query += " AND source_key = ?"
+        parameters.append(source_key)
+    query += " ORDER BY id ASC"
     with _connect(db_path) as connection:
-        rows = connection.execute(
-            "SELECT payload_json FROM events WHERE event_key = ? ORDER BY id ASC",
-            (event_key,),
-        ).fetchall()
+        rows = connection.execute(query, parameters).fetchall()
     return [_decode_payload(row["payload_json"]) for row in rows]
 
 
-def get_latest_event_by_key(db_path: Path, event_key: str) -> dict | None:
+def get_latest_event_by_key(
+    db_path: Path,
+    event_key: str,
+    *,
+    source_key: str | None = None,
+) -> dict | None:
+    query = "SELECT payload_json FROM events WHERE event_key = ?"
+    parameters: list[object] = [event_key]
+    if source_key is not None:
+        query += " AND source_key = ?"
+        parameters.append(source_key)
+    query += " ORDER BY id DESC LIMIT 1"
     with _connect(db_path) as connection:
-        row = connection.execute(
-            "SELECT payload_json FROM events WHERE event_key = ? ORDER BY id DESC LIMIT 1",
-            (event_key,),
-        ).fetchone()
+        row = connection.execute(query, parameters).fetchone()
     if row is None:
         return None
     return _decode_payload(row["payload_json"])
@@ -239,6 +263,7 @@ def insert_frame_detection(db_path: Path, frame_record: dict) -> dict:
         datetime.now().isoformat()
     )
     with _connect(db_path) as connection:
+        payload_json = json.dumps(saved_record, ensure_ascii=False)
         connection.execute(
             """
             INSERT INTO frame_detections (
@@ -250,10 +275,44 @@ def insert_frame_detection(db_path: Path, frame_record: dict) -> dict:
                 _to_float(saved_record.get("source_time_seconds")),
                 _to_int(saved_record.get("frame_id")),
                 saved_record["received_at"],
-                json.dumps(saved_record, ensure_ascii=False),
+                payload_json,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO frame_detections_latest (
+                source_key, source_time_seconds, frame_id, received_at, payload_json
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(source_key) DO UPDATE SET
+                source_time_seconds=excluded.source_time_seconds,
+                frame_id=excluded.frame_id,
+                received_at=excluded.received_at,
+                payload_json=excluded.payload_json
+            """,
+            (
+                str(saved_record.get("source_key", "")).strip(),
+                _to_float(saved_record.get("source_time_seconds")),
+                _to_int(saved_record.get("frame_id")),
+                saved_record["received_at"],
+                payload_json,
             ),
         )
     return saved_record
+
+
+def get_latest_frame_detection(db_path: Path, *, source_key: str) -> dict | None:
+    with _connect(db_path) as connection:
+        row = connection.execute(
+            """
+            SELECT payload_json
+            FROM frame_detections_latest
+            WHERE source_key = ?
+            """,
+            (source_key,),
+        ).fetchone()
+    if row is None:
+        return None
+    return _decode_payload(row["payload_json"])
 
 
 def find_current_frame_detection(
@@ -264,6 +323,14 @@ def find_current_frame_detection(
     tolerance_seconds: float,
 ) -> dict | None:
     with _connect(db_path) as connection:
+        latest_row = connection.execute(
+            """
+            SELECT payload_json, source_time_seconds
+            FROM frame_detections_latest
+            WHERE source_key = ?
+            """,
+            (source_key,),
+        ).fetchone()
         before_row = connection.execute(
             """
             SELECT payload_json, source_time_seconds
@@ -284,6 +351,13 @@ def find_current_frame_detection(
             """,
             (source_key, source_time_seconds),
         ).fetchone()
+
+    if (
+        latest_row is not None
+        and abs(latest_row["source_time_seconds"] - source_time_seconds)
+        <= tolerance_seconds
+    ):
+        return _decode_payload(latest_row["payload_json"])
 
     best_row: sqlite3.Row | None = None
     if before_row is not None and abs(before_row["source_time_seconds"] - source_time_seconds) <= tolerance_seconds:
@@ -366,6 +440,10 @@ def reset_source_data(db_path: Path, *, source_key: str, source_slug: str, serve
         ).rowcount
         connection.execute(
             "DELETE FROM frame_detections WHERE source_key = ?",
+            (source_key,),
+        )
+        connection.execute(
+            "DELETE FROM frame_detections_latest WHERE source_key = ?",
             (source_key,),
         )
         connection.execute(

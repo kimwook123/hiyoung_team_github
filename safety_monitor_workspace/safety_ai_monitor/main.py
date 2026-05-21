@@ -11,15 +11,21 @@ from config import (
     ENABLE_HTTP_FRAME_DETECTION_POST,
     ENABLE_HTTP_SOURCE_STATUS_POST,
     ENABLE_JSON_EVENT_LOG,
+    ENABLE_PIPELINE_PERF_LOG,
+    ANALYSIS_TARGET_FPS,
+    EVENT_ACTIVE_POST_MIN_INTERVAL_SECONDS,
     EVENT_CLIP_UPLOAD_TIMEOUT_SECONDS,
     EVENT_CLIP_UPLOAD_URL,
     EVENT_POST_TIMEOUT_SECONDS,
     EVENT_POST_URL,
+    EVENT_POST_QUEUE_SIZE,
     FRAME_DETECTION_POST_TIMEOUT_SECONDS,
     FRAME_DETECTION_POST_URL,
+    FRAME_DETECTION_POST_MAX_FPS,
     EVENT_COOLDOWN_SECONDS,
     EVENT_CLIP_BEFORE_SECONDS,
     EVENT_CLIP_DIR,
+    EVENT_CLIP_WRITE_QUEUE_SIZE,
     EVENT_END_MISSING_FRAMES,
     FRAME_DETECTION_LOG_PATH,
     HTTP_EVENT_FALLBACK_JSON_PATH,
@@ -27,6 +33,7 @@ from config import (
     JSON_EVENT_LOG_PATH,
     LOG_PATH,
     MIN_CONFIDENCE,
+    MODEL_INPUT_MAX_WIDTH,
     MODEL_PATH,
     MODEL_TYPE,
     PERSON_MODEL_PATH,
@@ -36,6 +43,7 @@ from config import (
     SAVE_EVENT_CLIP,
     SHOW_SCREEN,
     SOURCE_STATE_PATH,
+    SOURCE_STATUS_POST_MIN_INTERVAL_SECONDS,
     SOURCE_STATUS_POST_TIMEOUT_SECONDS,
     SOURCE_STATUS_POST_URL,
     SOURCES_STATE_PATH,
@@ -43,6 +51,7 @@ from config import (
     TRACK_MAX_MISSING_FRAMES,
     USE_DANGER_ZONE_RULE,
     USE_NO_HELMET_RULE,
+    PIPELINE_PERF_LOG_INTERVAL_FRAMES,
 )
 from core.detection_model import DetectionModel
 from core.event_clip_recorder import EventClipRecorder
@@ -72,6 +81,8 @@ from rules.no_helmet_rule import NoHelmetRule
 
 # 이 파일은 Python AI Worker의 진입점입니다.
 # 입력 소스, 모델, 룰, 핸들러를 조립하고 필요하면 소스별 worker thread를 띄웁니다.
+
+_RECENT_SOURCE_STATE_WINDOW_SECONDS = 5.0
 
 
 def build_model() -> DetectionModel:
@@ -182,6 +193,8 @@ def build_pipeline(
                 timeout_seconds=EVENT_POST_TIMEOUT_SECONDS,
                 fallback_handler=fallback_handler,
                 clip_upload_client=clip_upload_client,
+                queue_size=EVENT_POST_QUEUE_SIZE,
+                active_post_min_interval_seconds=EVENT_ACTIVE_POST_MIN_INTERVAL_SECONDS,
             )
         )
     elif ENABLE_JSON_EVENT_LOG:
@@ -204,17 +217,20 @@ def build_pipeline(
         fps=source_fps,
         before_seconds=EVENT_CLIP_BEFORE_SECONDS,
         source_slug=source_slug,
+        queue_size=EVENT_CLIP_WRITE_QUEUE_SIZE,
     )
     frame_detection_recorder = FrameDetectionRecorder(
         log_path=to_project_path(FRAME_DETECTION_LOG_PATH),
         post_url=FRAME_DETECTION_POST_URL if ENABLE_HTTP_FRAME_DETECTION_POST else "",
         timeout_seconds=FRAME_DETECTION_POST_TIMEOUT_SECONDS,
+        max_post_fps=FRAME_DETECTION_POST_MAX_FPS,
     )
     source_status_publisher = None
     if ENABLE_HTTP_SOURCE_STATUS_POST:
         source_status_publisher = SourceStatusPublisher(
             post_url=SOURCE_STATUS_POST_URL,
             timeout_seconds=SOURCE_STATUS_POST_TIMEOUT_SECONDS,
+            min_interval_seconds=SOURCE_STATUS_POST_MIN_INTERVAL_SECONDS,
         )
 
     return VideoPipeline(
@@ -236,6 +252,10 @@ def build_pipeline(
         session_id=session_id,
         source_fps=source_fps,
         source_status_publisher=source_status_publisher,
+        analysis_target_fps=ANALYSIS_TARGET_FPS,
+        model_input_max_width=MODEL_INPUT_MAX_WIDTH,
+        enable_perf_log=ENABLE_PIPELINE_PERF_LOG,
+        perf_log_interval_frames=PIPELINE_PERF_LOG_INTERVAL_FRAMES,
     )
 
 
@@ -254,7 +274,7 @@ def _run_gui_mode() -> None:
     current_state: dict[str, str] | None = None
 
     while True:
-        if sources_reader.read_all():
+        if _read_sources_state_stable(sources_reader):
             _run_multi_source_gui_mode()
             current_state = None
             continue
@@ -262,14 +282,20 @@ def _run_gui_mode() -> None:
         if current_state is None:
             current_state = source_reader.read()
 
-        pipeline = build_pipeline(
-            source_state=current_state,
-            restart_checker=lambda: sources_reader.read_all()
-            or source_reader.read_if_changed(current_state) is not None,
-        )
-        stop_reason = pipeline.run()
+        try:
+            pipeline = build_pipeline(
+                source_state=current_state,
+                restart_checker=lambda: sources_reader.read_all()
+                or source_reader.read_if_changed(current_state) is not None,
+            )
+            stop_reason = pipeline.run()
+        except Exception as error:
+            print(f"[ERROR] gui pipeline failed: {error}")
+            time.sleep(1.0)
+            current_state = None
+            continue
 
-        if sources_reader.read_all():
+        if _read_sources_state_stable(sources_reader):
             current_state = None
             continue
 
@@ -295,6 +321,11 @@ class _SourceWorker:
         return self.source_state.get("slot_id", "default")
 
     def start(self) -> None:
+        print(
+            f"[INFO] starting worker: slot_id={self.worker_id} "
+            f"source={self.source_state.get('source_value', '')}",
+            flush=True,
+        )
         self.thread.start()
 
     def stop(self) -> None:
@@ -305,11 +336,20 @@ class _SourceWorker:
 
     def _run(self) -> None:
         while not self.stop_event.is_set():
-            pipeline = build_pipeline(
-                source_state=self.source_state,
-                restart_checker=lambda: self.stop_event.is_set(),
-            )
-            stop_reason = pipeline.run()
+            try:
+                pipeline = build_pipeline(
+                    source_state=self.source_state,
+                    restart_checker=lambda: self.stop_event.is_set(),
+                )
+                stop_reason = pipeline.run()
+            except Exception as error:
+                print(
+                    f"[ERROR] source worker failed: slot_id={self.worker_id} "
+                    f"source={self.source_state.get('source_value', '')} "
+                    f"error={error}"
+                )
+                time.sleep(1.0)
+                break
             if stop_reason != "source_changed":
                 break
 
@@ -319,11 +359,16 @@ def _run_multi_source_gui_mode() -> None:
     workers: dict[str, _SourceWorker] = {}
 
     while True:
-        next_states = reader.read_all()
+        next_states = _read_sources_state_stable(reader)
         if not next_states:
             for worker in workers.values():
                 worker.stop()
             return
+
+        print(
+            f"[INFO] multi-source update: source_count={len(next_states)}",
+            flush=True,
+        )
 
         next_by_slot = {
             str(item.get("slot_id", "")).strip() or f"slot_{index + 1}": item
@@ -352,12 +397,32 @@ def _run_multi_source_gui_mode() -> None:
         time.sleep(1.0)
 
 
+def _read_sources_state_stable(
+    reader: SourcesStateReader,
+    *,
+    retries: int = 3,
+    delay_seconds: float = 0.2,
+) -> list[dict[str, str]]:
+    for attempt in range(retries):
+        items = reader.read_all()
+        if items:
+            return items
+        if attempt >= retries - 1:
+            return []
+        time.sleep(delay_seconds)
+    return []
+
+
 def _get_source_state_reader(
     min_updated_at: float | None = None,
 ) -> SourceStateReader:
     return SourceStateReader(
         state_path=to_project_path(SOURCE_STATE_PATH),
-        min_updated_at=min_updated_at if min_updated_at is not None else time.time(),
+        min_updated_at=(
+            min_updated_at
+            if min_updated_at is not None
+            else time.time() - _RECENT_SOURCE_STATE_WINDOW_SECONDS
+        ),
     )
 
 
@@ -366,7 +431,11 @@ def _get_sources_state_reader(
 ) -> SourcesStateReader:
     return SourcesStateReader(
         state_path=to_project_path(SOURCES_STATE_PATH),
-        min_updated_at=min_updated_at if min_updated_at is not None else time.time(),
+        min_updated_at=(
+            min_updated_at
+            if min_updated_at is not None
+            else time.time() - _RECENT_SOURCE_STATE_WINDOW_SECONDS
+        ),
     )
 
 

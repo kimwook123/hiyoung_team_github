@@ -151,6 +151,7 @@ def list_sources(
 def get_event_detail(
     event_key: str = Query(min_length=1),
     latest_only: bool = True,
+    source_key: str | None = None,
 ) -> EventDetailResponse | EventHistoryResponse:
     # event_key 하나를 기준으로 최신 1건 또는 전체 이력을 조회합니다.
     normalized_event_key = event_key.strip()
@@ -158,13 +159,21 @@ def get_event_detail(
         raise HTTPException(status_code=400, detail="event_key is required")
 
     if latest_only:
-        item = get_latest_event_by_key(DATABASE_PATH, normalized_event_key)
+        item = get_latest_event_by_key(
+            DATABASE_PATH,
+            normalized_event_key,
+            source_key=source_key,
+        )
         if item is None:
             raise HTTPException(status_code=404, detail="event_key not found")
 
         return EventDetailResponse(event_key=normalized_event_key, item=item)
 
-    items = find_events_by_key(DATABASE_PATH, normalized_event_key)
+    items = find_events_by_key(
+        DATABASE_PATH,
+        normalized_event_key,
+        source_key=source_key,
+    )
     if not items:
         raise HTTPException(status_code=404, detail="event_key not found")
 

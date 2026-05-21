@@ -14,6 +14,7 @@ class ClipUploadClient:
     ) -> None:
         self.upload_url = upload_url
         self.timeout_seconds = timeout_seconds
+        self.session = requests.Session()
 
     def upload_clip(
         self,
@@ -43,7 +44,7 @@ class ClipUploadClient:
 
         try:
             with file_path.open("rb") as clip_file:
-                response = requests.post(
+                response = self.session.post(
                     self.upload_url,
                     files={"file": (file_path.name, clip_file, "video/mp4")},
                     data=data,
@@ -60,3 +61,6 @@ class ClipUploadClient:
             print(f"HTTP clip upload response parse failed: {error}")
 
         return None
+
+    def close(self) -> None:
+        self.session.close()

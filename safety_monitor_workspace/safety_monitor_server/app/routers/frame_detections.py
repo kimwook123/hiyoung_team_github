@@ -3,7 +3,11 @@ from typing import Any
 from fastapi import APIRouter, Body, HTTPException, Query
 
 from app.config import DATABASE_PATH
-from app.database import find_current_frame_detection, insert_frame_detection
+from app.database import (
+    find_current_frame_detection,
+    get_latest_frame_detection,
+    insert_frame_detection,
+)
 from app.schemas import FrameDetectionCreateResponse, FrameDetectionSnapshotResponse
 
 router = APIRouter(prefix="/api/frame-detections", tags=["frame-detections"])
@@ -38,5 +42,16 @@ def get_current_frame_detection(
         source_key=source_key,
         source_time_seconds=source_time_seconds,
         tolerance_seconds=tolerance_seconds,
+    )
+    return FrameDetectionSnapshotResponse(found=item is not None, item=item)
+
+
+@router.get("/latest", response_model=FrameDetectionSnapshotResponse)
+def get_latest_frame_detection_item(
+    source_key: str = Query(min_length=1),
+) -> FrameDetectionSnapshotResponse:
+    item = get_latest_frame_detection(
+        DATABASE_PATH,
+        source_key=source_key,
     )
     return FrameDetectionSnapshotResponse(found=item is not None, item=item)

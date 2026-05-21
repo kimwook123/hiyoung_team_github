@@ -62,11 +62,13 @@ class ApiEventController extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final normalizedSourceKey = visibleSourceKey.trim();
       final nextItems = await _service.fetchEvents(
         latestOnly: latestOnly,
         limit: limit,
         eventType: eventType,
         status: status,
+        sourceKey: normalizedSourceKey.isEmpty ? null : normalizedSourceKey,
       );
       items = nextItems;
       lastUpdatedAt = DateTime.now();
@@ -78,7 +80,7 @@ class ApiEventController extends ChangeNotifier {
     }
   }
 
-  Future<ApiEventItem?> loadEventDetail(String eventKey) async {
+  Future<ApiEventItem?> loadEventDetail(String eventKey, {String? sourceKey}) async {
     // 선택한 이벤트 한 건의 상세 정보를 GET /api/events/detail로 조회합니다.
     final normalizedEventKey = eventKey.trim();
     if (normalizedEventKey.isEmpty) {
@@ -89,7 +91,10 @@ class ApiEventController extends ChangeNotifier {
 
     try {
       errorMessage = null;
-      final item = await _service.fetchEventDetail(normalizedEventKey);
+      final item = await _service.fetchEventDetail(
+        normalizedEventKey,
+        sourceKey: sourceKey,
+      );
       if (item == null) {
         errorMessage = 'Failed to load API event detail.';
       }

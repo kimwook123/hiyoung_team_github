@@ -1,9 +1,9 @@
-import json
 import time
 from pathlib import Path
 
 import requests
 
+from core.async_workers import AsyncLatestWorker
 from core.detection_model import DetectionResult
 from core.event_serializer import serialize_detection
 
@@ -17,11 +17,21 @@ class FrameDetectionRecorder:
         *,
         post_url: str = "",
         timeout_seconds: float = 1.0,
+        max_post_fps: float = 8.0,
     ) -> None:
         self.log_path = Path(log_path)
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         self.post_url = post_url.strip()
         self.timeout_seconds = timeout_seconds
+        self.max_post_fps = max(0.0, max_post_fps)
+        self.last_posted_at = 0.0
+        self.session = requests.Session()
+        self.post_worker: AsyncLatestWorker[dict] | None = None
+        if self.post_url:
+            self.post_worker = AsyncLatestWorker(
+                name="frame-detection-post-worker",
+                consumer=self._post_record_sync,
+            )
 
     def write(
         self,
@@ -49,34 +59,31 @@ class FrameDetectionRecorder:
                 for detection in result.detections
             ],
         }
-        line = json.dumps(record, ensure_ascii=False) + "\n"
-        self._append_line(line)
         self._post_record(record)
-
-    def _append_line(self, line: str) -> None:
-        last_error: Exception | None = None
-
-        for _ in range(5):
-            try:
-                with self.log_path.open("a", encoding="utf-8") as log_file:
-                    log_file.write(line)
-                return
-            except PermissionError as error:
-                last_error = error
-                time.sleep(0.05)
-
-        if last_error is not None:
-            raise last_error
 
     def _post_record(self, record: dict) -> None:
         if not self.post_url:
             return
+        now_ts = time.time()
+        if self.max_post_fps > 0:
+            min_interval = 1.0 / self.max_post_fps
+            if (now_ts - self.last_posted_at) < min_interval:
+                return
+        self.last_posted_at = now_ts
+        if self.post_worker is not None:
+            self.post_worker.submit(dict(record))
 
+    def _post_record_sync(self, record: dict) -> None:
         try:
-            requests.post(
+            self.session.post(
                 self.post_url,
                 json=record,
                 timeout=self.timeout_seconds,
             )
         except requests.RequestException as error:
             print(f"[WARN] frame detection post failed: {error}")
+
+    def close(self) -> None:
+        if self.post_worker is not None:
+            self.post_worker.close(timeout_seconds=max(15.0, self.timeout_seconds + 5.0))
+        self.session.close()

@@ -2,6 +2,8 @@ from datetime import datetime
 
 import requests
 
+from core.async_workers import AsyncLatestWorker
+
 
 class SourceStatusPublisher:
     def __init__(
@@ -15,6 +17,12 @@ class SourceStatusPublisher:
         self.timeout_seconds = timeout_seconds
         self.min_interval_seconds = min_interval_seconds
         self._last_posted_at = 0.0
+        self._last_payload_signature = ""
+        self._session = requests.Session()
+        self._post_worker = AsyncLatestWorker(
+            name="source-status-post-worker",
+            consumer=self._post_payload_sync,
+        )
 
     def publish(
         self,
@@ -53,13 +61,27 @@ class SourceStatusPublisher:
             "error_message": error_message,
             "updated_at": datetime.now().isoformat(),
         }
+        signature = (
+            f"{source_key}|{state}|{1 if is_running else 0}|{last_frame_id}|"
+            f"{last_source_time_seconds:.3f}|{error_message}"
+        )
+        if not force and signature == self._last_payload_signature:
+            return
 
+        self._post_worker.submit(payload)
+        self._last_posted_at = now_ts
+        self._last_payload_signature = signature
+
+    def _post_payload_sync(self, payload: dict[str, object]) -> None:
         try:
-            requests.post(
+            self._session.post(
                 self.post_url,
                 json=payload,
                 timeout=self.timeout_seconds,
             )
-            self._last_posted_at = now_ts
         except requests.RequestException as error:
             print(f"[WARN] source status post failed: {error}")
+
+    def close(self) -> None:
+        self._post_worker.close(timeout_seconds=max(15.0, self.timeout_seconds + 5.0))
+        self._session.close()

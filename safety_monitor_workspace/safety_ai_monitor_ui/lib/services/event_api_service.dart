@@ -73,7 +73,7 @@ class EventApiService {
     return _fetchEventList(uri);
   }
 
-  Future<ApiEventItem?> fetchEventDetail(String eventKey) async {
+  Future<ApiEventItem?> fetchEventDetail(String eventKey, {String? sourceKey}) async {
     // 상세 패널은 목록과 별도로 /api/events/detail을 다시 호출해 최신 1건을 가져옵니다.
     final normalizedEventKey = eventKey.trim();
     if (normalizedEventKey.isEmpty) {
@@ -85,6 +85,7 @@ class EventApiService {
       {
         'event_key': normalizedEventKey,
         'latest_only': 'true',
+        'source_key': _normalizeQueryValue(sourceKey),
       },
     );
 
@@ -174,6 +175,50 @@ class EventApiService {
         'source_key': normalizedSourceKey,
         'source_time_seconds': sourceTimeSeconds.toString(),
         'tolerance_seconds': toleranceSeconds.toString(),
+      },
+    );
+
+    try {
+      final response = await _client.get(uri);
+      if (response.statusCode != 200) {
+        return null;
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        return null;
+      }
+
+      if (decoded['found'] != true) {
+        return null;
+      }
+
+      final item = decoded['item'];
+      if (item is Map<String, dynamic>) {
+        return FrameDetectionSnapshot.fromJson(item);
+      }
+      if (item is Map) {
+        return FrameDetectionSnapshot.fromJson(Map<String, dynamic>.from(item));
+      }
+    } catch (_) {
+      return null;
+    }
+
+    return null;
+  }
+
+  Future<FrameDetectionSnapshot?> fetchLatestFrameDetection({
+    required String sourceKey,
+  }) async {
+    final normalizedSourceKey = sourceKey.trim();
+    if (normalizedSourceKey.isEmpty) {
+      return null;
+    }
+
+    final uri = _buildUri(
+      '/api/frame-detections/latest',
+      {
+        'source_key': normalizedSourceKey,
       },
     );
 

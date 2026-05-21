@@ -3,18 +3,20 @@ import threading
 import time
 
 from config import (
-    BRIDGE_PATH,
-    BRIDGES_PATH,
     CAMERA_INDEX,
     DANGER_ZONE_ROI,
     ENABLE_EVENT_CLIP_UPLOAD,
     ENABLE_HTTP_EVENT_FALLBACK_JSON,
     ENABLE_HTTP_EVENT_POST,
+    ENABLE_HTTP_FRAME_DETECTION_POST,
+    ENABLE_HTTP_SOURCE_STATUS_POST,
     ENABLE_JSON_EVENT_LOG,
     EVENT_CLIP_UPLOAD_TIMEOUT_SECONDS,
     EVENT_CLIP_UPLOAD_URL,
     EVENT_POST_TIMEOUT_SECONDS,
     EVENT_POST_URL,
+    FRAME_DETECTION_POST_TIMEOUT_SECONDS,
+    FRAME_DETECTION_POST_URL,
     EVENT_COOLDOWN_SECONDS,
     EVENT_CLIP_BEFORE_SECONDS,
     EVENT_CLIP_DIR,
@@ -34,6 +36,8 @@ from config import (
     SAVE_EVENT_CLIP,
     SHOW_SCREEN,
     SOURCE_STATE_PATH,
+    SOURCE_STATUS_POST_TIMEOUT_SECONDS,
+    SOURCE_STATUS_POST_URL,
     SOURCES_STATE_PATH,
     TRACK_MAX_DISTANCE,
     TRACK_MAX_MISSING_FRAMES,
@@ -53,12 +57,8 @@ from core.source_identity import (
     build_source_slug,
     normalize_video_source_value,
 )
-from core.ui_bridge import (
-    SourceStateReader,
-    SourcesStateReader,
-    UiBridgeRegistry,
-    UiBridgeWriter,
-)
+from core.source_status_publisher import SourceStatusPublisher
+from core.ui_bridge import SourceStateReader, SourcesStateReader
 from handlers.clip_upload_client import ClipUploadClient
 from handlers.console_event_handler import ConsoleEventHandler
 from handlers.http_event_handler import HttpEventHandler
@@ -207,23 +207,15 @@ def build_pipeline(
     )
     frame_detection_recorder = FrameDetectionRecorder(
         log_path=to_project_path(FRAME_DETECTION_LOG_PATH),
+        post_url=FRAME_DETECTION_POST_URL if ENABLE_HTTP_FRAME_DETECTION_POST else "",
+        timeout_seconds=FRAME_DETECTION_POST_TIMEOUT_SECONDS,
     )
-
-    UiBridgeWriter(bridge_path=to_project_path(BRIDGE_PATH)).write(
-        source_type=source_type,
-        source_value=source_value,
-        log_path=log_path,
-        model_type=MODEL_TYPE,
-        source_fps=source_fps,
-    )
-    UiBridgeRegistry(bridges_path=to_project_path(BRIDGES_PATH)).write_entry(
-        source_key=source_key,
-        source_type=source_type,
-        source_value=source_value,
-        log_path=log_path,
-        model_type=MODEL_TYPE,
-        source_fps=source_fps,
-    )
+    source_status_publisher = None
+    if ENABLE_HTTP_SOURCE_STATUS_POST:
+        source_status_publisher = SourceStatusPublisher(
+            post_url=SOURCE_STATUS_POST_URL,
+            timeout_seconds=SOURCE_STATUS_POST_TIMEOUT_SECONDS,
+        )
 
     return VideoPipeline(
         frame_source=frame_source,
@@ -242,6 +234,8 @@ def build_pipeline(
         source_slug=source_slug,
         client_id=client_id,
         session_id=session_id,
+        source_fps=source_fps,
+        source_status_publisher=source_status_publisher,
     )
 
 
@@ -255,21 +249,29 @@ def main() -> None:
 
 
 def _run_gui_mode() -> None:
-    source_states = _get_sources_state_reader().read_all()
-    if source_states:
-        _run_multi_source_gui_mode()
-        return
-
+    sources_reader = _get_sources_state_reader()
     source_reader = _get_source_state_reader()
-    current_state = source_reader.read()
+    current_state: dict[str, str] | None = None
 
     while True:
+        if sources_reader.read_all():
+            _run_multi_source_gui_mode()
+            current_state = None
+            continue
+
+        if current_state is None:
+            current_state = source_reader.read()
+
         pipeline = build_pipeline(
             source_state=current_state,
-            restart_checker=lambda: source_reader.read_if_changed(current_state)
-            is not None,
+            restart_checker=lambda: sources_reader.read_all()
+            or source_reader.read_if_changed(current_state) is not None,
         )
         stop_reason = pipeline.run()
+
+        if sources_reader.read_all():
+            current_state = None
+            continue
 
         if stop_reason == "source_changed":
             current_state = source_reader.read()
@@ -313,11 +315,16 @@ class _SourceWorker:
 
 
 def _run_multi_source_gui_mode() -> None:
-    reader = _get_sources_state_reader()
+    reader = _get_sources_state_reader(min_updated_at=None)
     workers: dict[str, _SourceWorker] = {}
 
     while True:
         next_states = reader.read_all()
+        if not next_states:
+            for worker in workers.values():
+                worker.stop()
+            return
+
         next_by_slot = {
             str(item.get("slot_id", "")).strip() or f"slot_{index + 1}": item
             for index, item in enumerate(next_states)
@@ -345,17 +352,21 @@ def _run_multi_source_gui_mode() -> None:
         time.sleep(1.0)
 
 
-def _get_source_state_reader() -> SourceStateReader:
+def _get_source_state_reader(
+    min_updated_at: float | None = None,
+) -> SourceStateReader:
     return SourceStateReader(
         state_path=to_project_path(SOURCE_STATE_PATH),
-        min_updated_at=time.time(),
+        min_updated_at=min_updated_at if min_updated_at is not None else time.time(),
     )
 
 
-def _get_sources_state_reader() -> SourcesStateReader:
+def _get_sources_state_reader(
+    min_updated_at: float | None = None,
+) -> SourcesStateReader:
     return SourcesStateReader(
         state_path=to_project_path(SOURCES_STATE_PATH),
-        min_updated_at=time.time(),
+        min_updated_at=min_updated_at if min_updated_at is not None else time.time(),
     )
 
 

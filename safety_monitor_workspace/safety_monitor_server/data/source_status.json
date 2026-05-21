@@ -1,0 +1,30 @@
+[
+  {
+    "source_key": "video|c:/users/aisw_203_114/desktop/hiyoung_team_github/safety_monitor_workspace/safety_ai_monitor/logs/source_cache/youtube_1bc06306ade6.mp4",
+    "source_type": "video",
+    "source_value": "C:\\Users\\AISW_203_114\\Desktop\\hiyoung_team_github\\safety_monitor_workspace\\safety_ai_monitor\\logs\\source_cache\\youtube_1bc06306ade6.mp4",
+    "client_id": "",
+    "session_id": "default",
+    "state": "source_changed",
+    "is_running": false,
+    "source_fps": 25.0,
+    "last_frame_id": 149,
+    "last_source_time_seconds": 5.96,
+    "error_message": "",
+    "updated_at": "2026-05-21T09:31:23.830749"
+  },
+  {
+    "source_key": "video|c:/users/aisw_203_114/desktop/hiyoung_team_github/safety_monitor_workspace/test.mp4",
+    "source_type": "video",
+    "source_value": "C:\\Users\\AISW_203_114\\Desktop\\hiyoung_team_github\\safety_monitor_workspace\\test.mp4",
+    "client_id": "",
+    "session_id": "default",
+    "state": "completed",
+    "is_running": false,
+    "source_fps": 25.0,
+    "last_frame_id": 443,
+    "last_source_time_seconds": 17.72,
+    "error_message": "",
+    "updated_at": "2026-05-21T09:32:40.533727"
+  }
+]

@@ -1,64 +1,58 @@
 # AI_TASK_LOG.md
 
-## Initial Project Handoff
-
-### Current State
-- Python 백엔드와 Flutter GUI가 분리된 Windows 프로젝트로 구성되어 있다.
-- 기본 실행 모드는 `INPUT_MODE="gui"`, `MODEL_TYPE="yolo"`다.
-- Python은 파일 기반으로 입력 상태를 받고 이벤트 로그와 클립을 저장한다.
-- Flutter는 영상/스트림 재생과 로그 시각화를 담당한다.
-- 저장소에는 `test.mp4`와 이에 대응하는 로그/브리지 예시 파일이 존재한다.
-
-### Confirmed Architecture
-- 백엔드 진입점은 `safety_ai_monitor/main.py`다.
-- 핵심 파이프라인은 `core/pipeline.py`의 `VideoPipeline`이다.
-- 모델 계층은 `core/detection_model.py` 인터페이스를 통해 `models/dummy_model.py`, `models/yolo_model_sample.py`로 구현되어 있다.
-- 이벤트 생성은 `rules/*.py`, 이벤트 상태 관리는 `core/event_filter.py`, 후처리는 `handlers/*.py`로 분리되어 있다.
-- Python과 Flutter는 `safety_ai_monitor/logs/` 아래 JSON/TXT/MP4 파일을 통해 통신한다.
-- Flutter 진입점은 `safety_ai_monitor_ui/lib/main.dart`, 화면 조립은 `lib/screens/home_screen.dart`다.
-
-### Important Existing Features
-- 로컬 영상 파일 선택 후 분석 로그 연동
-- 스트림 주소 입력 후 분석 로그 연동
-- 카메라 입력 지원 코드 존재
-- YOLO 가중치 로드 및 공통 검출 포맷 변환
-- `person` 대상 간단 추적 ID 부여
-- `NO_HELMET`, `DANGER_ZONE` 이벤트 규칙 구조
-- 이벤트 START/ACTIVE/END 상태 관리
-- 이벤트 로그 텍스트 저장
-- 이벤트 클립 MP4 저장
-- Flutter 오버레이 및 이벤트 목록 클릭 이동
-- 스트림 이벤트의 replay clip 재생 후 라이브 복귀
-
-### Known Risk Areas
-- `NoHelmetRule`은 `person`, `helmet` 클래스명에 직접 의존하므로 모델 교체 시 의미가 쉽게 깨질 수 있다.
-- `LogEventHandler`의 한 줄 포맷은 Flutter `EventLogItem.fromLine()` 파서와 강하게 결합되어 있다.
-- `source_state.json`, `ui_bridge.json` 경로 규약은 Python/Flutter 양쪽에서 함께 맞아야 한다.
-- `PersonTracker`는 `person` 클래스만 추적하므로 클래스명 변경 또는 다중 객체 이벤트 확장 시 영향이 있다.
-- 현재 `best.pt` 파일은 Git 상태상 수정된 것으로 보이며, 문서 작업 외 변경과 충돌하지 않게 주의해야 한다.
-
-### Suggested Next Documentation Updates
-- 실제 기능 변경 후 이 파일에 작업 날짜, 변경 파일, 영향 범위를 기록한다.
-- 모델 교체나 룰 수정이 있었다면 “기대 클래스명”과 “검증한 샘플 입력”을 함께 남긴다.
-- 로그 포맷이나 브리지 파일 구조가 바뀌면 Flutter 영향과 호환성 메모를 추가한다.
-- 발표용 기능 추가 시 사용자 시나리오와 데모 흐름을 함께 요약한다.
-
-### Handoff Template
-
-## YYYY-MM-DD - Task Name
+## 2026-05-21 - 서버 중심 멀티소스 구조 정리
 
 ### Completed
-- 
+
+- Flutter GUI의 파일 로그 모드를 제거하고 서버 조회 중심 구조로 정리
+- Python -> Server로 이벤트, 프레임 탐지 스냅샷, 소스 상태, 클립 업로드 흐름 추가
+- FastAPI 서버 저장소를 JSONL 중심에서 SQLite 중심으로 전환
+- GUI 멀티소스 탭 전환 UX 추가
+- 활성 탭 전환 시 비활성 영상 자동 일시정지
+- 이벤트 로그 클릭 시 원본 영상의 이벤트 시작 시점 이동
+- 이벤트 클립 재생 후 원본 복귀 UX 보강
+- 이벤트 클립을 start~end 구간 기준으로 저장
+- 유튜브 링크를 스트림 입력칸에 넣었을 때 로컬 mp4로 변환 후 재생/분석하도록 추가
+- 안전모 감지를 위해 사람 모델 + 안전모 모델 2개를 함께 쓰는 `yolo_ensemble` 추가
+- Python 멀티소스 모드가 실행 중 동적으로 활성화되도록 전환 로직 수정
 
 ### Changed Files
-- 
+
+- Python
+  - `safety_ai_monitor/main.py`
+  - `safety_ai_monitor/config.py`
+  - `safety_ai_monitor/core/pipeline.py`
+  - `safety_ai_monitor/core/frame_detection_recorder.py`
+  - `safety_ai_monitor/core/source_status_publisher.py`
+  - `safety_ai_monitor/core/event_clip_recorder.py`
+  - `safety_ai_monitor/models/ensemble_yolo_model.py`
+- Server
+  - `safety_monitor_server/app/database.py`
+  - `safety_monitor_server/app/routers/events.py`
+  - `safety_monitor_server/app/routers/frame_detections.py`
+  - `safety_monitor_server/app/routers/source_status.py`
+  - `safety_monitor_server/app/routers/admin.py`
+- GUI
+  - `safety_ai_monitor_ui/lib/screens/home_screen.dart`
+  - `safety_ai_monitor_ui/lib/controllers/video_panel_controller.dart`
+  - `safety_ai_monitor_ui/lib/services/event_api_service.dart`
+  - `safety_ai_monitor_ui/lib/widgets/video_view_box.dart`
+  - `safety_ai_monitor_ui/lib/widgets/file_bar.dart`
 
 ### Important Notes
-- 
+
+- 현재 GUI는 영상 자체는 로컬에서 재생하고, 박스와 이벤트는 서버에서 조회합니다.
+- Python은 등록된 모든 소스를 병렬 분석해야 하며, GUI의 활성 소스는 분석 대상 제한이 아니라 화면 전환 의미입니다.
+- 서버는 `data/monitor.db`와 `data/clips/`를 기준 저장소로 사용합니다.
+- `source_key`는 reset, 이벤트 필터링, 프레임 탐지 조회의 핵심 키입니다.
 
 ### Current Issue
-- 
+
+- 실제 장비 성능에 따라 멀티소스 병렬 분석 성능 저하 가능성은 여전히 검증 필요
+- SQLite 기반 구조는 현재 규모에는 적합하지만 대규모 writer 환경에서는 한계가 있을 수 있음
 
 ### Next Task
-- 
 
+- 멀티클라이언트/멀티소스 실사용 시나리오 기준 검증 보강
+- 성능 병목 지점 측정과 표시
+- 서버 인증/권한 분리 필요성 검토

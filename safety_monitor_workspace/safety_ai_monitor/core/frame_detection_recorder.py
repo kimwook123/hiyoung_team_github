@@ -2,6 +2,8 @@ import json
 import time
 from pathlib import Path
 
+import requests
+
 from core.detection_model import DetectionResult
 from core.event_serializer import serialize_detection
 
@@ -9,9 +11,17 @@ from core.event_serializer import serialize_detection
 class FrameDetectionRecorder:
     # 프레임 단위 전체 탐지 결과를 JSON Lines로 저장합니다.
     # 이벤트 로그와 달리 현재 프레임의 실제 탐지 객체를 그대로 복원하기 위한 용도입니다.
-    def __init__(self, log_path: str) -> None:
+    def __init__(
+        self,
+        log_path: str,
+        *,
+        post_url: str = "",
+        timeout_seconds: float = 1.0,
+    ) -> None:
         self.log_path = Path(log_path)
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        self.post_url = post_url.strip()
+        self.timeout_seconds = timeout_seconds
 
     def write(
         self,
@@ -41,6 +51,7 @@ class FrameDetectionRecorder:
         }
         line = json.dumps(record, ensure_ascii=False) + "\n"
         self._append_line(line)
+        self._post_record(record)
 
     def _append_line(self, line: str) -> None:
         last_error: Exception | None = None
@@ -56,3 +67,16 @@ class FrameDetectionRecorder:
 
         if last_error is not None:
             raise last_error
+
+    def _post_record(self, record: dict) -> None:
+        if not self.post_url:
+            return
+
+        try:
+            requests.post(
+                self.post_url,
+                json=record,
+                timeout=self.timeout_seconds,
+            )
+        except requests.RequestException as error:
+            print(f"[WARN] frame detection post failed: {error}")

@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 
 import '../models/api_event_item.dart';
 import '../models/api_server_health.dart';
+import '../models/frame_detection_snapshot.dart';
+import '../models/source_runtime_status.dart';
 
 // 이 파일은 Flutter에서 FastAPI 서버를 호출하는 HTTP 서비스입니다.
 // GET은 서버에서 데이터를 가져오는 요청이며, 여기서는 이벤트 목록/상세/health 조회에 사용합니다.
@@ -153,6 +155,82 @@ class EventApiService {
       return response.statusCode == 200;
     } catch (_) {
       return false;
+    }
+  }
+
+  Future<FrameDetectionSnapshot?> fetchCurrentFrameDetection({
+    required String sourceKey,
+    required double sourceTimeSeconds,
+    double toleranceSeconds = 0.12,
+  }) async {
+    final normalizedSourceKey = sourceKey.trim();
+    if (normalizedSourceKey.isEmpty) {
+      return null;
+    }
+
+    final uri = _buildUri(
+      '/api/frame-detections/current',
+      {
+        'source_key': normalizedSourceKey,
+        'source_time_seconds': sourceTimeSeconds.toString(),
+        'tolerance_seconds': toleranceSeconds.toString(),
+      },
+    );
+
+    try {
+      final response = await _client.get(uri);
+      if (response.statusCode != 200) {
+        return null;
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        return null;
+      }
+
+      if (decoded['found'] != true) {
+        return null;
+      }
+
+      final item = decoded['item'];
+      if (item is Map<String, dynamic>) {
+        return FrameDetectionSnapshot.fromJson(item);
+      }
+      if (item is Map) {
+        return FrameDetectionSnapshot.fromJson(Map<String, dynamic>.from(item));
+      }
+    } catch (_) {
+      return null;
+    }
+
+    return null;
+  }
+
+  Future<List<SourceRuntimeStatus>> fetchSourceStatuses() async {
+    final uri = _buildUri('/api/source-status', const {});
+
+    try {
+      final response = await _client.get(uri);
+      if (response.statusCode != 200) {
+        return const [];
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        return const [];
+      }
+
+      final items = decoded['items'];
+      if (items is! List) {
+        return const [];
+      }
+
+      return items
+          .whereType<Map>()
+          .map((item) => SourceRuntimeStatus.fromJson(Map<String, dynamic>.from(item)))
+          .toList(growable: false);
+    } catch (_) {
+      return const [];
     }
   }
 

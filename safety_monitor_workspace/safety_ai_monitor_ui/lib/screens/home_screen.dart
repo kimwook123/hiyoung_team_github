@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:file_selector/file_selector.dart';
@@ -70,13 +72,10 @@ class _HomeScreenState extends State<HomeScreen> {
     apiEventController = ApiEventController(service: eventApiService);
     apiEventFeed = ApiEventFeedSource(apiEventController);
     clientId = 'gui_${DateTime.now().microsecondsSinceEpoch}';
-    unawaited(apiEventController.checkHealth());
-    unawaited(_refreshApiEventsIfNeeded());
+    unawaited(_initializeServerConnection());
     _startApiAutoRefresh();
     _startFrameDetectionRefresh();
     _startSourceStatusSync();
-    unawaited(_refreshSourceStatuses());
-    unawaited(_refreshRegisteredSources());
   }
 
   @override
@@ -435,6 +434,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         'state: ${_describeServerSourceState(source.sourceKey)}',
                       ),
                       Text(
+                        'progress: ${_buildSourceProgressText(source, sourceStatusesByKey[source.sourceKey])}',
+                      ),
+                      Text(
                         'client: ${source.clientId.isEmpty ? '-' : source.clientId}',
                       ),
                       const SizedBox(height: 8),
@@ -490,14 +492,17 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 8),
           Text('source_key: ${source?.sourceKey ?? selectedSourceKey}'),
-          Text('desired_running: ${source?.desiredRunning == true ? 'true' : 'false'}'),
-          Text('state: $normalizedState'),
-          Text('is_running: ${status?.isRunning == true ? 'true' : 'false'}'),
-          Text('fps: ${status?.sourceFps.toStringAsFixed(1) ?? '0.0'}'),
-          Text('last_frame: ${status?.lastFrameId ?? -1}'),
-          Text(
-            'last_time: ${status?.lastSourceTimeSeconds.toStringAsFixed(2) ?? '0.00'}s',
-          ),
+            Text('desired_running: ${source?.desiredRunning == true ? 'true' : 'false'}'),
+            Text('state: $normalizedState'),
+            Text('is_running: ${status?.isRunning == true ? 'true' : 'false'}'),
+            Text('fps: ${status?.sourceFps.toStringAsFixed(1) ?? '0.0'}'),
+            Text('last_frame: ${status?.lastFrameId ?? -1}'),
+            Text(
+              'last_time: ${status?.lastSourceTimeSeconds.toStringAsFixed(2) ?? '0.00'}s',
+            ),
+            Text(
+              'progress: ${_buildSourceProgressText(source, status)}',
+            ),
             if ((status?.errorMessage.trim() ?? '').isNotEmpty)
               Text(
                 'error: ${status!.errorMessage.trim()}',
@@ -1277,6 +1282,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     eventApiService.updateBaseUrl(nextBaseUrl);
+    await _saveServerBaseUrlConfig(eventApiService.baseUrl);
     await apiEventController.checkHealth();
     await _refreshRegisteredSources();
     await _refreshSourceStatuses();
@@ -2133,6 +2139,24 @@ class _HomeScreenState extends State<HomeScreen> {
     return runtimeStatus.state.trim().isEmpty ? 'unknown' : runtimeStatus.state.trim();
   }
 
+  String _buildSourceProgressText(
+    SourceItem? source,
+    SourceRuntimeStatus? status,
+  ) {
+    final durationSeconds = source?.sourceDurationSeconds ?? 0.0;
+    final lastSeconds = status?.lastSourceTimeSeconds ?? 0.0;
+    if (durationSeconds <= 0) {
+      if (lastSeconds > 0) {
+        return '${lastSeconds.toStringAsFixed(1)}s';
+      }
+      return '-';
+    }
+
+    final clampedSeconds = lastSeconds.clamp(0.0, durationSeconds);
+    final percent = (clampedSeconds / durationSeconds) * 100.0;
+    return '${clampedSeconds.toStringAsFixed(1)} / ${durationSeconds.toStringAsFixed(1)}s (${percent.toStringAsFixed(1)}%)';
+  }
+
   String _describeSlotStatus(_SourcePanelSlot slot) {
     final sourceKey = slot.sourceKey.trim();
     if (slot.controller.errorText.trim().isNotEmpty) {
@@ -2243,6 +2267,53 @@ class _HomeScreenState extends State<HomeScreen> {
     final normalizedType = sourceType.trim().toLowerCase();
     final normalizedValue = sourceValue.trim().replaceAll('\\', '/').toLowerCase();
     return '$normalizedType|$normalizedValue';
+  }
+
+  Future<void> _initializeServerConnection() async {
+    final configuredBaseUrl = await _loadServerBaseUrlConfig();
+    if (configuredBaseUrl.isNotEmpty) {
+      eventApiService.updateBaseUrl(configuredBaseUrl);
+      serverBaseUrlTextController.text = eventApiService.baseUrl;
+    }
+    await apiEventController.checkHealth();
+    await _refreshApiEventsIfNeeded();
+    await _refreshSourceStatuses();
+    await _refreshRegisteredSources();
+  }
+
+  Future<String> _loadServerBaseUrlConfig() async {
+    try {
+      final configPath = File(
+        '${Directory.current.path}${Platform.pathSeparator}server_config.json',
+      );
+      if (!await configPath.exists()) {
+        return '';
+      }
+      final decoded = jsonDecode(await configPath.readAsString());
+      if (decoded is! Map<String, dynamic>) {
+        return '';
+      }
+      final value = decoded['api_base_url']?.toString().trim() ?? '';
+      return value;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Future<void> _saveServerBaseUrlConfig(String baseUrl) async {
+    try {
+      final configPath = File(
+        '${Directory.current.path}${Platform.pathSeparator}server_config.json',
+      );
+      final payload = {
+        'api_base_url': baseUrl,
+      };
+      await configPath.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(payload),
+      );
+    } catch (_) {
+      // 설정 파일 저장 실패는 앱 동작을 막지 않습니다.
+    }
   }
 }
 

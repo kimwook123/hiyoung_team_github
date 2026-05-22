@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import cv2
+
 from app.config import (
     ANALYSIS_DIR,
     ANALYSIS_TARGET_FPS,
@@ -103,11 +105,17 @@ def build_source_record(
         normalized_source_value = normalize_video_source_value(source_value)
     source_key = build_source_key(source_type=source_type, source_value=normalized_source_value)
     source_slug = build_source_slug(source_type=source_type, source_value=normalized_source_value)
+    source_duration_seconds = (
+        _read_video_duration_seconds(normalized_source_value)
+        if source_type == "video"
+        else 0.0
+    )
     return {
         "source_key": source_key,
         "source_slug": source_slug,
         "source_type": source_type,
         "source_value": normalized_source_value,
+        "source_duration_seconds": source_duration_seconds,
         "original_source_type": original_source_type,
         "original_source_value": original_source_value,
         "client_id": client_id.strip(),
@@ -221,6 +229,9 @@ class ServerEventHandler(EventHandler):
         insert_event(DATABASE_PATH, payload)
 
     def _attach_clip_fields(self, payload: dict[str, Any]) -> None:
+        payload.setdefault("clip_upload_ok", False)
+        payload.setdefault("clip_available", False)
+        payload.setdefault("preferred_clip_source", "none")
         clip_path = str(payload.get("clip_path", "") or "").strip()
         if not clip_path or clip_path == "-":
             return
@@ -239,6 +250,8 @@ class ServerEventHandler(EventHandler):
         payload["server_clip_path"] = f"clips/{target_path.name}"
         payload["clip_url"] = f"/api/clips/{target_path.name}"
         payload["clip_upload_ok"] = True
+        payload["clip_available"] = True
+        payload["preferred_clip_source"] = "server"
 
     def close(self) -> None:
         self.worker.close(timeout_seconds=30.0)
@@ -429,3 +442,21 @@ def _is_youtube_url(value: str) -> bool:
         or "youtu.be/" in normalized
         or "youtube-nocookie.com/" in normalized
     )
+
+
+def _read_video_duration_seconds(video_path: str) -> float:
+    try:
+        cap = cv2.VideoCapture(video_path)
+    except Exception:
+        return 0.0
+    try:
+        if cap is None or not cap.isOpened():
+            return 0.0
+        fps = float(cap.get(cv2.CAP_PROP_FPS))
+        frame_count = float(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if fps <= 0 or frame_count <= 0:
+            return 0.0
+        return frame_count / fps
+    finally:
+        if cap is not None:
+            cap.release()

@@ -133,6 +133,8 @@ class VideoPipeline:
                     self.frame_source.read,
                 )
                 if not ok:
+                    if self.source_type in {"stream", "camera"}:
+                        stop_reason = "disconnected"
                     break
                 if not first_frame_logged:
                     print(

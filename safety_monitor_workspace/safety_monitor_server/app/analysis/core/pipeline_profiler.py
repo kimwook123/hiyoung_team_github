@@ -49,16 +49,27 @@ class PipelineProfiler:
             stage_name: (total / self.frame_count) * 1000.0
             for stage_name, total in self.stage_totals.items()
         }
-        ordered_parts = [
-            f"{stage_name}={averages[stage_name]:.1f}ms"
-            for stage_name in sorted(averages.keys())
-        ]
         source_text = self.source_label or "unknown-source"
+        total_ms = averages.get("frame_total", 0.0)
+        ranked_stages = sorted(
+            (
+                (stage_name, elapsed_ms)
+                for stage_name, elapsed_ms in averages.items()
+                if stage_name != "frame_total" and elapsed_ms >= 0.05
+            ),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        top_parts = [
+            f"{stage_name}={elapsed_ms:.1f}ms"
+            for stage_name, elapsed_ms in ranked_stages[:4]
+        ]
         log_line(
             "PERF",
             source=source_text,
             frames=self.frame_count,
-            stages=" ".join(ordered_parts),
+            total=f"{total_ms:.1f}ms",
+            top=" ".join(top_parts) if top_parts else "none",
         )
         self.frame_count = 0
         self.stage_totals.clear()

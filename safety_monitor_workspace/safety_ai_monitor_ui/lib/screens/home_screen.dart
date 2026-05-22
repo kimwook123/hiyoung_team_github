@@ -324,12 +324,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSourceTabs() {
-    final activeSource = selectedSourceKey.isEmpty
-        ? null
-        : registeredSourcesByKey[selectedSourceKey.trim()];
-    final activeStatus = selectedSourceKey.isEmpty
-        ? null
-        : sourceStatusesByKey[selectedSourceKey.trim()];
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -379,15 +373,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     onSelected: (_) => unawaited(_setActiveSlot(slot.slotId)),
                     onDeleted: () => _confirmRemoveSourceSlot(slot),
                   ),
-              ],
-            ),
-          if (activeSource != null || activeStatus != null) ...[
-            const SizedBox(height: 12),
-            _buildActiveSourceRuntimeCard(
-              source: activeSource,
-              status: activeStatus,
-            ),
-          ],
+                ],
+              ),
           if (registeredSourcesByKey.isNotEmpty) ...[
             const SizedBox(height: 12),
             _buildRegisteredSourcesSummary(),
@@ -416,7 +403,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              '소스별 이벤트/클립/업로드 원본 영상까지 함께 삭제하는 관리자용 기능을 제공합니다.',
+              '분석/보관 기준은 서버 등록 소스입니다. 각 소스의 상태, 진행도, 화면 열기, 관리자용 완전 삭제를 여기서 확인합니다.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Colors.black54,
               ),
@@ -479,70 +466,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
   }
-
-  Widget _buildActiveSourceRuntimeCard({
-    required SourceItem? source,
-    required SourceRuntimeStatus? status,
-  }) {
-    final normalizedState = status?.state.trim().isEmpty ?? true
-        ? 'unknown'
-        : status!.state.trim();
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.03),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.black12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '현재 선택 소스 분석 상태',
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
-          const SizedBox(height: 8),
-          Text('source_key: ${source?.sourceKey ?? selectedSourceKey}'),
-            Text('desired_running: ${source?.desiredRunning == true ? 'true' : 'false'}'),
-            Text('state: $normalizedState'),
-            Text('is_running: ${status?.isRunning == true ? 'true' : 'false'}'),
-            Text('fps: ${status?.sourceFps.toStringAsFixed(1) ?? '0.0'}'),
-            Text('last_frame: ${status?.lastFrameId ?? -1}'),
-            Text(
-              'last_time: ${status?.lastSourceTimeSeconds.toStringAsFixed(2) ?? '0.00'}s',
-            ),
-            Text(
-              'progress: ${_buildSourceProgressText(source, status)}',
-            ),
-            if ((status?.errorMessage.trim() ?? '').isNotEmpty)
-              Text(
-                'error: ${status!.errorMessage.trim()}',
-                style: const TextStyle(color: Colors.redAccent),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '등록된 소스는 서버에서 자동으로 분석을 시작하고, 처리 완료 시 완료 상태로 표시됩니다.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Colors.black54,
-                ),
-              ),
-              if (source != null) ...[
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: OutlinedButton(
-                    onPressed: () => unawaited(
-                      _confirmDeleteRegisteredSource(source),
-                    ),
-                    child: const Text('현재 소스 서버 완전 삭제 (관리자용)'),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        );
-    }
 
   Widget _buildApiStatusText() {
     String text =
@@ -2228,7 +2151,10 @@ class _HomeScreenState extends State<HomeScreen> {
     SourceItem? source,
     SourceRuntimeStatus? status,
   ) {
-    final durationSeconds = source?.sourceDurationSeconds ?? 0.0;
+    final durationSeconds =
+        source?.sourceDurationSeconds ??
+        status?.sourceDurationSeconds ??
+        0.0;
     final lastSeconds = status?.lastSourceTimeSeconds ?? 0.0;
     if (durationSeconds <= 0) {
       if (lastSeconds > 0) {

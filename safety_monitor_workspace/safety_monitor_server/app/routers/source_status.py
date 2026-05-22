@@ -48,6 +48,7 @@ def list_source_status() -> SourceStatusListResponse:
             state=str(record.get("state", "")).strip() or "idle",
             is_running=bool(record.get("is_running", False)),
             source_fps=_read_float(record.get("source_fps")),
+            source_duration_seconds=_read_float(record.get("source_duration_seconds")),
             last_frame_id=_read_int(record.get("last_frame_id"), default=-1),
             last_source_time_seconds=_read_float(
                 record.get("last_source_time_seconds")

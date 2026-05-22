@@ -12,10 +12,10 @@ if not exist "%SERVER_DIR%\main.py" (
   exit /b 1
 )
 
-py -3.12 -c "import fastapi, uvicorn, cv2, numpy, requests, yt_dlp" > nul 2>&1
+py -3.12 -c "import fastapi, uvicorn, cv2, numpy, requests, yt_dlp, websockets" > nul 2>&1
 if errorlevel 1 (
   echo Required server packages are missing.
-  echo This server needs FastAPI, Uvicorn, OpenCV, NumPy, Requests, and yt-dlp.
+  echo This server needs FastAPI, Uvicorn, OpenCV, NumPy, Requests, yt-dlp, and WebSocket support.
   choice /M "Install server requirements now"
   if errorlevel 2 (
     echo Skipping package installation. Server was not started.

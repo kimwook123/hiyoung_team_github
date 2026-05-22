@@ -42,6 +42,7 @@ from app.config import (
 )
 from app.database import insert_event, insert_frame_detection, upsert_source_status
 from app.log_utils import log_line
+from app.realtime_hub import realtime_update_hub
 from app.source_identity import build_source_key, build_source_slug, normalize_video_source_value
 
 
@@ -230,7 +231,14 @@ class ServerEventHandler(EventHandler):
 
     def _save_payload_sync(self, payload: dict[str, Any]) -> None:
         self._attach_clip_fields(payload)
-        insert_event(DATABASE_PATH, payload)
+        saved_record = insert_event(DATABASE_PATH, payload)
+        realtime_update_hub.publish(
+            "event_changed",
+            source_key=str(saved_record.get("source_key", "")).strip(),
+            event_key=str(saved_record.get("event_key", "")).strip(),
+            status=str(saved_record.get("status", "")).strip(),
+            event_type=str(saved_record.get("event_type", "")).strip(),
+        )
 
     def _attach_clip_fields(self, payload: dict[str, Any]) -> None:
         payload.setdefault("clip_upload_ok", False)
@@ -391,7 +399,13 @@ class ServerSourceStatusPublisher:
         )
 
     def _save_status_sync(self, payload: dict[str, Any]) -> None:
-        upsert_source_status(DATABASE_PATH, payload)
+        saved_record = upsert_source_status(DATABASE_PATH, payload)
+        realtime_update_hub.publish(
+            "source_status_changed",
+            source_key=str(saved_record.get("source_key", "")).strip(),
+            state=str(saved_record.get("state", "")).strip(),
+            is_running=bool(saved_record.get("is_running", False)),
+        )
 
     def close(self) -> None:
         self.worker.close(timeout_seconds=15.0)

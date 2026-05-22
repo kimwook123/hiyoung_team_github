@@ -4,6 +4,7 @@ class SourceItem {
     required this.sourceSlug,
     required this.sourceType,
     required this.sourceValue,
+    required this.sourceDurationSeconds,
     required this.serverMediaPath,
     required this.mediaUrl,
     required this.originalSourceType,
@@ -19,6 +20,7 @@ class SourceItem {
   final String sourceSlug;
   final String sourceType;
   final String sourceValue;
+  final double sourceDurationSeconds;
   final String serverMediaPath;
   final String mediaUrl;
   final String originalSourceType;
@@ -35,6 +37,7 @@ class SourceItem {
       sourceSlug: json['source_slug']?.toString() ?? '',
       sourceType: json['source_type']?.toString() ?? '',
       sourceValue: json['source_value']?.toString() ?? '',
+      sourceDurationSeconds: _toDouble(json['source_duration_seconds']),
       serverMediaPath: json['server_media_path']?.toString() ?? '',
       mediaUrl: json['media_url']?.toString() ?? '',
       originalSourceType: json['original_source_type']?.toString() ?? '',
@@ -45,5 +48,18 @@ class SourceItem {
       createdAt: json['created_at']?.toString() ?? '',
       updatedAt: json['updated_at']?.toString() ?? '',
     );
+  }
+
+  static double _toDouble(Object? value) {
+    if (value is double) {
+      return value;
+    }
+    if (value is num) {
+      return value.toDouble();
+    }
+    if (value is String) {
+      return double.tryParse(value) ?? 0.0;
+    }
+    return 0.0;
   }
 }

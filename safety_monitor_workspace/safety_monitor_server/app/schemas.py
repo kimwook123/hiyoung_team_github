@@ -28,6 +28,7 @@ class SourceItem(BaseModel):
     source_slug: str
     source_type: str
     source_value: str
+    source_duration_seconds: float = 0.0
     server_media_path: str = ""
     media_url: str = ""
     original_source_type: str = ""

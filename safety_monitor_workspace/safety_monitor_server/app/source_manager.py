@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -48,7 +49,7 @@ class AnalysisSourceManager:
         with self._lock:
             worker_keys = list(self._workers.keys())
         for source_key in worker_keys:
-            self.stop_source(source_key)
+            self.stop_source(source_key, update_desired_running=False)
 
     def register_source(
         self,
@@ -159,13 +160,19 @@ class AnalysisSourceManager:
             thread.start()
         return get_source(DATABASE_PATH, normalized_source_key) or source_record
 
-    def stop_source(self, source_key: str) -> dict[str, Any] | None:
+    def stop_source(
+        self,
+        source_key: str,
+        *,
+        update_desired_running: bool = True,
+    ) -> dict[str, Any] | None:
         normalized_source_key = source_key.strip()
-        set_source_desired_running(
-            DATABASE_PATH,
-            source_key=normalized_source_key,
-            desired_running=False,
-        )
+        if update_desired_running:
+            set_source_desired_running(
+                DATABASE_PATH,
+                source_key=normalized_source_key,
+                desired_running=False,
+            )
 
         worker: _ManagedWorker | None = None
         with self._lock:
@@ -252,77 +259,111 @@ class AnalysisSourceManager:
         source_record: dict[str, Any],
         stop_event: threading.Event,
     ) -> None:
+        source_type = str(source_record.get("source_type", "")).strip().lower()
         try:
-            previous_status = get_source_status(DATABASE_PATH, source_key) or {}
-            resume_from_seconds = 0.0
-            if str(source_record.get("source_type", "")).strip().lower() == "video":
-                previous_state = str(previous_status.get("state", "")).strip().lower()
-                previous_time = float(
-                    previous_status.get("last_source_time_seconds", 0.0) or 0.0
-                )
-                if previous_state != "completed" and previous_time > 0.0:
-                    resume_from_seconds = max(previous_time - 1.0, 0.0)
-            pipeline = build_pipeline_for_source(
-                source_record,
-                restart_checker=lambda: stop_event.is_set(),
-                resume_from_seconds=resume_from_seconds,
-            )
-            stop_reason = pipeline.run()
-            if stop_event.is_set():
-                stop_reason = "stopped"
-            if stop_reason == "completed":
-                set_source_desired_running(
-                    DATABASE_PATH,
-                    source_key=source_key,
-                    desired_running=False,
-                )
-            source_state = get_source(DATABASE_PATH, source_key)
-            if source_state is not None and stop_reason != "source_changed":
+            while not stop_event.is_set():
                 previous_status = get_source_status(DATABASE_PATH, source_key) or {}
-                upsert_source_status(
-                    DATABASE_PATH,
-                    {
-                        "source_key": source_key,
-                        "source_type": source_state["source_type"],
-                        "source_value": source_state["source_value"],
-                        "client_id": source_state["client_id"],
-                        "session_id": source_state["session_id"],
-                        "state": stop_reason,
-                        "is_running": False,
-                        "source_fps": float(
-                            previous_status.get("source_fps", 0.0) or 0.0
-                        ),
-                        "last_frame_id": int(
-                            previous_status.get("last_frame_id", -1) or -1
-                        ),
-                        "last_source_time_seconds": float(
-                            previous_status.get("last_source_time_seconds", 0.0) or 0.0
-                        ),
-                        "error_message": "",
-                    },
-                )
-        except Exception as error:
-            source_state = get_source(DATABASE_PATH, source_key) or source_record
-            previous_status = get_source_status(DATABASE_PATH, source_key) or {}
-            upsert_source_status(
-                DATABASE_PATH,
-                {
-                    "source_key": source_key,
-                    "source_type": source_state["source_type"],
-                    "source_value": source_state["source_value"],
-                    "client_id": source_state["client_id"],
-                    "session_id": source_state["session_id"],
-                    "state": "error",
-                    "is_running": False,
-                    "source_fps": float(previous_status.get("source_fps", 0.0) or 0.0),
-                    "last_frame_id": int(previous_status.get("last_frame_id", -1) or -1),
-                    "last_source_time_seconds": float(
+                resume_from_seconds = 0.0
+                if source_type == "video":
+                    previous_state = str(previous_status.get("state", "")).strip().lower()
+                    previous_time = float(
                         previous_status.get("last_source_time_seconds", 0.0) or 0.0
-                    ),
-                    "error_message": str(error),
-                },
-            )
-            print(f"[ERROR] analysis worker failed: source_key={source_key} error={error}")
+                    )
+                    if previous_state != "completed" and previous_time > 0.0:
+                        resume_from_seconds = max(previous_time - 1.0, 0.0)
+
+                stop_reason = "stopped"
+                error_message = ""
+                try:
+                    pipeline = build_pipeline_for_source(
+                        source_record,
+                        restart_checker=lambda: stop_event.is_set(),
+                        resume_from_seconds=resume_from_seconds,
+                    )
+                    stop_reason = pipeline.run()
+                except Exception as error:
+                    stop_reason = "error"
+                    error_message = str(error)
+                    print(
+                        f"[ERROR] analysis worker failed: source_key={source_key} error={error}",
+                    )
+
+                if stop_event.is_set():
+                    stop_reason = "stopped"
+
+                if stop_reason == "completed":
+                    set_source_desired_running(
+                        DATABASE_PATH,
+                        source_key=source_key,
+                        desired_running=False,
+                    )
+
+                source_state = get_source(DATABASE_PATH, source_key) or source_record
+                if stop_reason != "source_changed":
+                    previous_status = get_source_status(DATABASE_PATH, source_key) or {}
+                    next_error_message = error_message
+                    next_state = stop_reason
+                    if (
+                        source_type in {"stream", "camera"}
+                        and not stop_event.is_set()
+                        and bool((get_source(DATABASE_PATH, source_key) or {}).get("desired_running", False))
+                        and stop_reason in {"disconnected", "error"}
+                    ):
+                        next_state = "reconnecting"
+                        if not next_error_message:
+                            next_error_message = "입력 연결이 끊겨 재시도 중입니다."
+                    upsert_source_status(
+                        DATABASE_PATH,
+                        {
+                            "source_key": source_key,
+                            "source_type": source_state["source_type"],
+                            "source_value": source_state["source_value"],
+                            "client_id": source_state["client_id"],
+                            "session_id": source_state["session_id"],
+                            "state": next_state,
+                            "is_running": False,
+                            "source_fps": float(
+                                previous_status.get("source_fps", 0.0) or 0.0
+                            ),
+                            "last_frame_id": int(
+                                previous_status.get("last_frame_id", -1) or -1
+                            ),
+                            "last_source_time_seconds": float(
+                                previous_status.get("last_source_time_seconds", 0.0)
+                                or 0.0
+                            ),
+                            "error_message": next_error_message,
+                        },
+                    )
+
+                if not self._should_retry_source(
+                    source_key=source_key,
+                    source_type=source_type,
+                    stop_reason=stop_reason,
+                    stop_event=stop_event,
+                ):
+                    break
+
+                time.sleep(2.0)
         finally:
             with self._lock:
                 self._workers.pop(source_key, None)
+
+    def _should_retry_source(
+        self,
+        *,
+        source_key: str,
+        source_type: str,
+        stop_reason: str,
+        stop_event: threading.Event,
+    ) -> bool:
+        if stop_event.is_set():
+            return False
+        if source_type == "video":
+            return False
+        if source_type not in {"stream", "camera"}:
+            return False
+        if stop_reason in {"completed", "disconnected", "error"}:
+            source_state = get_source(DATABASE_PATH, source_key)
+            return bool(source_state and source_state.get("desired_running", False))
+        return False

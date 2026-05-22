@@ -3,6 +3,7 @@ from pathlib import Path
 
 import requests
 
+from app.log_utils import log_line
 from core.async_workers import AsyncLatestWorker
 from core.detection_model import DetectionResult
 from core.event_serializer import serialize_detection
@@ -81,7 +82,7 @@ class FrameDetectionRecorder:
                 timeout=self.timeout_seconds,
             )
         except requests.RequestException as error:
-            print(f"[WARN] frame detection post failed: {error}")
+            log_line("WARN", message="frame detection post failed", error=error)
 
     def close(self) -> None:
         if self.post_worker is not None:

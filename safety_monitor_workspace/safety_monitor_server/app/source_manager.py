@@ -25,6 +25,7 @@ from app.database import (
     upsert_source,
     upsert_source_status,
 )
+from app.log_utils import log_line
 
 
 @dataclass
@@ -43,9 +44,10 @@ class AnalysisSourceManager:
         for source_record in list_sources(DATABASE_PATH):
             if not bool(source_record.get("desired_running", False)):
                 continue
-            print(
-                f"[SRC] bootstrap start source={source_record.get('source_key', '')}",
-                flush=True,
+            log_line(
+                "SRC",
+                action="bootstrap-start",
+                source=source_record.get("source_key", ""),
             )
             self.start_source(str(source_record.get("source_key", "")).strip())
 
@@ -143,10 +145,12 @@ class AnalysisSourceManager:
                 stop_event=stop_event,
                 thread=thread,
             )
-            print(
-                f"[SRC] start source={normalized_source_key} type={source_record['source_type']} "
-                f"client={source_record['client_id'] or '-'}",
-                flush=True,
+            log_line(
+                "SRC",
+                action="start",
+                source=normalized_source_key,
+                type=source_record["source_type"],
+                client=source_record["client_id"] or "-",
             )
             upsert_source_status(
                 DATABASE_PATH,
@@ -293,8 +297,11 @@ class AnalysisSourceManager:
                 except Exception as error:
                     stop_reason = "error"
                     error_message = str(error)
-                    print(
-                        f"[ERROR] analysis worker failed: source_key={source_key} error={error}",
+                    log_line(
+                        "ERROR",
+                        message="analysis worker failed",
+                        source=source_key,
+                        error=error,
                     )
 
                 if stop_event.is_set():
@@ -351,16 +358,21 @@ class AnalysisSourceManager:
                     stop_reason=stop_reason,
                     stop_event=stop_event,
                 ):
-                    print(
-                        f"[SRC] stop source={source_key} reason={stop_reason}",
-                        flush=True,
+                    log_line(
+                        "SRC",
+                        action="stop",
+                        source=source_key,
+                        reason=stop_reason,
                     )
                     break
 
-                print(
-                    f"[SRC] retry source={source_key} type={source_type} "
-                    f"reason={stop_reason} wait=2.0s",
-                    flush=True,
+                log_line(
+                    "SRC",
+                    action="retry",
+                    source=source_key,
+                    type=source_type,
+                    reason=stop_reason,
+                    wait="2.0s",
                 )
                 time.sleep(2.0)
         finally:

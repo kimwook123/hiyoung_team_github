@@ -41,6 +41,7 @@ from app.config import (
     USE_NO_HELMET_RULE,
 )
 from app.database import insert_event, insert_frame_detection, upsert_source_status
+from app.log_utils import log_line
 from app.source_identity import build_source_key, build_source_slug, normalize_video_source_value
 
 
@@ -440,14 +441,17 @@ class ServerSourceStatusPublisher:
         else:
             progress_text = f"{last_source_time_seconds:.1f}s"
 
-        log_line = (
-            f"[PROGRESS] source={source_key} type={source_type} client={client_id or '-'} "
-            f"state={normalized_state} running={'yes' if is_running else 'no'} "
-            f"frame={last_frame_id} progress={progress_text}"
+        log_line(
+            "PROGRESS",
+            source=source_key,
+            type=source_type,
+            client=client_id or "-",
+            state=normalized_state,
+            running="yes" if is_running else "no",
+            frame=last_frame_id,
+            progress=progress_text,
+            error=error_message.strip() or None,
         )
-        if error_message.strip():
-            log_line += f" error={error_message.strip()}"
-        print(log_line, flush=True)
 
         self.last_logged_at_by_source_key[source_key] = now_ts
         self.last_logged_state_by_source_key[source_key] = normalized_state

@@ -79,6 +79,7 @@ run_server_and_gui.bat
 
 - 서버가 분석 worker를 직접 관리합니다.
 - 다른 PC에 서버 폴더만 배치해도 `run_server.bat`으로 분석/저장/API를 함께 실행할 수 있습니다.
+- 서버 콘솔 로그는 `[REQ]`, `[REQ-SUM]`, `[SRC]`, `[PROGRESS]`, `[PERF]`, `[WARN]`, `[ERROR]` 태그로 구분되며 색상도 적용됩니다.
 - GUI는 상단 `서버 주소` 입력 또는 `run_gui_only.bat`의 초기 입력으로 로컬/원격 서버를 전환할 수 있습니다.
 - GUI는 더 이상 `source_state.json`, `sources_state.json`, `ui_bridge.json`에 의존하지 않습니다.
 - 분석 결과 저장은 HTTP 재전송이 아니라 서버 내부 DB/클립 저장 흐름입니다.

@@ -2,6 +2,7 @@ from datetime import datetime
 
 import requests
 
+from app.log_utils import log_line
 from core.async_workers import AsyncLatestWorker
 
 
@@ -80,7 +81,7 @@ class SourceStatusPublisher:
                 timeout=self.timeout_seconds,
             )
         except requests.RequestException as error:
-            print(f"[WARN] source status post failed: {error}")
+            log_line("WARN", message="source status post failed", error=error)
 
     def close(self) -> None:
         self._post_worker.close(timeout_seconds=max(15.0, self.timeout_seconds + 5.0))

@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from time import perf_counter
+from time import monotonic
 
 from fastapi import FastAPI
 from fastapi import Request
@@ -9,6 +10,8 @@ from app.config import (
     DATABASE_PATH,
     ENABLE_SERVER_REQUEST_LOG,
     LEGACY_SOURCE_CACHE_DIR,
+    SERVER_REQUEST_LOG_SUMMARY_INTERVAL_SECONDS,
+    SERVER_REQUEST_LOG_SUMMARY_PATHS,
     SERVER_CLIP_DIR,
     SERVER_DATA_DIR,
     SERVER_SOURCE_CACHE_DIR,
@@ -20,6 +23,7 @@ from app.database import (
     prune_orphan_source_data,
     prune_orphan_source_statuses,
 )
+from app.log_utils import log_line
 from app.routers.admin import router as admin_router
 from app.routers.clips import router as clips_router
 from app.routers.events import router as events_router
@@ -51,10 +55,14 @@ async def lifespan(app: FastAPI):
     source_manager = AnalysisSourceManager()
     app.state.source_manager = source_manager
     app.state.database_path = DATABASE_PATH
+    app.state.request_log_stats = {}
+    app.state.request_log_last_flush = monotonic()
     source_manager.bootstrap()
     try:
         yield
     finally:
+        if ENABLE_SERVER_REQUEST_LOG:
+            _flush_request_log_summary(app, force=True)
         source_manager.shutdown()
 
 
@@ -79,6 +87,58 @@ app.include_router(source_media_router)
 
 if ENABLE_SERVER_REQUEST_LOG:
 
+    def _record_request_summary(
+        app: FastAPI,
+        *,
+        client_host: str,
+        path: str,
+        elapsed_ms: float,
+        status_code: int,
+    ) -> None:
+        stats = app.state.request_log_stats
+        key = (client_host, path)
+        entry = stats.get(key)
+        if entry is None:
+            entry = {
+                "count": 0,
+                "total_ms": 0.0,
+                "max_ms": 0.0,
+                "last_status": status_code,
+            }
+            stats[key] = entry
+        entry["count"] += 1
+        entry["total_ms"] += elapsed_ms
+        entry["max_ms"] = max(entry["max_ms"], elapsed_ms)
+        entry["last_status"] = status_code
+
+    def _flush_request_log_summary(app: FastAPI, force: bool = False) -> None:
+        stats = app.state.request_log_stats
+        if not stats:
+            return
+        now = monotonic()
+        elapsed = now - app.state.request_log_last_flush
+        if not force and elapsed < SERVER_REQUEST_LOG_SUMMARY_INTERVAL_SECONDS:
+            return
+        for (client_host, path), entry in list(stats.items()):
+            count = int(entry["count"])
+            if count <= 0:
+                continue
+            average_ms = float(entry["total_ms"]) / count
+            max_ms = float(entry["max_ms"])
+            last_status = int(entry["last_status"])
+            log_line(
+                "REQ-SUM",
+                client=client_host,
+                path=path,
+                count=count,
+                avg=f"{average_ms:.1f}ms",
+                max=f"{max_ms:.1f}ms",
+                last_status=last_status,
+                window=f"{elapsed:.1f}s",
+            )
+        stats.clear()
+        app.state.request_log_last_flush = now
+
     @app.middleware("http")
     async def log_requests(request: Request, call_next):
         started_at = perf_counter()
@@ -91,19 +151,36 @@ if ENABLE_SERVER_REQUEST_LOG:
             response = await call_next(request)
         except Exception as error:
             elapsed_ms = (perf_counter() - started_at) * 1000.0
-            print(
-                f"[REQ] client={client_host} method={method} path={display_path} "
-                f"status=500 duration={elapsed_ms:.1f}ms error={error}",
-                flush=True,
+            log_line(
+                "REQ",
+                client=client_host,
+                method=method,
+                path=display_path,
+                status=500,
+                duration=f"{elapsed_ms:.1f}ms",
+                error=error,
             )
             raise
 
         elapsed_ms = (perf_counter() - started_at) * 1000.0
-        print(
-            f"[REQ] client={client_host} method={method} path={display_path} "
-            f"status={response.status_code} duration={elapsed_ms:.1f}ms",
-            flush=True,
-        )
+        if path in SERVER_REQUEST_LOG_SUMMARY_PATHS:
+            _record_request_summary(
+                app,
+                client_host=client_host,
+                path=path,
+                elapsed_ms=elapsed_ms,
+                status_code=response.status_code,
+            )
+            _flush_request_log_summary(app)
+        else:
+            log_line(
+                "REQ",
+                client=client_host,
+                method=method,
+                path=display_path,
+                status=response.status_code,
+                duration=f"{elapsed_ms:.1f}ms",
+            )
         return response
 
 

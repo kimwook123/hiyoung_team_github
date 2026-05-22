@@ -33,7 +33,7 @@ if errorlevel 1 (
 
 echo Starting Safety Monitor Server on http://0.0.0.0:8000
 pushd "%SERVER_DIR%"
-py -3.12 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+py -3.12 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 --no-access-log
 popd
 
 pause

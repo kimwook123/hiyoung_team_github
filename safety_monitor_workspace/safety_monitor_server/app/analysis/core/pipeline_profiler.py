@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from time import perf_counter
 
+from app.log_utils import log_line
+
 
 class PipelineProfiler:
     def __init__(
@@ -52,9 +54,11 @@ class PipelineProfiler:
             for stage_name in sorted(averages.keys())
         ]
         source_text = self.source_label or "unknown-source"
-        print(
-            f"[PERF] source={source_text} frames={self.frame_count} "
-            + " ".join(ordered_parts)
+        log_line(
+            "PERF",
+            source=source_text,
+            frames=self.frame_count,
+            stages=" ".join(ordered_parts),
         )
         self.frame_count = 0
         self.stage_totals.clear()

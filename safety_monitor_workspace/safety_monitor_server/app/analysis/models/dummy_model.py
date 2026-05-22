@@ -1,4 +1,5 @@
 import numpy as np
+from app.log_utils import log_line
 
 from core.detection_model import Box, Detection, DetectionModel, DetectionResult
 
@@ -12,7 +13,7 @@ class DummyDetectionModel(DetectionModel):
 
     def load(self) -> None:
         # 실제 AI 모델이 아니라 파이프라인 구조 확인용이다
-        print("[DummyDetectionModel] 더미 모델을 사용합니다.")
+        log_line("MODEL", message="더미 모델을 사용합니다")
 
     def predict(self, frame: np.ndarray, frame_id: int) -> DetectionResult:
         detections = []

@@ -2,6 +2,7 @@ from datetime import datetime
 import threading
 
 import cv2
+from app.log_utils import log_line
 
 from core.detection_model import Box, DetectionModel, DetectionResult
 from core.event_clip_recorder import EventClipRecorder
@@ -89,31 +90,31 @@ class VideoPipeline:
         first_frame_logged = False
         first_predict_logged = False
 
-        print(
-            f"[INFO] opening source: key={self.source_key} type={self.source_type}",
-            flush=True,
-        )
+        log_line("SRC", action="open", source=self.source_key, type=self.source_type)
         self.frame_source.open()
-        print(
-            f"[INFO] source opened: key={self.source_key} fps={self.source_fps:.2f}",
-            flush=True,
-        )
+        log_line("SRC", action="opened", source=self.source_key, fps=f"{self.source_fps:.2f}")
         self.analysis_frame_stride = self._build_analysis_frame_stride()
         if self.analysis_frame_stride > 1:
-            print(
-                f"[INFO] analysis frame stride: key={self.source_key} "
-                f"stride={self.analysis_frame_stride} target_fps={self.analysis_target_fps:.2f}",
-                flush=True,
+            log_line(
+                "SRC",
+                action="analysis-stride",
+                source=self.source_key,
+                stride=self.analysis_frame_stride,
+                target_fps=f"{self.analysis_target_fps:.2f}",
             )
-        print(
-            f"[INFO] loading model: key={self.source_key} model={self.model.get_name()}",
-            flush=True,
+        log_line(
+            "SRC",
+            action="model-load",
+            source=self.source_key,
+            model=self.model.get_name(),
         )
         with _MODEL_LOAD_LOCK:
             self.model.load()
-        print(
-            f"[INFO] model ready: key={self.source_key} model={self.model.get_name()}",
-            flush=True,
+        log_line(
+            "SRC",
+            action="model-ready",
+            source=self.source_key,
+            model=self.model.get_name(),
         )
         if self.frame_source.__class__.__name__ == "VideoFileFrameSource":
             self.source_time_mode = "video"
@@ -139,9 +140,11 @@ class VideoPipeline:
                         stop_reason = "disconnected"
                     break
                 if not first_frame_logged:
-                    print(
-                        f"[INFO] first frame read: key={self.source_key} frame_id={frame_id}",
-                        flush=True,
+                    log_line(
+                        "SRC",
+                        action="first-frame",
+                        source=self.source_key,
+                        frame=frame_id,
                     )
                     first_frame_logged = True
                 now = datetime.now()
@@ -170,10 +173,12 @@ class VideoPipeline:
                         ),
                     )
                 if not first_predict_logged:
-                    print(
-                        f"[INFO] first predict done: key={self.source_key} "
-                        f"frame_id={frame_id} detections={len(result.detections)}",
-                        flush=True,
+                    log_line(
+                        "SRC",
+                        action="first-predict",
+                        source=self.source_key,
+                        frame=frame_id,
+                        detections=len(result.detections),
                     )
                     first_predict_logged = True
                 self._fill_result_time(result=result, now=now, frame_id=frame_id)
@@ -356,7 +361,7 @@ class VideoPipeline:
             cv2.imshow("Safety AI Monitor", frame)
             return True
         except cv2.error as error:
-            print(f"[WARN] OpenCV 화면 표시를 사용할 수 없습니다: {error}")
+            log_line("WARN", message="OpenCV 화면 표시를 사용할 수 없습니다", error=error)
             return False
 
     def _close_screen(self) -> None:
@@ -366,7 +371,7 @@ class VideoPipeline:
         try:
             cv2.destroyAllWindows()
         except cv2.error as error:
-            print(f"[WARN] OpenCV 창 정리를 건너뜁니다: {error}")
+            log_line("WARN", message="OpenCV 창 정리를 건너뜁니다", error=error)
 
     def _make_display_frame(self, frame, result, events):
         display_frame = frame.copy()

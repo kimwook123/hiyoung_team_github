@@ -72,6 +72,21 @@ def init_db(db_path: Path) -> None:
                 updated_at TEXT NOT NULL,
                 payload_json TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS sources (
+                source_key TEXT PRIMARY KEY,
+                source_slug TEXT NOT NULL,
+                source_type TEXT NOT NULL,
+                source_value TEXT NOT NULL,
+                original_source_type TEXT NOT NULL,
+                original_source_value TEXT NOT NULL,
+                client_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                desired_running INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                payload_json TEXT NOT NULL
+            );
             """
         )
 
@@ -426,6 +441,158 @@ def list_source_statuses(db_path: Path) -> list[dict]:
     return [_decode_payload(row["payload_json"]) for row in rows]
 
 
+def get_source_status(db_path: Path, source_key: str) -> dict | None:
+    with _connect(db_path) as connection:
+        row = connection.execute(
+            "SELECT payload_json FROM source_status WHERE source_key = ?",
+            (source_key,),
+        ).fetchone()
+    if row is None:
+        return None
+    return _decode_payload(row["payload_json"])
+
+
+def delete_source_status(db_path: Path, source_key: str) -> bool:
+    with _connect(db_path) as connection:
+        deleted_count = connection.execute(
+            "DELETE FROM source_status WHERE source_key = ?",
+            (source_key,),
+        ).rowcount
+    return deleted_count > 0
+
+
+def prune_orphan_source_statuses(db_path: Path) -> int:
+    with _connect(db_path) as connection:
+        deleted_count = connection.execute(
+            """
+            DELETE FROM source_status
+            WHERE source_key NOT IN (
+                SELECT source_key FROM sources
+            )
+            """
+        ).rowcount
+    return deleted_count
+
+
+def prune_orphan_source_data(db_path: Path) -> tuple[int, int, int]:
+    with _connect(db_path) as connection:
+        deleted_events = connection.execute(
+            """
+            DELETE FROM events
+            WHERE source_key NOT IN (
+                SELECT source_key FROM sources
+            )
+            """
+        ).rowcount
+        deleted_frame_detections = connection.execute(
+            """
+            DELETE FROM frame_detections
+            WHERE source_key NOT IN (
+                SELECT source_key FROM sources
+            )
+            """
+        ).rowcount
+        deleted_latest_frame_detections = connection.execute(
+            """
+            DELETE FROM frame_detections_latest
+            WHERE source_key NOT IN (
+                SELECT source_key FROM sources
+            )
+            """
+        ).rowcount
+    return (
+        deleted_events,
+        deleted_frame_detections,
+        deleted_latest_frame_detections,
+    )
+
+
+def upsert_source(db_path: Path, source_record: dict) -> dict:
+    saved_record = dict(source_record)
+    now_text = datetime.now().isoformat()
+    saved_record["created_at"] = str(saved_record.get("created_at", "")).strip() or now_text
+    saved_record["updated_at"] = str(saved_record.get("updated_at", "")).strip() or now_text
+    source_key = str(saved_record.get("source_key", "")).strip()
+    with _connect(db_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO sources (
+                source_key, source_slug, source_type, source_value,
+                original_source_type, original_source_value, client_id, session_id,
+                desired_running, created_at, updated_at, payload_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source_key) DO UPDATE SET
+                source_slug=excluded.source_slug,
+                source_type=excluded.source_type,
+                source_value=excluded.source_value,
+                original_source_type=excluded.original_source_type,
+                original_source_value=excluded.original_source_value,
+                client_id=excluded.client_id,
+                session_id=excluded.session_id,
+                desired_running=excluded.desired_running,
+                updated_at=excluded.updated_at,
+                payload_json=excluded.payload_json
+            """,
+            (
+                source_key,
+                str(saved_record.get("source_slug", "")).strip(),
+                str(saved_record.get("source_type", "")).strip(),
+                str(saved_record.get("source_value", "")).strip(),
+                str(saved_record.get("original_source_type", "")).strip(),
+                str(saved_record.get("original_source_value", "")).strip(),
+                str(saved_record.get("client_id", "")).strip(),
+                str(saved_record.get("session_id", "")).strip(),
+                1 if bool(saved_record.get("desired_running", False)) else 0,
+                saved_record["created_at"],
+                saved_record["updated_at"],
+                json.dumps(saved_record, ensure_ascii=False),
+            ),
+        )
+    return saved_record
+
+
+def list_sources(db_path: Path) -> list[dict]:
+    with _connect(db_path) as connection:
+        rows = connection.execute(
+            "SELECT payload_json FROM sources ORDER BY updated_at DESC, source_key DESC"
+        ).fetchall()
+    return [_decode_payload(row["payload_json"]) for row in rows]
+
+
+def get_source(db_path: Path, source_key: str) -> dict | None:
+    with _connect(db_path) as connection:
+        row = connection.execute(
+            "SELECT payload_json FROM sources WHERE source_key = ?",
+            (source_key,),
+        ).fetchone()
+    if row is None:
+        return None
+    return _decode_payload(row["payload_json"])
+
+
+def delete_source(db_path: Path, source_key: str) -> bool:
+    with _connect(db_path) as connection:
+        deleted_count = connection.execute(
+            "DELETE FROM sources WHERE source_key = ?",
+            (source_key,),
+        ).rowcount
+    return deleted_count > 0
+
+
+def set_source_desired_running(
+    db_path: Path,
+    *,
+    source_key: str,
+    desired_running: bool,
+) -> dict | None:
+    record = get_source(db_path, source_key)
+    if record is None:
+        return None
+    record["desired_running"] = desired_running
+    record["updated_at"] = datetime.now().isoformat()
+    return upsert_source(db_path, record)
+
+
 def reset_source_data(db_path: Path, *, source_key: str, source_slug: str, server_clip_dir: Path) -> tuple[bool, int, int]:
     removed_records = list_events(db_path, source_key=source_key)
     kept_records = list_events(db_path)
@@ -479,6 +646,64 @@ def reset_source_data(db_path: Path, *, source_key: str, source_slug: str, serve
     return bool(removed_records), deleted_event_count, deleted_clip_count
 
 
+def migrate_legacy_analysis_paths(
+    db_path: Path,
+    *,
+    legacy_source_cache_dir: Path,
+    server_source_cache_dir: Path,
+) -> int:
+    legacy_raw = str(legacy_source_cache_dir.resolve())
+    server_raw = str(server_source_cache_dir.resolve())
+    legacy_norm = legacy_raw.replace("\\", "/").lower()
+    server_norm = server_raw.replace("\\", "/").lower()
+    updated_count = 0
+
+    with _connect(db_path) as connection:
+        updated_count += _migrate_sources_table(
+            connection,
+            legacy_raw=legacy_raw,
+            server_raw=server_raw,
+            legacy_norm=legacy_norm,
+            server_norm=server_norm,
+        )
+        updated_count += _migrate_source_status_table(
+            connection,
+            legacy_raw=legacy_raw,
+            server_raw=server_raw,
+            legacy_norm=legacy_norm,
+            server_norm=server_norm,
+        )
+        updated_count += _migrate_payload_only_table(
+            connection,
+            table_name="events",
+            row_key_column="id",
+            legacy_raw=legacy_raw,
+            server_raw=server_raw,
+            legacy_norm=legacy_norm,
+            server_norm=server_norm,
+        )
+        updated_count += _migrate_payload_only_table(
+            connection,
+            table_name="frame_detections",
+            row_key_column="id",
+            legacy_raw=legacy_raw,
+            server_raw=server_raw,
+            legacy_norm=legacy_norm,
+            server_norm=server_norm,
+        )
+        updated_count += _migrate_payload_only_table(
+            connection,
+            table_name="frame_detections_latest",
+            row_key_column="source_key",
+            legacy_raw=legacy_raw,
+            server_raw=server_raw,
+            legacy_norm=legacy_norm,
+            server_norm=server_norm,
+        )
+
+    return updated_count
+
+
 def _append_common_filters(
     query: str,
     parameters: list[object],
@@ -509,6 +734,241 @@ def _append_common_filters(
         query += " AND session_id = ?"
         parameters.append(session_id)
     return query, parameters
+
+
+def _migrate_sources_table(
+    connection: sqlite3.Connection,
+    *,
+    legacy_raw: str,
+    server_raw: str,
+    legacy_norm: str,
+    server_norm: str,
+) -> int:
+    rows = connection.execute(
+        """
+        SELECT source_key, source_value, original_source_value, payload_json
+        FROM sources
+        """
+    ).fetchall()
+    updated = 0
+    for row in rows:
+        source_key = str(row["source_key"] or "")
+        source_value = str(row["source_value"] or "")
+        original_source_value = str(row["original_source_value"] or "")
+        payload = _decode_payload(row["payload_json"])
+
+        next_source_key = _replace_legacy_text(
+            source_key,
+            legacy_raw=legacy_raw,
+            server_raw=server_raw,
+            legacy_norm=legacy_norm,
+            server_norm=server_norm,
+        )
+        next_source_value = _replace_legacy_text(
+            source_value,
+            legacy_raw=legacy_raw,
+            server_raw=server_raw,
+            legacy_norm=legacy_norm,
+            server_norm=server_norm,
+        )
+        next_original_source_value = _replace_legacy_text(
+            original_source_value,
+            legacy_raw=legacy_raw,
+            server_raw=server_raw,
+            legacy_norm=legacy_norm,
+            server_norm=server_norm,
+        )
+
+        payload_changed = _rewrite_legacy_payload(
+            payload,
+            legacy_raw=legacy_raw,
+            server_raw=server_raw,
+            legacy_norm=legacy_norm,
+            server_norm=server_norm,
+        )
+        if (
+            next_source_key == source_key
+            and next_source_value == source_value
+            and next_original_source_value == original_source_value
+            and not payload_changed
+        ):
+            continue
+
+        payload["source_key"] = next_source_key
+        payload["source_value"] = next_source_value
+        if "original_source_value" in payload:
+            payload["original_source_value"] = next_original_source_value
+
+        connection.execute(
+            """
+            UPDATE sources
+            SET source_key = ?, source_value = ?, original_source_value = ?, payload_json = ?
+            WHERE source_key = ?
+            """,
+            (
+                next_source_key,
+                next_source_value,
+                next_original_source_value,
+                json.dumps(payload, ensure_ascii=False),
+                source_key,
+            ),
+        )
+        updated += 1
+    return updated
+
+
+def _migrate_source_status_table(
+    connection: sqlite3.Connection,
+    *,
+    legacy_raw: str,
+    server_raw: str,
+    legacy_norm: str,
+    server_norm: str,
+) -> int:
+    rows = connection.execute(
+        """
+        SELECT source_key, source_value, payload_json
+        FROM source_status
+        """
+    ).fetchall()
+    updated = 0
+    for row in rows:
+        source_key = str(row["source_key"] or "")
+        source_value = str(row["source_value"] or "")
+        payload = _decode_payload(row["payload_json"])
+
+        next_source_key = _replace_legacy_text(
+            source_key,
+            legacy_raw=legacy_raw,
+            server_raw=server_raw,
+            legacy_norm=legacy_norm,
+            server_norm=server_norm,
+        )
+        next_source_value = _replace_legacy_text(
+            source_value,
+            legacy_raw=legacy_raw,
+            server_raw=server_raw,
+            legacy_norm=legacy_norm,
+            server_norm=server_norm,
+        )
+        payload_changed = _rewrite_legacy_payload(
+            payload,
+            legacy_raw=legacy_raw,
+            server_raw=server_raw,
+            legacy_norm=legacy_norm,
+            server_norm=server_norm,
+        )
+        if (
+            next_source_key == source_key
+            and next_source_value == source_value
+            and not payload_changed
+        ):
+            continue
+
+        payload["source_key"] = next_source_key
+        payload["source_value"] = next_source_value
+        connection.execute(
+            """
+            UPDATE source_status
+            SET source_key = ?, source_value = ?, payload_json = ?
+            WHERE source_key = ?
+            """,
+            (
+                next_source_key,
+                next_source_value,
+                json.dumps(payload, ensure_ascii=False),
+                source_key,
+            ),
+        )
+        updated += 1
+    return updated
+
+
+def _migrate_payload_only_table(
+    connection: sqlite3.Connection,
+    *,
+    table_name: str,
+    row_key_column: str,
+    legacy_raw: str,
+    server_raw: str,
+    legacy_norm: str,
+    server_norm: str,
+) -> int:
+    rows = connection.execute(
+        f"SELECT {row_key_column}, source_key, payload_json FROM {table_name}"
+    ).fetchall()
+    updated = 0
+    for row in rows:
+        record_key = row[row_key_column]
+        source_key = str(row["source_key"] or "")
+        payload = _decode_payload(row["payload_json"])
+        next_source_key = _replace_legacy_text(
+            source_key,
+            legacy_raw=legacy_raw,
+            server_raw=server_raw,
+            legacy_norm=legacy_norm,
+            server_norm=server_norm,
+        )
+        payload_changed = _rewrite_legacy_payload(
+            payload,
+            legacy_raw=legacy_raw,
+            server_raw=server_raw,
+            legacy_norm=legacy_norm,
+            server_norm=server_norm,
+        )
+        if next_source_key == source_key and not payload_changed:
+            continue
+        payload["source_key"] = next_source_key
+        connection.execute(
+            f"UPDATE {table_name} SET source_key = ?, payload_json = ? WHERE {row_key_column} = ?",
+            (
+                next_source_key,
+                json.dumps(payload, ensure_ascii=False),
+                record_key,
+            ),
+        )
+        updated += 1
+    return updated
+
+
+def _rewrite_legacy_payload(
+    payload: dict,
+    *,
+    legacy_raw: str,
+    server_raw: str,
+    legacy_norm: str,
+    server_norm: str,
+) -> bool:
+    changed = False
+    for key in ("source_key", "source_value", "original_source_value"):
+        value = payload.get(key)
+        if not isinstance(value, str):
+            continue
+        next_value = _replace_legacy_text(
+            value,
+            legacy_raw=legacy_raw,
+            server_raw=server_raw,
+            legacy_norm=legacy_norm,
+            server_norm=server_norm,
+        )
+        if next_value == value:
+            continue
+        payload[key] = next_value
+        changed = True
+    return changed
+
+
+def _replace_legacy_text(
+    value: str,
+    *,
+    legacy_raw: str,
+    server_raw: str,
+    legacy_norm: str,
+    server_norm: str,
+) -> str:
+    next_value = value.replace(legacy_raw, server_raw)
+    next_value = next_value.replace(legacy_norm, server_norm)
+    return next_value
 
 
 def _decode_payload(payload_json: str) -> dict:

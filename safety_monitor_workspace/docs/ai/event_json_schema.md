@@ -2,7 +2,7 @@
 
 ## 목적
 
-- 이벤트 JSON은 Python AI Worker가 생성하고 서버가 저장하는 공통 이벤트 계약입니다.
+- 이벤트 JSON은 서버 내부 분석 worker가 생성하고 서버가 저장하는 공통 이벤트 계약입니다.
 - 이 계약은 `POST /api/events` 요청 body와 서버 DB에 저장되는 payload 양쪽에서 공통으로 사용됩니다.
 - 과거에는 `events.jsonl`이 주 저장소였지만, 현재 기준 저장소는 서버 SQLite DB입니다.
 - 기존 `*_event_log.txt`는 디버깅 및 호환용 보조 로그이며, GUI의 주 소비 경로는 서버 API입니다.
@@ -33,8 +33,9 @@
 | `source_time_text` | `string` | 원본 입력 기준 시간 문자열 |
 | `started_source_time_text` | `string` | 이벤트 시작 시간 문자열 |
 | `ended_source_time_text` | `string` | 이벤트 종료 시간 문자열 |
-| `clip_path` | `string` | 로컬 fallback 클립 경로 |
+| `clip_path` | `string` | 레거시 로컬 fallback 클립 경로 |
 | `clip_url` | `string?` | 서버 클립 URL |
+| `server_clip_path` | `string?` | 서버 DB에 저장되는 상대경로 (`clips/...`) |
 | `server_clip_name` | `string?` | 서버 저장 클립 파일명 |
 | `clip_available` | `boolean` | 재생 가능한 클립 존재 여부 |
 | `preferred_clip_source` | `string` | `server`, `local`, `""` |
@@ -63,7 +64,8 @@
 ## 클립 필드 정책
 
 - `clip_url`이 있으면 GUI는 서버 클립을 우선 사용합니다.
-- `clip_url`이 없고 `clip_path`만 있으면 로컬 fallback 재생이 가능합니다.
+- `clip_url`이 없고 `server_clip_path`가 있으면 서버 상대경로 기준으로 재생할 수 있습니다.
+- `clip_url`과 `server_clip_path`가 모두 없고 `clip_path`만 있으면 레거시 로컬 fallback 재생이 가능합니다.
 - `preferred_clip_source`는 클라이언트가 어떤 경로를 우선해야 하는지 알려주는 힌트입니다.
 
 ## 소비 측 가이드

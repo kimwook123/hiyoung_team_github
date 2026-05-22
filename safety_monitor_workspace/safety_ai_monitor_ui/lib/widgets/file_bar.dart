@@ -12,7 +12,6 @@ class FileBar extends StatelessWidget {
     required this.activeSourceLabel,
     required this.hasSelectedSource,
     required this.canReturnFromReplay,
-    required this.returnButtonText,
     required this.streamTextController,
     required this.onPickVideo,
     required this.onClearSelectedSource,
@@ -27,7 +26,6 @@ class FileBar extends StatelessWidget {
   final String activeSourceLabel;
   final bool hasSelectedSource;
   final bool canReturnFromReplay;
-  final String returnButtonText;
   final TextEditingController streamTextController;
   final VoidCallback onPickVideo;
   final VoidCallback onClearSelectedSource;
@@ -50,7 +48,6 @@ class FileBar extends StatelessWidget {
           hasSelectedSource: hasSelectedSource,
           onClearSelectedSource: onClearSelectedSource,
           canReturnFromReplay: canReturnFromReplay,
-          returnButtonText: returnButtonText,
           onReturnLive: onReturnLive,
         ),
         const SizedBox(height: 12),
@@ -98,7 +95,6 @@ class _PathCard extends StatelessWidget {
     required this.hasSelectedSource,
     required this.onClearSelectedSource,
     required this.canReturnFromReplay,
-    required this.returnButtonText,
     required this.onReturnLive,
   });
 
@@ -112,7 +108,6 @@ class _PathCard extends StatelessWidget {
   final bool hasSelectedSource;
   final VoidCallback onClearSelectedSource;
   final bool canReturnFromReplay;
-  final String returnButtonText;
   final VoidCallback onReturnLive;
 
   @override
@@ -174,7 +169,7 @@ class _PathCard extends StatelessWidget {
                 const SizedBox(width: 12),
                 OutlinedButton(
                   onPressed: onReturnLive,
-                  child: Text(returnButtonText),
+                  child: const Text('클립 닫기'),
                 ),
               ],
             ],

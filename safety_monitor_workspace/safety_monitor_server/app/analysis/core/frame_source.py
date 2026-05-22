@@ -63,8 +63,9 @@ class CameraFrameSource(FrameSource):
 
 class VideoFileFrameSource(FrameSource):
     # mp4 같은 로컬 영상 파일 입력용 구현입니다.
-    def __init__(self, video_path: str) -> None:
+    def __init__(self, video_path: str, *, start_time_seconds: float = 0.0) -> None:
         self.video_path = video_path
+        self.start_time_seconds = start_time_seconds if start_time_seconds > 0 else 0.0
         self.cap = None
 
     def open(self) -> None:
@@ -72,6 +73,8 @@ class VideoFileFrameSource(FrameSource):
         self.cap = cv2.VideoCapture(self.video_path)
         if self.cap is None or not self.cap.isOpened():
             raise RuntimeError(f"영상 파일을 열 수 없습니다: {self.video_path}")
+        if self.start_time_seconds > 0:
+            self.cap.set(cv2.CAP_PROP_POS_MSEC, self.start_time_seconds * 1000.0)
 
     def read(self) -> tuple[bool, np.ndarray]:
         if self.cap is None:

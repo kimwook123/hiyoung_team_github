@@ -43,6 +43,10 @@ class AnalysisSourceManager:
         for source_record in list_sources(DATABASE_PATH):
             if not bool(source_record.get("desired_running", False)):
                 continue
+            print(
+                f"[SRC] bootstrap start source={source_record.get('source_key', '')}",
+                flush=True,
+            )
             self.start_source(str(source_record.get("source_key", "")).strip())
 
     def shutdown(self) -> None:
@@ -138,6 +142,11 @@ class AnalysisSourceManager:
                 source_record=dict(source_record),
                 stop_event=stop_event,
                 thread=thread,
+            )
+            print(
+                f"[SRC] start source={normalized_source_key} type={source_record['source_type']} "
+                f"client={source_record['client_id'] or '-'}",
+                flush=True,
             )
             upsert_source_status(
                 DATABASE_PATH,
@@ -342,8 +351,17 @@ class AnalysisSourceManager:
                     stop_reason=stop_reason,
                     stop_event=stop_event,
                 ):
+                    print(
+                        f"[SRC] stop source={source_key} reason={stop_reason}",
+                        flush=True,
+                    )
                     break
 
+                print(
+                    f"[SRC] retry source={source_key} type={source_type} "
+                    f"reason={stop_reason} wait=2.0s",
+                    flush=True,
+                )
                 time.sleep(2.0)
         finally:
             with self._lock:

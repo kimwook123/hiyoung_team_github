@@ -7,14 +7,21 @@
 - FastAPI 서버를 실행합니다.
 - 서버가 분석 worker도 내부적으로 관리합니다.
 - 기본 host는 `0.0.0.0:8000`이라 다른 PC GUI도 접속할 수 있습니다.
+- `Python 3.12`와 `py`가 있으면 필수 서버 패키지를 자동 점검하고, 없으면 설치 여부를 묻습니다.
 
 ## 2. GUI만 실행
 
 `run_gui_only.bat`
 
-- 빌드된 Flutter GUI만 실행합니다.
-- 서버가 이미 떠 있어야 소스 등록, 로그 조회, 박스 표시가 정상 동작합니다.
-- 원격 서버를 쓸 때는 GUI 상단 `서버 주소` 입력에 `http://서버IP:8000`을 넣고 적용합니다.
+- GUI 실행 파일이 있으면 바로 실행합니다.
+- 실행 파일이 없으면 Flutter Windows 빌드를 자동 시도합니다.
+- 필요한 경우 다음 항목을 순서대로 검사하고 설치 여부를 묻습니다.
+  - Flutter SDK
+  - Visual Studio 2022 Desktop development with C++
+  - Windows SDK
+- 실행 시 서버 주소를 입력받고, 값을 `server_config.json`에 저장합니다.
+- 다음 실행부터는 저장된 서버 주소를 기본값으로 사용합니다.
+- 원격 서버 예시: `http://192.168.24.114:8000`
 
 ## 3. 서버 + GUI 같이 실행
 
@@ -22,6 +29,7 @@
 
 - 서버를 먼저 실행합니다.
 - 잠시 뒤 GUI를 실행합니다.
+- 같은 PC 로컬 테스트에 적합합니다.
 
 ## 4. Flutter 디버그 모드
 
@@ -40,7 +48,11 @@
 - 서버 저장소:
   - `safety_monitor_server/data/monitor.db`
   - `safety_monitor_server/data/clips/`
+  - `safety_monitor_server/data/source_cache/`
+  - `safety_monitor_server/data/uploaded_sources/`
 - 서버 내부 분석 패키지:
   - `safety_monitor_server/app/analysis/`
 - GUI 실행 파일:
   - `safety_ai_monitor_ui/build/windows/x64/runner/Release/safety_ai_monitor_ui.exe`
+- 미완료 파일 영상은 서버 재시작 후 자동 이어받기됩니다.
+- CCTV/RTSP/HTTP 스트림은 서버가 살아 있고 등록 상태가 유지되는 한 계속 분석을 재시도합니다.

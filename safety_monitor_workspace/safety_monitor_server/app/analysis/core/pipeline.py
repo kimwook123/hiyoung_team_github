@@ -42,6 +42,7 @@ class VideoPipeline:
         client_id: str = "",
         session_id: str = "",
         source_fps: float = 0.0,
+        source_duration_seconds: float = 0.0,
         source_status_publisher: SourceStatusPublisher | None = None,
         analysis_target_fps: float = 0.0,
         model_input_max_width: int = 0,
@@ -67,6 +68,7 @@ class VideoPipeline:
         self.client_id = client_id
         self.session_id = session_id
         self.source_fps = source_fps
+        self.source_duration_seconds = max(0.0, source_duration_seconds)
         self.source_status_publisher = source_status_publisher
         self.analysis_target_fps = max(0.0, analysis_target_fps)
         self.model_input_max_width = max(0, model_input_max_width)
@@ -466,6 +468,7 @@ class VideoPipeline:
             session_id=self.session_id,
             state=state,
             is_running=is_running,
+            source_duration_seconds=self.source_duration_seconds,
             last_frame_id=last_frame_id,
             last_source_time_seconds=last_source_time_seconds,
             error_message=error_message,

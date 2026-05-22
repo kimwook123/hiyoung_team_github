@@ -1,10 +1,13 @@
 from contextlib import asynccontextmanager
+from time import perf_counter
 
 from fastapi import FastAPI
+from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import (
     DATABASE_PATH,
+    ENABLE_SERVER_REQUEST_LOG,
     LEGACY_SOURCE_CACHE_DIR,
     SERVER_CLIP_DIR,
     SERVER_DATA_DIR,
@@ -72,6 +75,36 @@ app.include_router(frame_detections_router)
 app.include_router(source_status_router)
 app.include_router(sources_router)
 app.include_router(source_media_router)
+
+
+if ENABLE_SERVER_REQUEST_LOG:
+
+    @app.middleware("http")
+    async def log_requests(request: Request, call_next):
+        started_at = perf_counter()
+        client_host = request.client.host if request.client else "-"
+        method = request.method.upper()
+        path = request.url.path
+        query = request.url.query
+        display_path = f"{path}?{query}" if query else path
+        try:
+            response = await call_next(request)
+        except Exception as error:
+            elapsed_ms = (perf_counter() - started_at) * 1000.0
+            print(
+                f"[REQ] client={client_host} method={method} path={display_path} "
+                f"status=500 duration={elapsed_ms:.1f}ms error={error}",
+                flush=True,
+            )
+            raise
+
+        elapsed_ms = (perf_counter() - started_at) * 1000.0
+        print(
+            f"[REQ] client={client_host} method={method} path={display_path} "
+            f"status={response.status_code} duration={elapsed_ms:.1f}ms",
+            flush=True,
+        )
+        return response
 
 
 @app.get("/health", response_model=HealthResponse)

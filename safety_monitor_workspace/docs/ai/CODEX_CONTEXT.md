@@ -35,10 +35,12 @@
 ## 중요한 현재 사실
 
 - GUI는 `source_state.json`, `sources_state.json`, `ui_bridge.json`을 더 이상 사용하지 않습니다.
-- 소스 등록은 `POST /api/sources`로 합니다.
-- 분석 start/stop/restart도 서버 API 기준입니다.
+- 소스 등록은 `POST /api/sources` 또는 `POST /api/sources/upload`로 합니다.
+- 로컬 영상 파일은 서버 `uploaded_sources`에 저장되고, 유튜브 링크는 서버 `source_cache`에 저장됩니다.
 - 이벤트 로그는 현재 선택된 소스가 있으면 그 소스만, 선택이 없으면 전체를 보여줍니다.
 - 프레임 박스는 `/api/frame-detections/current` 또는 `/latest` 기준입니다.
+- 서버 등록 소스는 GUI에서 다시 열 수 있습니다.
+- 서버만 실행 중이어도 저장된 미완료 파일 영상은 이어서 분석되고, 스트림/CCTV는 재시도합니다.
 
 ## 분석 관련 사실
 
@@ -53,3 +55,4 @@
 - 서버는 `app.*` import 구조라 `safety_monitor_server` 폴더 기준으로 실행하는 흐름을 유지합니다.
 - `source_key` 정규화 규칙을 바꾸면 이벤트 필터, 상태 조회, 박스 조회가 함께 흔들립니다.
 - GUI는 서버 분석과 별개로 영상을 로컬 재생하므로, seek/재생 시간과 서버 스냅샷 정합성은 늘 같이 봐야 합니다.
+- 원격 GUI 연결은 서버 주소를 알아야 하며, 현재는 `run_gui_only.bat`와 GUI 설정 파일이 이를 저장합니다.

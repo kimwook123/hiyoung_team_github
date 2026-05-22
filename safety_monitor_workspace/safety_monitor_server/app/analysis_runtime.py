@@ -12,6 +12,7 @@ import cv2
 
 from app.config import (
     ANALYSIS_DIR,
+    ANALYSIS_PROGRESS_LOG_INTERVAL_SECONDS,
     ANALYSIS_TARGET_FPS,
     DANGER_ZONE_ROI,
     DATABASE_PATH,
@@ -173,6 +174,7 @@ def build_pipeline_for_source(
     )
     source_status_publisher = ServerSourceStatusPublisher(
         min_interval_seconds=SOURCE_STATUS_POST_MIN_INTERVAL_SECONDS,
+        progress_log_interval_seconds=ANALYSIS_PROGRESS_LOG_INTERVAL_SECONDS,
     )
     handlers: list[EventHandler] = [
         ServerEventHandler(),
@@ -197,6 +199,7 @@ def build_pipeline_for_source(
         session_id=session_id,
         source_fps=source_fps,
         source_status_publisher=source_status_publisher,
+        source_duration_seconds=float(source_record.get("source_duration_seconds", 0.0) or 0.0),
         analysis_target_fps=ANALYSIS_TARGET_FPS,
         model_input_max_width=MODEL_INPUT_MAX_WIDTH,
         enable_perf_log=ENABLE_PIPELINE_PERF_LOG,
@@ -309,10 +312,19 @@ class ServerFrameDetectionRecorder:
 
 
 class ServerSourceStatusPublisher:
-    def __init__(self, *, min_interval_seconds: float = 1.0) -> None:
+    def __init__(
+        self,
+        *,
+        min_interval_seconds: float = 1.0,
+        progress_log_interval_seconds: float = 10.0,
+    ) -> None:
         self.min_interval_seconds = min_interval_seconds
+        self.progress_log_interval_seconds = max(1.0, progress_log_interval_seconds)
         self.last_signature = ""
         self.last_posted_at = 0.0
+        self.last_logged_at_by_source_key: dict[str, float] = {}
+        self.last_logged_state_by_source_key: dict[str, str] = {}
+        self.last_logged_progress_bucket_by_source_key: dict[str, int] = {}
         self.worker = AsyncLatestWorker[dict[str, Any]](
             name="server-db-source-status-worker",
             consumer=self._save_status_sync,
@@ -329,6 +341,7 @@ class ServerSourceStatusPublisher:
         session_id: str,
         state: str,
         is_running: bool,
+        source_duration_seconds: float = 0.0,
         last_frame_id: int = -1,
         last_source_time_seconds: float = 0.0,
         error_message: str = "",
@@ -353,6 +366,7 @@ class ServerSourceStatusPublisher:
             "state": state,
             "is_running": is_running,
             "source_fps": source_fps,
+            "source_duration_seconds": source_duration_seconds,
             "last_frame_id": last_frame_id,
             "last_source_time_seconds": last_source_time_seconds,
             "error_message": error_message,
@@ -361,12 +375,84 @@ class ServerSourceStatusPublisher:
         self.worker.submit(payload)
         self.last_posted_at = now_ts
         self.last_signature = signature
+        self._log_progress(
+            source_key=source_key,
+            source_type=source_type,
+            client_id=client_id,
+            state=state,
+            is_running=is_running,
+            source_duration_seconds=source_duration_seconds,
+            last_frame_id=last_frame_id,
+            last_source_time_seconds=last_source_time_seconds,
+            error_message=error_message,
+            now_ts=now_ts,
+            force=force,
+        )
 
     def _save_status_sync(self, payload: dict[str, Any]) -> None:
         upsert_source_status(DATABASE_PATH, payload)
 
     def close(self) -> None:
         self.worker.close(timeout_seconds=15.0)
+
+    def _log_progress(
+        self,
+        *,
+        source_key: str,
+        source_type: str,
+        client_id: str,
+        state: str,
+        is_running: bool,
+        source_duration_seconds: float,
+        last_frame_id: int,
+        last_source_time_seconds: float,
+        error_message: str,
+        now_ts: float,
+        force: bool,
+    ) -> None:
+        normalized_state = state.strip().lower() or "unknown"
+        state_changed = self.last_logged_state_by_source_key.get(source_key) != normalized_state
+        progress_bucket = -1
+        if source_duration_seconds > 0:
+            progress_bucket = int(
+                max(0.0, min(100.0, (last_source_time_seconds / source_duration_seconds) * 100.0))
+            )
+        progress_bucket_changed = (
+            progress_bucket >= 0
+            and self.last_logged_progress_bucket_by_source_key.get(source_key) != progress_bucket
+            and progress_bucket % 5 == 0
+        )
+        timed_out = (
+            force
+            or state_changed
+            or progress_bucket_changed
+            or (now_ts - self.last_logged_at_by_source_key.get(source_key, 0.0))
+            >= self.progress_log_interval_seconds
+        )
+        if not timed_out:
+            return
+
+        if source_duration_seconds > 0:
+            progress_text = (
+                f"{last_source_time_seconds:.1f}/{source_duration_seconds:.1f}s "
+                f"({max(0.0, min(100.0, (last_source_time_seconds / source_duration_seconds) * 100.0)):.1f}%)"
+            )
+        else:
+            progress_text = f"{last_source_time_seconds:.1f}s"
+
+        log_line = (
+            f"[PROGRESS] source={source_key} type={source_type} client={client_id or '-'} "
+            f"state={normalized_state} running={'yes' if is_running else 'no'} "
+            f"frame={last_frame_id} progress={progress_text}"
+        )
+        if error_message.strip():
+            log_line += f" error={error_message.strip()}"
+        print(log_line, flush=True)
+
+        self.last_logged_at_by_source_key[source_key] = now_ts
+        self.last_logged_state_by_source_key[source_key] = normalized_state
+        if progress_bucket >= 0:
+            self.last_logged_progress_bucket_by_source_key[source_key] = progress_bucket
 
 
 def _build_model():

@@ -35,6 +35,16 @@ class EventApiService {
         : normalized;
   }
 
+  Uri buildRealtimeUpdatesUri() {
+    final baseUri = Uri.parse(baseUrl);
+    final nextScheme = baseUri.scheme.toLowerCase() == 'https' ? 'wss' : 'ws';
+    return baseUri.replace(
+      scheme: nextScheme,
+      path: '/ws/updates',
+      queryParameters: const {},
+    );
+  }
+
   Future<List<ApiEventItem>> fetchEvents({
     bool latestOnly = false,
     int? limit,

@@ -4,6 +4,7 @@ from uuid import uuid4
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 
 from app.config import SERVER_SOURCE_CACHE_DIR, SERVER_UPLOAD_SOURCE_DIR
+from app.realtime_hub import realtime_update_hub
 from app.schemas import (
     SourceActionResponse,
     SourceCreateRequest,
@@ -44,6 +45,11 @@ def register_source(
         session_id=payload.session_id,
         reset_existing=payload.reset_existing,
         start_immediately=payload.start_immediately,
+    )
+    realtime_update_hub.publish(
+        "source_changed",
+        action="registered",
+        source_key=str(item.get("source_key", "")).strip(),
     )
     return SourceUpsertResponse(ok=True, item=SourceItem(**_decorate_source_record(item)))
 
@@ -96,6 +102,11 @@ async def upload_video_source(
         saved_path.unlink(missing_ok=True)
         raise
 
+    realtime_update_hub.publish(
+        "source_changed",
+        action="registered",
+        source_key=str(item.get("source_key", "")).strip(),
+    )
     return SourceUpsertResponse(ok=True, item=SourceItem(**_decorate_source_record(item)))
 
 
@@ -141,6 +152,11 @@ def start_source(source_key: str, request: Request) -> SourceActionResponse:
         manager.start_source(source_key)
     except KeyError as error:
         raise HTTPException(status_code=404, detail="source not found") from error
+    realtime_update_hub.publish(
+        "source_changed",
+        action="started",
+        source_key=source_key.strip(),
+    )
     return SourceActionResponse(ok=True, source_key=source_key, state="starting")
 
 
@@ -150,6 +166,11 @@ def stop_source(source_key: str, request: Request) -> SourceActionResponse:
     record = manager.stop_source(source_key)
     if record is None:
         raise HTTPException(status_code=404, detail="source not found")
+    realtime_update_hub.publish(
+        "source_changed",
+        action="stopped",
+        source_key=source_key.strip(),
+    )
     return SourceActionResponse(ok=True, source_key=source_key, state="stopped")
 
 
@@ -160,6 +181,11 @@ def restart_source(source_key: str, request: Request) -> SourceActionResponse:
         manager.restart_source(source_key)
     except KeyError as error:
         raise HTTPException(status_code=404, detail="source not found") from error
+    realtime_update_hub.publish(
+        "source_changed",
+        action="restarted",
+        source_key=source_key.strip(),
+    )
     return SourceActionResponse(ok=True, source_key=source_key, state="starting")
 
 
@@ -173,4 +199,9 @@ def delete_source(
     ok = manager.remove_source(source_key, clear_data=clear_data)
     if not ok:
         raise HTTPException(status_code=404, detail="source not found")
+    realtime_update_hub.publish(
+        "source_changed",
+        action="deleted",
+        source_key=source_key.strip(),
+    )
     return SourceActionResponse(ok=True, source_key=source_key, state="deleted")

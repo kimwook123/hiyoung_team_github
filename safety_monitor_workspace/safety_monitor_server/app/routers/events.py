@@ -12,6 +12,7 @@ from app.database import (
     list_source_summaries,
 )
 from app.event_normalizer import normalize_event_record
+from app.realtime_hub import realtime_update_hub
 from app.schemas import (
     EventCreateResponse,
     EventDetailResponse,
@@ -65,6 +66,13 @@ def create_event(
     except Exception as error:
         raise HTTPException(status_code=500, detail="failed to save event") from error
 
+    realtime_update_hub.publish(
+        "event_changed",
+        source_key=str(saved_record.get("source_key", "")).strip(),
+        event_key=str(saved_record.get("event_key", "")).strip(),
+        status=str(saved_record.get("status", "")).strip(),
+        event_type=str(saved_record.get("event_type", "")).strip(),
+    )
     return EventCreateResponse(ok=True, item=saved_record)
 
 

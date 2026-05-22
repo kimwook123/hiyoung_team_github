@@ -10,6 +10,7 @@ _ANSI_RESET = "\033[0m"
 _TAG_COLORS = {
     "REQ": "\033[96m",
     "REQ-SUM": "\033[36m",
+    "PUSH": "\033[92m",
     "SRC": "\033[94m",
     "PROGRESS": "\033[92m",
     "PERF": "\033[95m",
@@ -211,6 +212,20 @@ def _compact_field_text(tag: str, fields: dict[str, object]) -> str:
         last_status = _text("last_status")
         if last_status and last_status != "200":
             _push(parts, "status=", last_status)
+        return " ".join(parts)
+
+    if tag == "PUSH":
+        _push(parts, "", _text("event"))
+        _push(parts, "x", _text("clients"))
+        source_text = _text("source")
+        if source_text:
+            _push(parts, "", source_text)
+        action_text = _text("action")
+        if action_text:
+            _push(parts, "", action_text)
+        state_text = _text("state")
+        if state_text:
+            _push(parts, "", state_text)
         return " ".join(parts)
 
     if tag == "SRC":

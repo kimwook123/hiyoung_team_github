@@ -74,6 +74,7 @@ class SourceStatusItem(BaseModel):
     state: str
     is_running: bool
     source_fps: float = 0.0
+    source_duration_seconds: float = 0.0
     last_frame_id: int = -1
     last_source_time_seconds: float = 0.0
     error_message: str = ""

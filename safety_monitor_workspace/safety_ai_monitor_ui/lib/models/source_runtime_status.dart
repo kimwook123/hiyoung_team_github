@@ -8,6 +8,7 @@ class SourceRuntimeStatus {
     required this.state,
     required this.isRunning,
     required this.sourceFps,
+    required this.sourceDurationSeconds,
     required this.lastFrameId,
     required this.lastSourceTimeSeconds,
     required this.errorMessage,
@@ -22,6 +23,7 @@ class SourceRuntimeStatus {
   final String state;
   final bool isRunning;
   final double sourceFps;
+  final double sourceDurationSeconds;
   final int lastFrameId;
   final double lastSourceTimeSeconds;
   final String errorMessage;
@@ -37,6 +39,7 @@ class SourceRuntimeStatus {
       state: json['state']?.toString() ?? '',
       isRunning: json['is_running'] == true,
       sourceFps: _toDouble(json['source_fps']),
+      sourceDurationSeconds: _toDouble(json['source_duration_seconds']),
       lastFrameId: _toInt(json['last_frame_id']),
       lastSourceTimeSeconds: _toDouble(json['last_source_time_seconds']),
       errorMessage: json['error_message']?.toString() ?? '',

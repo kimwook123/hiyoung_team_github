@@ -5,7 +5,6 @@ FastAPI 서버이자 분석 orchestration 계층입니다.
 ## 역할
 
 - 영상 소스 등록 API 제공
-- 분석 start/stop/restart 제어
 - 서버 내부 분석 worker 관리
 - 이벤트 저장
 - 프레임 탐지 스냅샷 저장
@@ -18,6 +17,7 @@ FastAPI 서버이자 분석 orchestration 계층입니다.
 - DB: `data/monitor.db`
 - 클립: `data/clips/`
 - 서버 캐시: `data/source_cache/`
+- 업로드 원본 영상: `data/uploaded_sources/`
 
 주요 테이블:
 
@@ -33,9 +33,7 @@ FastAPI 서버이자 분석 orchestration 계층입니다.
 
 - `GET /api/sources`
 - `POST /api/sources`
-- `POST /api/sources/{source_key}/start`
-- `POST /api/sources/{source_key}/stop`
-- `POST /api/sources/{source_key}/restart`
+- `POST /api/sources/upload`
 - `DELETE /api/sources/{source_key}`
 
 ### Event / Detection / Status
@@ -54,6 +52,11 @@ FastAPI 서버이자 분석 orchestration 계층입니다.
 - `GET /api/clips`
 - `GET /api/clips/{clip_name}`
 
+### Source Media
+
+- `GET /api/source-media/uploaded/{file_name}`
+- `GET /api/source-media/cached/{file_name}`
+
 ### Admin
 
 - `POST /api/admin/reset-data`
@@ -64,6 +67,8 @@ FastAPI 서버이자 분석 orchestration 계층입니다.
 - worker는 `app/analysis/`의 코어/모델/룰을 직접 사용합니다.
 - 결과 저장은 서버 내부 DB/클립 디렉터리로 직접 처리합니다.
 - 예전처럼 별도 Python AI Worker 프로세스를 사용자 쪽에서 띄우지 않습니다.
+- 파일 영상은 미완료 상태면 서버 재시작 후 자동 이어받기됩니다.
+- 스트림/CCTV 소스는 끊기면 `reconnecting` 상태로 두고 재시도합니다.
 
 ## 실행
 
@@ -78,4 +83,5 @@ py -3.12 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 run_server.bat
 ```
 
-원격 GUI 클라이언트는 같은 네트워크에서 `http://<서버IP>:8000` 주소로 접속하도록 설정하면 됩니다.
+- `run_server.bat`는 서버 의존성을 자동 점검하고, 없으면 설치 여부를 묻습니다.
+- 원격 GUI 클라이언트는 같은 네트워크에서 `http://<서버IP>:8000` 주소로 접속하도록 설정하면 됩니다.

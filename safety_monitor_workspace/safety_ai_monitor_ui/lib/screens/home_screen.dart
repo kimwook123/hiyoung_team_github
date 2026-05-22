@@ -36,7 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
     'API_BASE_URL',
     defaultValue: 'http://127.0.0.1:8000',
   );
-  static const Duration _apiAutoRefreshInterval = Duration(seconds: 3);
+  static const Duration _apiAutoRefreshInterval = Duration(seconds: 30);
   late final VideoPanelController _emptyVideoController;
   late final EventApiService eventApiService;
   late final ApiEventController apiEventController;
@@ -54,6 +54,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? apiAutoRefreshTimer;
   Timer? frameDetectionRefreshTimer;
   Timer? sourceStatusSyncTimer;
+  Timer? realtimeReconnectTimer;
+  Timer? queuedRealtimeRefreshTimer;
+  StreamSubscription? realtimeSocketSubscription;
+  WebSocket? realtimeSocket;
   DateTime? frameDetectionLogModifiedAt;
   String frameDetectionSourceKey = '';
   List<FrameDetectionSnapshot> frameDetectionSnapshots = const [];
@@ -63,6 +67,10 @@ class _HomeScreenState extends State<HomeScreen> {
   double lastFrameDetectionRequestSeconds = -1;
   String lastFrameDetectionStatusUpdatedAt = '';
   late final String clientId;
+  bool isRealtimeConnected = false;
+  bool pendingRealtimeEventsRefresh = false;
+  bool pendingRealtimeSourcesRefresh = false;
+  bool pendingRealtimeStatusesRefresh = false;
 
   @override
   void initState() {
@@ -83,6 +91,10 @@ class _HomeScreenState extends State<HomeScreen> {
     apiAutoRefreshTimer?.cancel();
     frameDetectionRefreshTimer?.cancel();
     sourceStatusSyncTimer?.cancel();
+    realtimeReconnectTimer?.cancel();
+    queuedRealtimeRefreshTimer?.cancel();
+    realtimeSocketSubscription?.cancel();
+    realtimeSocket?.close();
     for (final slot in _sourceSlots) {
       slot.controller.disposeController();
     }
@@ -1283,6 +1295,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     eventApiService.updateBaseUrl(nextBaseUrl);
     await _saveServerBaseUrlConfig(eventApiService.baseUrl);
+    await _disconnectRealtimeUpdates();
+    unawaited(_connectRealtimeUpdates());
     await apiEventController.checkHealth();
     await _refreshRegisteredSources();
     await _refreshSourceStatuses();
@@ -1333,9 +1347,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _startApiAutoRefresh() {
-    // 실시간 push(WebSocket) 대신 3초 간격 polling으로 서버 최신 이벤트를 가져옵니다.
+    // WebSocket이 끊긴 경우를 대비한 fallback polling입니다.
     _stopApiAutoRefresh();
     apiAutoRefreshTimer = Timer.periodic(_apiAutoRefreshInterval, (_) {
+      if (isRealtimeConnected) {
+        return;
+      }
       unawaited(_refreshApiEventsIfNeeded());
     });
   }
@@ -1352,7 +1369,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _startSourceStatusSync() {
     sourceStatusSyncTimer?.cancel();
-    sourceStatusSyncTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+    sourceStatusSyncTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (isRealtimeConnected) {
+        return;
+      }
       unawaited(_refreshSourceStatuses());
       unawaited(_refreshRegisteredSources());
       unawaited(_syncActiveSlotFrameRateIfNeeded());
@@ -1786,9 +1806,74 @@ class _HomeScreenState extends State<HomeScreen> {
       nextMap[sourceKey] = item;
     }
 
+    final removedSlotLabels = await _pruneLocalSlotsForRemovedRegisteredSources(
+      nextMap.keys.toSet(),
+    );
+
     setState(() {
       registeredSourcesByKey = nextMap;
     });
+
+    if (removedSlotLabels.isNotEmpty) {
+      apiEventFeed.clearSelection();
+      apiEventController.setVisibleSourceKey(selectedSourceKey);
+      if (_sourceSlots.isNotEmpty) {
+        await _syncActiveSlotFrameRateIfNeeded();
+      }
+      unawaited(_refreshApiEventsIfNeeded());
+      unawaited(_refreshFrameDetectionsIfNeeded());
+      if (mounted) {
+        _showInfoSnack('삭제된 서버 소스 화면을 자동으로 닫았습니다.');
+      }
+    }
+  }
+
+  Future<List<String>> _pruneLocalSlotsForRemovedRegisteredSources(
+    Set<String> remainingSourceKeys,
+  ) async {
+    final normalizedRemaining = remainingSourceKeys
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toSet();
+    final removedSlots = _sourceSlots
+        .where(
+          (slot) => !normalizedRemaining.contains(slot.sourceKey.trim()),
+        )
+        .toList(growable: false);
+    if (removedSlots.isEmpty) {
+      return const [];
+    }
+
+    final nextSlots = _sourceSlots
+        .where(
+          (slot) => normalizedRemaining.contains(slot.sourceKey.trim()),
+        )
+        .toList(growable: false);
+    final removedActive = removedSlots.any((slot) => slot.slotId == _activeSlotId);
+
+    for (final slot in removedSlots) {
+      slot.controller.disposeController();
+    }
+
+    if (!mounted) {
+      return removedSlots.map((slot) => slot.label).toList(growable: false);
+    }
+
+    setState(() {
+      _sourceSlots
+        ..clear()
+        ..addAll(nextSlots);
+      if (removedActive) {
+        _activeSlotId = _sourceSlots.isEmpty ? '' : _sourceSlots.last.slotId;
+      }
+      selectedApiEventDetail = null;
+      apiDetailErrorMessage = null;
+      frameDetectionSnapshots = const [];
+      frameDetectionLogModifiedAt = null;
+      frameDetectionSourceKey = '';
+    });
+
+    return removedSlots.map((slot) => slot.label).toList(growable: false);
   }
 
   bool _isSameSourceValue(String left, String right) {
@@ -2275,10 +2360,142 @@ class _HomeScreenState extends State<HomeScreen> {
       eventApiService.updateBaseUrl(configuredBaseUrl);
       serverBaseUrlTextController.text = eventApiService.baseUrl;
     }
+    unawaited(_connectRealtimeUpdates());
     await apiEventController.checkHealth();
     await _refreshApiEventsIfNeeded();
     await _refreshSourceStatuses();
     await _refreshRegisteredSources();
+  }
+
+  Future<void> _connectRealtimeUpdates() async {
+    realtimeReconnectTimer?.cancel();
+    await _disconnectRealtimeUpdates();
+    try {
+      final socket = await WebSocket.connect(
+        eventApiService.buildRealtimeUpdatesUri().toString(),
+      );
+      realtimeSocket = socket;
+      if (mounted) {
+        setState(() {
+          isRealtimeConnected = true;
+        });
+      } else {
+        isRealtimeConnected = true;
+      }
+      realtimeSocketSubscription = socket.listen(
+        _handleRealtimeUpdateMessage,
+        onDone: _handleRealtimeSocketClosed,
+        onError: (_) => _handleRealtimeSocketClosed(),
+        cancelOnError: true,
+      );
+    } catch (_) {
+      _scheduleRealtimeReconnect();
+    }
+  }
+
+  Future<void> _disconnectRealtimeUpdates() async {
+    final subscription = realtimeSocketSubscription;
+    realtimeSocketSubscription = null;
+    if (subscription != null) {
+      await subscription.cancel();
+    }
+    final socket = realtimeSocket;
+    realtimeSocket = null;
+    if (socket != null) {
+      await socket.close();
+    }
+    if (mounted) {
+      setState(() {
+        isRealtimeConnected = false;
+      });
+    } else {
+      isRealtimeConnected = false;
+    }
+  }
+
+  void _handleRealtimeSocketClosed() {
+    realtimeSocketSubscription = null;
+    realtimeSocket = null;
+    if (mounted) {
+      setState(() {
+        isRealtimeConnected = false;
+      });
+    } else {
+      isRealtimeConnected = false;
+    }
+    _scheduleRealtimeReconnect();
+  }
+
+  void _scheduleRealtimeReconnect() {
+    realtimeReconnectTimer?.cancel();
+    realtimeReconnectTimer = Timer(const Duration(seconds: 2), () {
+      unawaited(_connectRealtimeUpdates());
+    });
+  }
+
+  void _handleRealtimeUpdateMessage(dynamic data) {
+    if (data is! String) {
+      return;
+    }
+    try {
+      final decoded = jsonDecode(data);
+      if (decoded is! Map<String, dynamic>) {
+        return;
+      }
+      final type = decoded['type']?.toString().trim() ?? '';
+      switch (type) {
+        case 'source_changed':
+          _queueRealtimeRefresh(
+            refreshSources: true,
+            refreshStatuses: true,
+            refreshEvents: true,
+          );
+          break;
+        case 'source_status_changed':
+          _queueRealtimeRefresh(refreshStatuses: true);
+          break;
+        case 'event_changed':
+          _queueRealtimeRefresh(refreshEvents: true);
+          break;
+      }
+    } catch (_) {
+      return;
+    }
+  }
+
+  void _queueRealtimeRefresh({
+    bool refreshEvents = false,
+    bool refreshSources = false,
+    bool refreshStatuses = false,
+  }) {
+    pendingRealtimeEventsRefresh =
+        pendingRealtimeEventsRefresh || refreshEvents;
+    pendingRealtimeSourcesRefresh =
+        pendingRealtimeSourcesRefresh || refreshSources;
+    pendingRealtimeStatusesRefresh =
+        pendingRealtimeStatusesRefresh || refreshStatuses;
+    queuedRealtimeRefreshTimer ??= Timer(
+      const Duration(milliseconds: 200),
+      () async {
+        queuedRealtimeRefreshTimer = null;
+        final shouldRefreshSources = pendingRealtimeSourcesRefresh;
+        final shouldRefreshStatuses = pendingRealtimeStatusesRefresh;
+        final shouldRefreshEvents = pendingRealtimeEventsRefresh;
+        pendingRealtimeSourcesRefresh = false;
+        pendingRealtimeStatusesRefresh = false;
+        pendingRealtimeEventsRefresh = false;
+        if (shouldRefreshSources) {
+          await _refreshRegisteredSources();
+        }
+        if (shouldRefreshStatuses) {
+          await _refreshSourceStatuses();
+          await _syncActiveSlotFrameRateIfNeeded();
+        }
+        if (shouldRefreshEvents) {
+          await _refreshApiEventsIfNeeded();
+        }
+      },
+    );
   }
 
   Future<String> _loadServerBaseUrlConfig() async {

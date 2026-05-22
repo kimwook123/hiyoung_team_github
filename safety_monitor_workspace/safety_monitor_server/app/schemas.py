@@ -23,6 +23,47 @@ class SourceSummaryListResponse(BaseModel):
     items: list[SourceSummaryItem]
 
 
+class SourceItem(BaseModel):
+    source_key: str
+    source_slug: str
+    source_type: str
+    source_value: str
+    server_media_path: str = ""
+    media_url: str = ""
+    original_source_type: str = ""
+    original_source_value: str = ""
+    client_id: str = ""
+    session_id: str = ""
+    desired_running: bool = True
+    created_at: str
+    updated_at: str
+
+
+class SourceListResponse(BaseModel):
+    count: int
+    items: list[SourceItem]
+
+
+class SourceCreateRequest(BaseModel):
+    source_type: str
+    source_value: str
+    client_id: str = ""
+    session_id: str = ""
+    reset_existing: bool = True
+    start_immediately: bool = True
+
+
+class SourceUpsertResponse(BaseModel):
+    ok: bool
+    item: SourceItem
+
+
+class SourceActionResponse(BaseModel):
+    ok: bool
+    source_key: str
+    state: str
+
+
 class SourceStatusItem(BaseModel):
     source_key: str
     source_type: str

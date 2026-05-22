@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:file_selector/file_selector.dart';
@@ -11,12 +10,10 @@ import '../controllers/video_panel_controller.dart';
 import '../models/api_event_item.dart';
 import '../models/event_log_item.dart';
 import '../models/frame_detection_snapshot.dart';
-import '../models/source_slot_state.dart';
+import '../models/source_item.dart';
 import '../models/source_runtime_status.dart';
 import '../models/video_overlay_detection.dart';
-import '../services/app_link_service.dart';
 import '../services/event_api_service.dart';
-import '../services/input_source_resolver_service.dart';
 import '../widgets/event_log_box.dart';
 import '../widgets/file_bar.dart';
 import '../widgets/video_control_bar.dart';
@@ -33,17 +30,20 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  static const String _apiServerBaseUrl = 'http://127.0.0.1:8000';
+  static const String _defaultApiServerBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://127.0.0.1:8000',
+  );
   static const Duration _apiAutoRefreshInterval = Duration(seconds: 3);
   late final VideoPanelController _emptyVideoController;
+  late final EventApiService eventApiService;
   late final ApiEventController apiEventController;
   late final ApiEventFeedSource apiEventFeed;
-  late final AppLinkService appLinkService;
-  late final EventApiService eventApiService;
-  late final InputSourceResolverService inputSourceResolverService;
   final ScrollController pageScrollController = ScrollController();
   final ScrollController rightPanelScrollController = ScrollController();
   final TextEditingController streamTextController = TextEditingController();
+  final TextEditingController serverBaseUrlTextController =
+      TextEditingController(text: _defaultApiServerBaseUrl);
   final List<_SourcePanelSlot> _sourceSlots = [];
   String _activeSlotId = '';
   ApiEventItem? selectedApiEventDetail;
@@ -51,42 +51,39 @@ class _HomeScreenState extends State<HomeScreen> {
   String? apiDetailErrorMessage;
   Timer? apiAutoRefreshTimer;
   Timer? frameDetectionRefreshTimer;
-  Timer? bridgeSyncTimer;
-  Future<void>? bridgeStateReady;
+  Timer? sourceStatusSyncTimer;
   DateTime? frameDetectionLogModifiedAt;
   String frameDetectionSourceKey = '';
   List<FrameDetectionSnapshot> frameDetectionSnapshots = const [];
+  Map<String, SourceItem> registeredSourcesByKey = const {};
   Map<String, SourceRuntimeStatus> sourceStatusesByKey = const {};
   String lastFrameDetectionRequestSourceKey = '';
   double lastFrameDetectionRequestSeconds = -1;
   String lastFrameDetectionStatusUpdatedAt = '';
+  late final String clientId;
 
   @override
   void initState() {
     super.initState();
     _emptyVideoController = VideoPanelController();
-    apiEventController = ApiEventController();
+    eventApiService = EventApiService(baseUrl: _defaultApiServerBaseUrl);
+    apiEventController = ApiEventController(service: eventApiService);
     apiEventFeed = ApiEventFeedSource(apiEventController);
-    appLinkService = AppLinkService();
-    eventApiService = EventApiService();
-    inputSourceResolverService = InputSourceResolverService();
-
-    // GUI가 열릴 때 이전 선택 상태는 비우되, 이후 입력 동작이 이 작업과
-    // 경쟁하지 않도록 Future를 보관해 둡니다.
-    bridgeStateReady = appLinkService.clearSourceState();
+    clientId = 'gui_${DateTime.now().microsecondsSinceEpoch}';
     unawaited(apiEventController.checkHealth());
     unawaited(_refreshApiEventsIfNeeded());
     _startApiAutoRefresh();
     _startFrameDetectionRefresh();
-    _startBridgeSync();
+    _startSourceStatusSync();
     unawaited(_refreshSourceStatuses());
+    unawaited(_refreshRegisteredSources());
   }
 
   @override
   void dispose() {
     apiAutoRefreshTimer?.cancel();
     frameDetectionRefreshTimer?.cancel();
-    bridgeSyncTimer?.cancel();
+    sourceStatusSyncTimer?.cancel();
     for (final slot in _sourceSlots) {
       slot.controller.disposeController();
     }
@@ -95,6 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
     pageScrollController.dispose();
     rightPanelScrollController.dispose();
     streamTextController.dispose();
+    serverBaseUrlTextController.dispose();
     super.dispose();
   }
 
@@ -145,17 +143,16 @@ class _HomeScreenState extends State<HomeScreen> {
                         return FileBar(
                           videoPath: videoController.videoPath,
                           sourceType: videoController.sourceType,
-                          sourceHint: _buildSourceHint(),
-                          sourceCount: _sourceSlots.length,
-                          activeSourceLabel: _buildActiveSourceLabel(),
-                          hasSelectedSource: selectedSourceKey.isNotEmpty,
-                          canReturnFromReplay: videoController.canReturnFromReplay,
-                          returnButtonText: videoController.replayReturnButtonText,
-                          streamTextController: streamTextController,
-                          onPickVideo: _pickVideoFile,
-                          onClearSelectedSource: _clearSelectedSource,
-                          onOpenStream: _openStream,
-                          onReturnLive: _returnToLive,
+                            sourceHint: _buildSourceHint(),
+                            sourceCount: _sourceSlots.length,
+                            activeSourceLabel: _buildActiveSourceLabel(),
+                            hasSelectedSource: selectedSourceKey.isNotEmpty,
+                            canReturnFromReplay: videoController.canReturnFromReplay,
+                            streamTextController: streamTextController,
+                            onPickVideo: _pickVideoFile,
+                            onClearSelectedSource: _clearSelectedSource,
+                            onOpenStream: _openStream,
+                            onReturnLive: _returnToLive,
                         );
                       },
                     ),
@@ -283,6 +280,27 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: serverBaseUrlTextController,
+                  decoration: const InputDecoration(
+                    labelText: '서버 주소',
+                    hintText: 'http://192.168.0.10:8000',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              OutlinedButton(
+                onPressed: () => unawaited(_applyServerBaseUrl()),
+                child: const Text('서버 적용'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
           AnimatedBuilder(
             animation: apiEventFeed,
             builder: (context, _) {
@@ -295,6 +313,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSourceTabs() {
+    final activeSource = selectedSourceKey.isEmpty
+        ? null
+        : registeredSourcesByKey[selectedSourceKey.trim()];
+    final activeStatus = selectedSourceKey.isEmpty
+        ? null
+        : sourceStatusesByKey[selectedSourceKey.trim()];
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -346,10 +370,162 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
               ],
             ),
+          if (activeSource != null || activeStatus != null) ...[
+            const SizedBox(height: 12),
+            _buildActiveSourceRuntimeCard(
+              source: activeSource,
+              status: activeStatus,
+            ),
+          ],
+          if (registeredSourcesByKey.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _buildRegisteredSourcesSummary(),
+          ],
         ],
       ),
     );
   }
+
+  Widget _buildRegisteredSourcesSummary() {
+    final sourceEntries = registeredSourcesByKey.values.toList(growable: false)
+      ..sort((left, right) => left.sourceKey.compareTo(right.sourceKey));
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.black12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+            Text(
+              '서버 등록 소스',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '소스별 이벤트/클립/업로드 원본 영상까지 함께 삭제하는 관리자용 기능을 제공합니다.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Colors.black54,
+              ),
+            ),
+            const SizedBox(height: 8),
+            for (final source in sourceEntries)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.black12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        source.sourceSlug,
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 4),
+                      Text('type: ${source.sourceType}'),
+                      Text('source_key: ${source.sourceKey}'),
+                      Text(
+                        'state: ${_describeServerSourceState(source.sourceKey)}',
+                      ),
+                      Text(
+                        'client: ${source.clientId.isEmpty ? '-' : source.clientId}',
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        alignment: WrapAlignment.end,
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          OutlinedButton(
+                            onPressed: () => unawaited(
+                              _openRegisteredSource(source),
+                            ),
+                            child: const Text('화면에 열기'),
+                          ),
+                          OutlinedButton(
+                            onPressed: () => unawaited(
+                              _confirmDeleteRegisteredSource(source),
+                            ),
+                            child: const Text('서버 완전 삭제 (관리자용)'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+  }
+
+  Widget _buildActiveSourceRuntimeCard({
+    required SourceItem? source,
+    required SourceRuntimeStatus? status,
+  }) {
+    final normalizedState = status?.state.trim().isEmpty ?? true
+        ? 'unknown'
+        : status!.state.trim();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.03),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.black12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '현재 선택 소스 분석 상태',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(height: 8),
+          Text('source_key: ${source?.sourceKey ?? selectedSourceKey}'),
+          Text('desired_running: ${source?.desiredRunning == true ? 'true' : 'false'}'),
+          Text('state: $normalizedState'),
+          Text('is_running: ${status?.isRunning == true ? 'true' : 'false'}'),
+          Text('fps: ${status?.sourceFps.toStringAsFixed(1) ?? '0.0'}'),
+          Text('last_frame: ${status?.lastFrameId ?? -1}'),
+          Text(
+            'last_time: ${status?.lastSourceTimeSeconds.toStringAsFixed(2) ?? '0.00'}s',
+          ),
+            if ((status?.errorMessage.trim() ?? '').isNotEmpty)
+              Text(
+                'error: ${status!.errorMessage.trim()}',
+                style: const TextStyle(color: Colors.redAccent),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '등록된 소스는 서버에서 자동으로 분석을 시작하고, 처리 완료 시 완료 상태로 표시됩니다.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.black54,
+                ),
+              ),
+              if (source != null) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: OutlinedButton(
+                    onPressed: () => unawaited(
+                      _confirmDeleteRegisteredSource(source),
+                    ),
+                    child: const Text('현재 소스 서버 완전 삭제 (관리자용)'),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+    }
 
   Widget _buildApiStatusText() {
     String text =
@@ -706,7 +882,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _pickVideoFile() async {
-    await _ensureBridgeStateReady();
     const group = XTypeGroup(
       label: 'video',
       extensions: ['mp4', 'mov', 'avi', 'mkv'],
@@ -738,38 +913,39 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    await _resetAnalysisState(
-      sourceType: 'video',
-      sourceValue: file.path,
-    );
-    final slot = await _addOrActivateSourceSlot(
-      sourceType: 'video',
-      sourceValue: file.path,
-      openPath: file.path,
-    );
+      final registeredSource = await _registerSourceOnServer(
+        sourceType: 'video',
+        sourceValue: file.path,
+        resetExisting: true,
+      );
+      if (registeredSource == null) {
+        return;
+      }
+      final slot = await _addOrActivateSourceSlot(
+        sourceType: registeredSource.sourceType,
+        sourceValue: registeredSource.sourceValue,
+        openPath: file.path,
+        sourceKey: registeredSource.sourceKey,
+        originalSourceType: registeredSource.originalSourceType,
+        originalSourceValue: file.path,
+      );
     await _syncFrameRateFromStatus(
-      sourceType: 'video',
-      sourceValue: file.path,
+      sourceType: registeredSource.sourceType,
+      sourceValue: registeredSource.sourceValue,
       controller: slot.controller,
     );
     unawaited(_refreshApiEventsIfNeeded());
   }
 
   Future<void> _openStream() async {
-    await _ensureBridgeStateReady();
     final streamUrl = streamTextController.text.trim();
     if (streamUrl.isEmpty) {
       return;
     }
 
-    final resolvedSource = await inputSourceResolverService.resolve(
+    final existingSlot = _findSourceSlot(
       sourceType: 'stream',
       sourceValue: streamUrl,
-    );
-
-    final existingSlot = _findSourceSlot(
-      sourceType: resolvedSource.sourceType,
-      sourceValue: resolvedSource.sourceValue,
     );
     if (existingSlot != null) {
       if (existingSlot.controller.isReplayMode &&
@@ -788,19 +964,26 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    await _resetAnalysisState(
-      sourceType: resolvedSource.sourceType,
-      sourceValue: resolvedSource.sourceValue,
+    final registeredSource = await _registerSourceOnServer(
+      sourceType: 'stream',
+      sourceValue: streamUrl,
+      resetExisting: true,
     );
+    if (registeredSource == null) {
+      return;
+    }
     final slot = await _addOrActivateSourceSlot(
-      sourceType: resolvedSource.sourceType,
-      sourceValue: resolvedSource.sourceValue,
-      openPath: resolvedSource.sourceValue,
-      nextSourceType: resolvedSource.sourceType,
+      sourceType: registeredSource.sourceType,
+      sourceValue: registeredSource.sourceValue,
+      openPath: registeredSource.sourceValue,
+      nextSourceType: registeredSource.sourceType,
+      sourceKey: registeredSource.sourceKey,
+      originalSourceType: registeredSource.originalSourceType,
+      originalSourceValue: registeredSource.originalSourceValue,
     );
     await _syncFrameRateFromStatus(
-      sourceType: resolvedSource.sourceType,
-      sourceValue: resolvedSource.sourceValue,
+      sourceType: registeredSource.sourceType,
+      sourceValue: registeredSource.sourceValue,
       controller: slot.controller,
     );
     unawaited(_refreshApiEventsIfNeeded());
@@ -966,19 +1149,23 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    final sourceItem = apiEventController.findItemByEventKey(item.eventKeyText) ?? detail;
-    if (sourceItem != null) {
-      final activated = await _ensureSlotForEventSource(sourceItem);
-      if (!activated &&
-          selectedSourceKey.isNotEmpty &&
-          selectedSourceKey.trim() != sourceItem.sourceKey.trim()) {
+      final sourceItem = apiEventController.findItemByEventKey(item.eventKeyText) ?? detail;
+      if (sourceItem == null) {
+        return;
+      }
+      if (selectedSourceKey.trim().isEmpty) {
         if (mounted) {
-          _showInfoSnack('이 이벤트의 원본 소스가 현재 화면에 없어 자동 이동하지 않았습니다.');
+          _showInfoSnack('이벤트 시작 시점으로 이동하려면 먼저 해당 영상 소스를 선택해 주세요.');
         }
         return;
       }
-    }
-    final targetSeconds = _resolveEventStartSeconds(sourceItem);
+      if (selectedSourceKey.trim() != sourceItem.sourceKey.trim()) {
+        if (mounted) {
+          _showInfoSnack('현재 선택된 영상 소스의 이벤트만 이동할 수 있습니다.');
+        }
+        return;
+      }
+      final targetSeconds = _resolveEventStartSeconds(sourceItem);
     if (targetSeconds < 0) {
       return;
     }
@@ -1005,8 +1192,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openApiDetailClip(ApiEventItem item) async {
-    // API 상세 패널의 "클립 열기"는 서버 clip_url을 우선 사용하고,
-    // 없으면 기존 로컬 clipPath를 fallback으로 사용합니다.
+    // API 상세 패널의 "클립 열기"는 서버 clip_url/server_clip_path를 우선 사용하고,
+    // 둘 다 없을 때만 레거시 local clipPath를 fallback으로 사용합니다.
     final resolvedPath = _resolveApiClipSource(item);
     if (resolvedPath.isEmpty) {
       setState(() {
@@ -1084,44 +1271,59 @@ class _HomeScreenState extends State<HomeScreen> {
     await apiEventController.checkHealth();
   }
 
-  Future<void> _resetAnalysisState({
+  Future<void> _applyServerBaseUrl() async {
+    final nextBaseUrl = serverBaseUrlTextController.text.trim();
+    if (nextBaseUrl.isEmpty) {
+      return;
+    }
+    eventApiService.updateBaseUrl(nextBaseUrl);
+    await apiEventController.checkHealth();
+    await _refreshRegisteredSources();
+    await _refreshSourceStatuses();
+    await _refreshApiEventsIfNeeded();
+    if (mounted) {
+      _showInfoSnack('서버 주소를 ${eventApiService.baseUrl} 로 적용했습니다.');
+    }
+  }
+
+  Future<SourceItem?> _registerSourceOnServer({
     required String sourceType,
     required String sourceValue,
+    bool resetExisting = true,
   }) async {
-    await appLinkService.clearAnalysisArtifactsForSource(
-      sourceType: sourceType,
-      sourceValue: sourceValue,
-    );
-
-    final sourceKey = appLinkService.buildSourceKey(
-      sourceType: sourceType,
-      sourceValue: sourceValue,
-    );
-    final sourceSlug = appLinkService.buildSourceSlug(
-      sourceType: sourceType,
-      sourceValue: sourceValue,
-    );
-    final resetOk = await apiEventController.resetServerData(
-      sourceKey: sourceKey,
-      sourceSlug: sourceSlug,
-    );
-    if (!resetOk && mounted) {
+    final registeredSource = sourceType.trim() == 'video'
+        ? await eventApiService.uploadVideoSource(
+            filePath: sourceValue,
+            clientId: clientId,
+            resetExisting: resetExisting,
+            startImmediately: true,
+          )
+        : await eventApiService.registerSource(
+            sourceType: sourceType,
+            sourceValue: sourceValue,
+            clientId: clientId,
+            resetExisting: resetExisting,
+            startImmediately: true,
+          );
+    if (registeredSource == null && mounted) {
       setState(() {
-        apiDetailErrorMessage = '서버 초기화에 실패해 이전 이벤트가 남아 있을 수 있습니다.';
+        apiDetailErrorMessage = sourceType.trim() == 'video'
+            ? '서버에 영상 파일을 업로드하지 못했습니다.'
+            : '서버에 소스를 등록하지 못했습니다.';
         selectedApiEventDetail = null;
       });
-    } else if (mounted) {
+      return null;
+    }
+
+    if (mounted) {
       setState(() {
         apiDetailErrorMessage = null;
         selectedApiEventDetail = null;
       });
     }
-
-    apiEventFeed.clearSelection();
-    apiEventController.items = apiEventController.items
-        .where((item) => item.sourceKey.trim() != sourceKey)
-        .toList(growable: false);
-    apiEventController.notifyListeners();
+    unawaited(_refreshRegisteredSources());
+    unawaited(_refreshSourceStatuses());
+    return registeredSource;
   }
 
   void _startApiAutoRefresh() {
@@ -1142,10 +1344,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _startBridgeSync() {
-    bridgeSyncTimer?.cancel();
-    bridgeSyncTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+  void _startSourceStatusSync() {
+    sourceStatusSyncTimer?.cancel();
+    sourceStatusSyncTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       unawaited(_refreshSourceStatuses());
+      unawaited(_refreshRegisteredSources());
       unawaited(_syncActiveSlotFrameRateIfNeeded());
     });
   }
@@ -1287,41 +1490,21 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  String _resolveClipPath(String clipPath) {
-    // 기존 로컬 clipPath는 Python 작업 디렉터리 기준 상대 경로일 수 있어
-    // Flutter 쪽에서 한 번 더 보정해 줍니다.
-    final trimmed = clipPath.trim();
-    if (trimmed.isEmpty || trimmed == '-') {
-      return '';
-    }
-
-    final normalized = trimmed.replaceAll('\\', '/');
-    final isWindowsAbsolute = RegExp(r'^[A-Za-z]:[\\/]').hasMatch(trimmed);
-    final isUnixAbsolute = normalized.startsWith('/');
-    if (isWindowsAbsolute || isUnixAbsolute) {
-      return trimmed;
-    }
-
-    if (normalized.startsWith('logs/')) {
-      final workspaceRoot = Directory.current.parent.path;
-      final relativePath = normalized.replaceAll('/', Platform.pathSeparator);
-      final workspacePath =
-          '$workspaceRoot${Platform.pathSeparator}safety_ai_monitor'
-          '${Platform.pathSeparator}$relativePath';
-      return workspacePath;
-    }
-
-    return trimmed;
-  }
-
   String _resolveApiClipSource(ApiEventItem item) {
-    // 서버가 clip_url을 돌려준 경우 그 URL을 우선 사용하고,
-    // 아직 서버 클립이 없으면 기존 로컬 경로를 예비 경로로 사용합니다.
+    // 서버가 clip_url 또는 server_clip_path를 돌려준 경우 이를 우선 사용합니다.
     final clipUrl = item.clipUrl.trim();
     if (clipUrl.isNotEmpty && clipUrl != '-') {
       return _resolveClipUrl(clipUrl);
     }
-    return _resolveClipPath(item.clipPath);
+    final serverClipPath = item.serverClipPath.trim();
+    if (serverClipPath.isNotEmpty && serverClipPath != '-') {
+      return _resolveClipUrl(serverClipPath);
+    }
+    final clipPath = item.clipPath.trim();
+    if (clipPath.isEmpty || clipPath == '-') {
+      return '';
+    }
+    return clipPath;
   }
 
   String _describeClipPolicy(ApiEventItem item) {
@@ -1353,41 +1536,44 @@ class _HomeScreenState extends State<HomeScreen> {
       return trimmed;
     }
     if (trimmed.startsWith('/')) {
-      return '$_apiServerBaseUrl$trimmed';
+      return '${eventApiService.baseUrl}$trimmed';
     }
-    return '$_apiServerBaseUrl/$trimmed';
+    return '${eventApiService.baseUrl}/$trimmed';
   }
 
   Future<_SourcePanelSlot> _addOrActivateSourceSlot({
     required String sourceType,
     required String sourceValue,
     required String openPath,
+    required String sourceKey,
+    String? originalSourceType,
+    String? originalSourceValue,
     String? nextSourceType,
   }) async {
-    final sourceKey = appLinkService.buildSourceKey(
-      sourceType: sourceType,
-      sourceValue: sourceValue,
-    );
     for (final slot in _sourceSlots) {
       if (slot.sourceKey != sourceKey) {
         continue;
       }
       await _setActiveSlot(slot.slotId);
       apiEventController.setVisibleSourceKey(sourceKey);
-      await _writeAllSourcesState();
       unawaited(_refreshApiEventsIfNeeded());
       unawaited(_refreshFrameDetectionsIfNeeded());
       return slot;
     }
 
-    final slot = _SourcePanelSlot(
-      slotId: 'slot_${DateTime.now().microsecondsSinceEpoch}',
-      sourceType: sourceType,
-      sourceValue: sourceValue,
-      sourceKey: sourceKey,
-      label: _buildSlotLabel(sourceType: sourceType, sourceValue: sourceValue),
-      controller: VideoPanelController(),
-    );
+      final slot = _SourcePanelSlot(
+        slotId: 'slot_${DateTime.now().microsecondsSinceEpoch}',
+        sourceType: sourceType,
+        sourceValue: sourceValue,
+        sourceKey: sourceKey,
+        originalSourceType: originalSourceType ?? sourceType,
+        originalSourceValue: originalSourceValue ?? sourceValue,
+        label: _buildSlotLabel(
+          sourceType: originalSourceType ?? sourceType,
+          sourceValue: originalSourceValue ?? sourceValue,
+        ),
+        controller: VideoPanelController(),
+      );
     await slot.controller.openVideo(
       openPath,
       nextSourceType: nextSourceType ?? sourceType,
@@ -1404,7 +1590,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     await _pauseInactiveSlots(exceptSlotId: slot.slotId);
     apiEventController.setVisibleSourceKey(sourceKey);
-    await _writeAllSourcesState();
     unawaited(_refreshApiEventsIfNeeded());
     unawaited(_refreshFrameDetectionsIfNeeded());
     return slot;
@@ -1441,10 +1626,53 @@ class _HomeScreenState extends State<HomeScreen> {
 
     apiEventFeed.clearSelection();
     apiEventController.setVisibleSourceKey(selectedSourceKey);
-    if (_sourceSlots.isEmpty) {
-      await appLinkService.clearSourceState();
-    } else {
-      await _writeAllSourcesState();
+    await eventApiService.deleteSource(removedSlot.sourceKey, clearData: false);
+    await _refreshRegisteredSources();
+    await _refreshSourceStatuses();
+    if (_sourceSlots.isNotEmpty) {
+      await _syncActiveSlotFrameRateIfNeeded();
+    }
+    unawaited(_refreshApiEventsIfNeeded());
+    unawaited(_refreshFrameDetectionsIfNeeded());
+  }
+
+  Future<void> _removeLocalSlotBySourceKey(String sourceKey) async {
+    final normalizedSourceKey = sourceKey.trim();
+    if (normalizedSourceKey.isEmpty) {
+      return;
+    }
+
+    _SourcePanelSlot? removedSlot;
+    final nextSlots = <_SourcePanelSlot>[];
+    for (final slot in _sourceSlots) {
+      if (slot.sourceKey.trim() == normalizedSourceKey) {
+        removedSlot = slot;
+        continue;
+      }
+      nextSlots.add(slot);
+    }
+    if (removedSlot == null) {
+      return;
+    }
+
+    removedSlot.controller.disposeController();
+    setState(() {
+      _sourceSlots
+        ..clear()
+        ..addAll(nextSlots);
+      if (_activeSlotId == removedSlot!.slotId) {
+        _activeSlotId = _sourceSlots.isEmpty ? '' : _sourceSlots.last.slotId;
+      }
+      selectedApiEventDetail = null;
+      apiDetailErrorMessage = null;
+      frameDetectionSnapshots = const [];
+      frameDetectionLogModifiedAt = null;
+      frameDetectionSourceKey = '';
+    });
+
+    apiEventFeed.clearSelection();
+    apiEventController.setVisibleSourceKey(selectedSourceKey);
+    if (_sourceSlots.isNotEmpty) {
       await _syncActiveSlotFrameRateIfNeeded();
     }
     unawaited(_refreshApiEventsIfNeeded());
@@ -1467,7 +1695,6 @@ class _HomeScreenState extends State<HomeScreen> {
     apiEventFeed.clearSelection();
     apiEventController.setVisibleSourceKey(selectedSourceKey);
     unawaited(_refreshApiEventsIfNeeded());
-    unawaited(_writeAllSourcesState());
     unawaited(_syncActiveSlotFrameRateIfNeeded());
     unawaited(_refreshFrameDetectionsIfNeeded());
   }
@@ -1479,24 +1706,6 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       await slot.controller.pausePlayback();
     }
-  }
-
-  Future<void> _writeAllSourcesState() async {
-    await _ensureBridgeStateReady();
-    final slots = _sourceSlots
-        .map(
-          (slot) => SourceSlotState(
-            slotId: slot.slotId,
-            sourceType: slot.sourceType,
-            sourceValue: slot.sourceValue,
-            sessionId: slot.slotId,
-          ),
-        )
-        .toList(growable: false);
-    await appLinkService.writeSourceSelection(
-      slots: slots,
-      activeSlotId: _activeSlotId,
-    );
   }
 
   String _buildSlotLabel({
@@ -1516,7 +1725,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required String sourceValue,
     required VideoPanelController controller,
   }) async {
-    final sourceKey = appLinkService.buildSourceKey(
+    final sourceKey = _buildSourceKey(
       sourceType: sourceType,
       sourceValue: sourceValue,
     );
@@ -1556,6 +1765,26 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _refreshRegisteredSources() async {
+    final items = await eventApiService.fetchSources();
+    if (!mounted) {
+      return;
+    }
+
+    final nextMap = <String, SourceItem>{};
+    for (final item in items) {
+      final sourceKey = item.sourceKey.trim();
+      if (sourceKey.isEmpty) {
+        continue;
+      }
+      nextMap[sourceKey] = item;
+    }
+
+    setState(() {
+      registeredSourcesByKey = nextMap;
+    });
+  }
+
   bool _isSameSourceValue(String left, String right) {
     final normalizedLeft = left.trim().replaceAll('\\', '/').toLowerCase();
     final normalizedRight = right.trim().replaceAll('\\', '/').toLowerCase();
@@ -1567,7 +1796,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return '소스를 추가하고 칩을 눌러 화면을 전환할 수 있습니다. 선택된 소스가 없으면 전체 이벤트 로그를 표시합니다.';
     }
 
-    return '현재 화면의 소스 로그와 객체 박스만 표시합니다.';
+    return '현재 화면의 소스 로그와 객체 박스만 표시하며, 분석 상태는 서버에서 계속 갱신됩니다.';
   }
 
   String _buildOverlayStatusText() {
@@ -1655,12 +1884,16 @@ class _HomeScreenState extends State<HomeScreen> {
     required String sourceType,
     required String sourceValue,
   }) {
-    final nextSourceKey = appLinkService.buildSourceKey(
+    final nextSourceKey = _buildSourceKey(
       sourceType: sourceType,
       sourceValue: sourceValue,
     );
     for (final slot in _sourceSlots) {
       if (slot.sourceKey == nextSourceKey) {
+        return slot;
+      }
+      if (slot.originalSourceType.trim() == sourceType.trim() &&
+          _isSameSourceValue(slot.originalSourceValue, sourceValue)) {
         return slot;
       }
     }
@@ -1696,7 +1929,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<bool> _ensureSlotForEventSource(ApiEventItem item) async {
-    await _ensureBridgeStateReady();
     final activated = await _activateSlotForSourceKey(item.sourceKey);
     if (activated) {
       return true;
@@ -1713,6 +1945,9 @@ class _HomeScreenState extends State<HomeScreen> {
         sourceType: sourceType,
         sourceValue: sourceValue,
         openPath: sourceValue,
+        sourceKey: item.sourceKey,
+        originalSourceType: sourceType,
+        originalSourceValue: sourceValue,
         nextSourceType: sourceType,
       );
       await _syncActiveSlotFrameRateIfNeeded();
@@ -1723,15 +1958,6 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {
       return false;
     }
-  }
-
-  Future<void> _ensureBridgeStateReady() async {
-    final pending = bridgeStateReady;
-    if (pending == null) {
-      return;
-    }
-    await pending;
-    bridgeStateReady = null;
   }
 
   Future<_ClipTargetBinding> _resolveClipTargetController(ApiEventItem item) async {
@@ -1786,13 +2012,131 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _confirmDeleteRegisteredSource(SourceItem source) async {
+    final runtimeStatus = sourceStatusesByKey[source.sourceKey];
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('서버 소스 완전 삭제 (관리자용)'),
+          content: Text(
+            '"${source.sourceSlug}"\n'
+            'type: ${source.sourceType}\n'
+            'state: ${runtimeStatus?.state ?? 'unknown'}\n\n'
+            '이 소스와 관련된 서버 이벤트 로그, 프레임 탐지 데이터, 클립 파일, 업로드 원본 영상을 함께 삭제합니다. 계속할까요?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('서버 완전 삭제'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    final ok = await eventApiService.deleteSource(
+      source.sourceKey,
+      clearData: true,
+    );
+    if (!ok) {
+      if (mounted) {
+        _showInfoSnack('서버 소스 삭제에 실패했습니다.');
+      }
+      return;
+    }
+
+    await _removeLocalSlotBySourceKey(source.sourceKey);
+    await _refreshRegisteredSources();
+    await _refreshSourceStatuses();
+    unawaited(_refreshApiEventsIfNeeded());
+    unawaited(_refreshFrameDetectionsIfNeeded());
+
+    if (mounted) {
+      _showInfoSnack('"${source.sourceSlug}" 서버 데이터 삭제를 완료했습니다. (관리자용)');
+    }
+  }
+
+  Future<void> _openRegisteredSource(SourceItem source) async {
+    final existingSlot = _findSourceSlotByKey(source.sourceKey);
+    if (existingSlot != null) {
+      await _setActiveSlot(existingSlot.slotId);
+      return;
+    }
+
+    final openPath = _resolveRegisteredSourceOpenPath(source);
+    if (openPath.isEmpty) {
+      if (mounted) {
+        _showInfoSnack('이 소스는 현재 화면에서 열 수 있는 재생 경로가 없습니다.');
+      }
+      return;
+    }
+
+    await _addOrActivateSourceSlot(
+      sourceType: source.sourceType,
+      sourceValue: source.sourceValue,
+      openPath: openPath,
+      nextSourceType: source.sourceType,
+      sourceKey: source.sourceKey,
+      originalSourceType: source.originalSourceType,
+      originalSourceValue: source.originalSourceValue,
+    );
+    await _syncActiveSlotFrameRateIfNeeded();
+    if (mounted) {
+      _showInfoSnack('"${source.sourceSlug}" 소스를 화면에 열었습니다.');
+    }
+  }
+
+  String _resolveRegisteredSourceOpenPath(SourceItem source) {
+    final sourceType = source.sourceType.trim().toLowerCase();
+    if (sourceType == 'stream') {
+      final original = source.originalSourceValue.trim();
+      if (original.isNotEmpty) {
+        return original;
+      }
+      return source.sourceValue.trim();
+    }
+
+    final mediaUrl = source.mediaUrl.trim();
+    if (mediaUrl.isNotEmpty) {
+      return _resolveClipUrl(mediaUrl);
+    }
+
+    final original = source.originalSourceValue.trim();
+    if (original.isNotEmpty) {
+      return original;
+    }
+    return source.sourceValue.trim();
+  }
+
+  String _describeServerSourceState(String sourceKey) {
+    final normalized = sourceKey.trim();
+    if (normalized.isEmpty) {
+      return 'unknown';
+    }
+    final runtimeStatus = sourceStatusesByKey[normalized];
+    if (runtimeStatus == null) {
+      return 'unknown';
+    }
+    final state = runtimeStatus.state.trim().toLowerCase();
+    if (state == 'completed') {
+      return 'complete';
+    }
+    return runtimeStatus.state.trim().isEmpty ? 'unknown' : runtimeStatus.state.trim();
+  }
+
   String _describeSlotStatus(_SourcePanelSlot slot) {
     final sourceKey = slot.sourceKey.trim();
     if (slot.controller.errorText.trim().isNotEmpty) {
       return '오류';
-    }
-    if (slot.controller.isReplayMode) {
-      return '클립 재생';
     }
     final runtimeStatus = sourceStatusesByKey[sourceKey];
     if (runtimeStatus == null) {
@@ -1833,8 +2177,6 @@ class _HomeScreenState extends State<HomeScreen> {
     switch (_describeSlotStatus(slot)) {
       case '오류':
         return Colors.redAccent;
-      case '클립 재생':
-        return Colors.deepPurpleAccent;
       case '분석중':
         return Colors.green;
       case '이벤트 있음':
@@ -1876,7 +2218,6 @@ class _HomeScreenState extends State<HomeScreen> {
         frameDetectionLogModifiedAt = null;
         frameDetectionSourceKey = '';
       });
-      await _writeAllSourcesState();
       if (mounted) {
         _showInfoSnack('소스 선택을 해제하고 전체 이벤트 로그 보기로 전환했습니다.');
       }
@@ -1884,8 +2225,6 @@ class _HomeScreenState extends State<HomeScreen> {
       unawaited(_refreshApiEventsIfNeeded());
       return;
     }
-
-    await appLinkService.clearSourceState();
     setState(() {
       selectedApiEventDetail = null;
       apiDetailErrorMessage = null;
@@ -1896,6 +2235,15 @@ class _HomeScreenState extends State<HomeScreen> {
     apiEventController.setVisibleSourceKey('');
     unawaited(_refreshApiEventsIfNeeded());
   }
+
+  String _buildSourceKey({
+    required String sourceType,
+    required String sourceValue,
+  }) {
+    final normalizedType = sourceType.trim().toLowerCase();
+    final normalizedValue = sourceValue.trim().replaceAll('\\', '/').toLowerCase();
+    return '$normalizedType|$normalizedValue';
+  }
 }
 
 class _SourcePanelSlot {
@@ -1904,6 +2252,8 @@ class _SourcePanelSlot {
     required this.sourceType,
     required this.sourceValue,
     required this.sourceKey,
+    required this.originalSourceType,
+    required this.originalSourceValue,
     required this.label,
     required this.controller,
   });
@@ -1912,6 +2262,8 @@ class _SourcePanelSlot {
   final String sourceType;
   final String sourceValue;
   final String sourceKey;
+  final String originalSourceType;
+  final String originalSourceValue;
   final String label;
   final VideoPanelController controller;
 }

@@ -1,58 +1,30 @@
 # AI_TASK_LOG.md
 
-## 2026-05-21 - 서버 중심 멀티소스 구조 정리
+## 2026-05-22 - 서버/클라이언트 2계층 리팩터링
 
 ### Completed
 
-- Flutter GUI의 파일 로그 모드를 제거하고 서버 조회 중심 구조로 정리
-- Python -> Server로 이벤트, 프레임 탐지 스냅샷, 소스 상태, 클립 업로드 흐름 추가
-- FastAPI 서버 저장소를 JSONL 중심에서 SQLite 중심으로 전환
-- GUI 멀티소스 탭 전환 UX 추가
-- 활성 탭 전환 시 비활성 영상 자동 일시정지
-- 이벤트 로그 클릭 시 원본 영상의 이벤트 시작 시점 이동
-- 이벤트 클립 재생 후 원본 복귀 UX 보강
-- 이벤트 클립을 start~end 구간 기준으로 저장
-- 유튜브 링크를 스트림 입력칸에 넣었을 때 로컬 mp4로 변환 후 재생/분석하도록 추가
-- 안전모 감지를 위해 사람 모델 + 안전모 모델 2개를 함께 쓰는 `yolo_ensemble` 추가
-- Python 멀티소스 모드가 실행 중 동적으로 활성화되도록 전환 로직 수정
+- 서버가 분석 worker를 직접 관리하는 구조로 전환
+- `POST /api/sources` 기반 소스 등록 API 추가
+- 소스 start/stop/restart/delete API 추가
+- 분석 결과 저장을 서버 내부 DB/클립 디렉터리 직접 저장으로 전환
+- 분석 코어/모델/룰을 `safety_monitor_server/app/analysis/` 아래로 흡수
+- GUI의 파일 기반 Python 브리지 제거
+- GUI 소스 등록/삭제를 서버 API 기준으로 전환
+- 독립 Python worker 실행 스크립트 제거
+- 문서를 서버 중심 구조 기준으로 최신화
 
-### Changed Files
+### Cleaned Up
 
-- Python
-  - `safety_ai_monitor/main.py`
-  - `safety_ai_monitor/config.py`
-  - `safety_ai_monitor/core/pipeline.py`
-  - `safety_ai_monitor/core/frame_detection_recorder.py`
-  - `safety_ai_monitor/core/source_status_publisher.py`
-  - `safety_ai_monitor/core/event_clip_recorder.py`
-  - `safety_ai_monitor/models/ensemble_yolo_model.py`
-- Server
-  - `safety_monitor_server/app/database.py`
-  - `safety_monitor_server/app/routers/events.py`
-  - `safety_monitor_server/app/routers/frame_detections.py`
-  - `safety_monitor_server/app/routers/source_status.py`
-  - `safety_monitor_server/app/routers/admin.py`
-- GUI
-  - `safety_ai_monitor_ui/lib/screens/home_screen.dart`
-  - `safety_ai_monitor_ui/lib/controllers/video_panel_controller.dart`
-  - `safety_ai_monitor_ui/lib/services/event_api_service.dart`
-  - `safety_ai_monitor_ui/lib/widgets/video_view_box.dart`
-  - `safety_ai_monitor_ui/lib/widgets/file_bar.dart`
+- `safety_ai_monitor/main.py`
+- `safety_ai_monitor/config.py`
+- `safety_ai_monitor/core/ui_bridge.py`
+- `safety_ai_monitor/tools/resolve_media_source.py`
+- GUI의 `app_link_service.dart`
+- GUI의 `input_source_resolver_service.dart`
+- GUI의 로컬 이벤트 JSON 서비스/컨트롤러
 
-### Important Notes
+### Current Note
 
-- 현재 GUI는 영상 자체는 로컬에서 재생하고, 박스와 이벤트는 서버에서 조회합니다.
-- Python은 등록된 모든 소스를 병렬 분석해야 하며, GUI의 활성 소스는 분석 대상 제한이 아니라 화면 전환 의미입니다.
-- 서버는 `data/monitor.db`와 `data/clips/`를 기준 저장소로 사용합니다.
-- `source_key`는 reset, 이벤트 필터링, 프레임 탐지 조회의 핵심 키입니다.
-
-### Current Issue
-
-- 실제 장비 성능에 따라 멀티소스 병렬 분석 성능 저하 가능성은 여전히 검증 필요
-- SQLite 기반 구조는 현재 규모에는 적합하지만 대규모 writer 환경에서는 한계가 있을 수 있음
-
-### Next Task
-
-- 멀티클라이언트/멀티소스 실사용 시나리오 기준 검증 보강
-- 성능 병목 지점 측정과 표시
-- 서버 인증/권한 분리 필요성 검토
+- 현재 기준 분석 실행은 `safety_monitor_server` 내부에서만 이뤄집니다.
+- 남은 작업은 주로 GUI 세부 UX와 성능 튜닝, 운영 검증 쪽입니다.

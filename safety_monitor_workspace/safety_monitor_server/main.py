@@ -1,30 +1,61 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import (
     DATABASE_PATH,
-    DEFAULT_EVENT_LOG_PATH,
+    LEGACY_SOURCE_CACHE_DIR,
     SERVER_CLIP_DIR,
     SERVER_DATA_DIR,
+    SERVER_SOURCE_CACHE_DIR,
     ensure_server_dirs,
 )
-from app.database import init_db
+from app.database import (
+    init_db,
+    migrate_legacy_analysis_paths,
+    prune_orphan_source_data,
+    prune_orphan_source_statuses,
+)
 from app.routers.admin import router as admin_router
 from app.routers.clips import router as clips_router
 from app.routers.events import router as events_router
 from app.routers.frame_detections import router as frame_detections_router
+from app.routers.sources import router as sources_router
+from app.routers.source_media import router as source_media_router
 from app.routers.source_status import router as source_status_router
 from app.schemas import HealthResponse
+from app.source_manager import AnalysisSourceManager
 
 # 이 파일은 FastAPI 서버의 진입점입니다.
 # 서버 소유 데이터 폴더를 준비하고, 이벤트/클립 라우터를 등록합니다.
-
-app = FastAPI(title="Safety Monitor Server")
 
 ensure_server_dirs()
 SERVER_DATA_DIR.mkdir(parents=True, exist_ok=True)
 SERVER_CLIP_DIR.mkdir(parents=True, exist_ok=True)
 init_db(DATABASE_PATH)
+migrate_legacy_analysis_paths(
+    DATABASE_PATH,
+    legacy_source_cache_dir=LEGACY_SOURCE_CACHE_DIR,
+    server_source_cache_dir=SERVER_SOURCE_CACHE_DIR,
+)
+prune_orphan_source_statuses(DATABASE_PATH)
+prune_orphan_source_data(DATABASE_PATH)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    source_manager = AnalysisSourceManager()
+    app.state.source_manager = source_manager
+    app.state.database_path = DATABASE_PATH
+    source_manager.bootstrap()
+    try:
+        yield
+    finally:
+        source_manager.shutdown()
+
+
+app = FastAPI(title="Safety Monitor Server", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,6 +70,8 @@ app.include_router(clips_router)
 app.include_router(admin_router)
 app.include_router(frame_detections_router)
 app.include_router(source_status_router)
+app.include_router(sources_router)
+app.include_router(source_media_router)
 
 
 @app.get("/health", response_model=HealthResponse)

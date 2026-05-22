@@ -1,129 +1,102 @@
 # Safety AI Monitor
 
-Python AI Worker, FastAPI 서버, Flutter GUI를 분리해 운영하는 Windows 기반 안전 모니터링 프로젝트입니다.
+서버와 GUI 클라이언트 2계층으로 정리한 Windows 기반 안전 모니터링 프로젝트입니다.
 
-## 현재 구조 한눈에 보기
+## 현재 구조
 
-- `GUI -> Python`
-  - GUI는 분석할 영상/스트림 소스만 `source_state.json`, `sources_state.json`으로 전달합니다.
-- `Python -> Server`
-  - Python AI Worker는 이벤트, 프레임별 객체 탐지 스냅샷, 소스 상태, 이벤트 클립을 서버에 저장합니다.
-- `GUI -> Server`
-  - GUI는 서버에서 이벤트 목록, 상세, 클립, 현재 시점 박스, 소스 상태를 조회해 표시합니다.
-
-즉, 영상 재생은 GUI가 직접 하고, 분석은 Python이 따로 수행하며, 결과 데이터는 서버가 소유합니다.
-
-## 현재 핵심 동작
-
-- 여러 영상/스트림 소스를 GUI에 등록할 수 있습니다.
-- Python은 등록된 소스마다 worker thread를 띄워 병렬 분석합니다.
-- GUI는 탭 방식으로 활성 소스를 전환합니다.
-- 현재 활성 소스만 화면에 재생되고, 비활성 소스는 일시정지됩니다.
-- 객체 탐지 박스는 서버의 프레임 스냅샷을 현재 재생 시간에 맞춰 오버레이합니다.
-- 이벤트 로그에서 항목을 클릭하면 원본 영상의 이벤트 시작 시점으로 이동합니다.
-- 이벤트 상세에서 `클립 열기`를 누르면 이벤트 start~end 구간 클립을 재생하고, 필요 시 원본으로 복귀할 수 있습니다.
-
-## 컴포넌트 역할
-
-### Python AI Worker
-
-- 폴더: `safety_ai_monitor/`
-- 역할:
-  - 영상 파일, 스트림, 카메라 입력 열기
-  - YOLO 또는 다중 YOLO 앙상블 추론
-  - 사람 추적
-  - 위험 이벤트 판정
-  - 이벤트 클립 생성
-  - 이벤트 / 프레임 탐지 / 소스 상태를 서버로 전송
-
-### FastAPI Server
-
-- 폴더: `safety_monitor_server/`
-- 역할:
-  - SQLite 기반 이벤트 저장소 제공
-  - 이벤트 클립 파일 저장
-  - 이벤트 목록/상세/클립/프레임 탐지/소스 상태 API 제공
-- 현재 서버 저장소:
-  - `data/monitor.db`
-  - `data/clips/`
-
-### Flutter GUI
-
-- 폴더: `safety_ai_monitor_ui/`
-- 역할:
+- `safety_monitor_server/`
+  - FastAPI 서버
+  - 영상 소스 등록 API
+  - 분석 worker 관리
+  - 이벤트/프레임 탐지/소스 상태/클립 저장
+  - GUI 조회 API 제공
+  - 내부 분석 패키지: `safety_monitor_server/app/analysis/`
+- `safety_ai_monitor_ui/`
+  - Flutter GUI 클라이언트
   - 영상 재생
-  - 멀티소스 등록 및 화면 전환
-  - 서버 이벤트 조회
-  - 프레임별 객체 탐지 박스 오버레이
-  - 이벤트 시작 시점 이동
-  - 이벤트 클립 재생과 원본 복귀
+  - 소스 등록/선택
+  - 이벤트/클립/박스 조회
+  - 현재 재생 시간 기준 오버레이
 
-## 멀티소스 동작 요약
+## 데이터 흐름
 
-- GUI에 등록된 모든 소스는 Python에서 병렬 분석 대상입니다.
-- 활성 탭은 GUI에서 현재 보고 있는 화면만 의미합니다.
-- 활성 소스를 바꾸더라도 Python의 다른 소스 분석은 계속 진행됩니다.
-- GUI는 활성 소스에 대해서만 현재 프레임 박스와 상태를 집중 조회합니다.
+### 1. 클라이언트 -> 서버
+
+- 영상 파일/스트림 소스 등록
+- 분석 시작/중지/재시작 요청
+- 소스 목록 조회
+- 이벤트/클립/프레임 탐지/소스 상태 조회
+
+### 2. 서버 내부
+
+- 등록된 소스를 `source_key` 기준으로 관리
+- 소스별 분석 worker thread 실행
+- 분석 결과를 SQLite와 클립 디렉터리에 직접 저장
+
+### 3. GUI 표시
+
+- GUI는 영상을 로컬에서 재생
+- 박스/이벤트/클립은 서버에서 조회
+- 현재 활성 소스만 이벤트 로그와 오버레이를 표시
+- 선택을 해제하면 전체 이벤트 로그를 표시
+
+## 저장소
+
+- DB: `safety_monitor_server/data/monitor.db`
+- 클립: `safety_monitor_server/data/clips/`
+- 서버 캐시: `safety_monitor_server/data/source_cache/`
 
 ## 실행 순서
 
-### 1. Python AI Worker 의존성 설치
-
-```powershell
-py -3.12 -m pip install -r safety_ai_monitor\requirements.txt
-```
-
-### 2. 서버 의존성 설치
+### 1. 서버 의존성 설치
 
 ```powershell
 py -3.12 -m pip install -r safety_monitor_server\requirements.txt
 ```
 
-### 3. Flutter 의존성 설치
+### 2. Flutter 의존성 설치
 
 ```powershell
 cd safety_ai_monitor_ui
 ..\flutter\bin\flutter.bat pub get
 ```
 
-### 4. 전체 실행
+### 3. 서버 실행
 
 ```powershell
-run_python_server_and_gui.bat
+run_server.bat
 ```
 
-이 흐름은 다음을 순서대로 실행합니다.
+- 기본 배치는 `0.0.0.0:8000`으로 서버를 열어 같은 네트워크의 다른 PC GUI도 접속할 수 있게 합니다.
 
-1. Python AI Worker
-2. FastAPI 서버
-3. Flutter GUI
+### 4. GUI 실행
 
-## 실행 모드 메모
+```powershell
+run_gui_only.bat
+```
 
-- `run_python_only.bat`
-  - Python AI Worker만 실행
-- `run_server.bat`
-  - FastAPI 서버만 실행
-- `run_gui_only.bat`
-  - 빌드된 GUI만 실행
-- `run_python_server_and_gui.bat`
-  - Python, 서버, GUI 전체 실행
+또는 한 번에:
 
-## 주요 변경 사항 기준 요약
+```powershell
+run_server_and_gui.bat
+```
 
-- 파일 로그 기반 GUI 표시는 제거되고, GUI는 서버 API 기반으로 동작합니다.
-- 서버 저장소는 JSONL 중심에서 SQLite 중심으로 전환되었습니다.
-- Python은 이벤트뿐 아니라 프레임 탐지 스냅샷과 소스 상태도 서버로 전송합니다.
-- GUI는 로컬 프레임 탐지 파일 대신 서버의 `/api/frame-detections/current`를 조회합니다.
-- 소스별 reset은 `source_key` 기준으로 분리 처리됩니다.
+## 현재 핵심 특징
 
-## 문서 읽는 순서
+- 서버가 분석 worker를 직접 관리합니다.
+- 다른 PC에 서버 폴더만 배치해도 `run_server.bat`으로 분석/저장/API를 함께 실행할 수 있습니다.
+- GUI는 상단 `서버 주소` 입력으로 로컬/원격 서버를 전환할 수 있습니다.
+- GUI는 더 이상 `source_state.json`, `sources_state.json`, `ui_bridge.json`에 의존하지 않습니다.
+- 분석 결과 저장은 HTTP 재전송이 아니라 서버 내부 DB/클립 저장 흐름입니다.
+- 멀티소스 분석은 서버에서, 멀티패널 전환/재생은 GUI에서 담당합니다.
+- 객체 탐지 박스는 서버의 프레임 탐지 스냅샷을 기준으로 표시합니다.
+- 분석 코어/모델/룰은 `safety_monitor_server/app/analysis/` 아래로 흡수되었습니다.
 
-- 전체 구조 요약: [docs/README.md](./docs/README.md)
-- Python AI Worker: [safety_ai_monitor/README.md](./safety_ai_monitor/README.md)
-- FastAPI 서버: [safety_monitor_server/README.md](./safety_monitor_server/README.md)
-- Flutter GUI: [safety_ai_monitor_ui/README.md](./safety_ai_monitor_ui/README.md)
+## 주요 문서
+
+- 전체 문서 안내: [docs/README.md](./docs/README.md)
+- 서버: [safety_monitor_server/README.md](./safety_monitor_server/README.md)
+- GUI: [safety_ai_monitor_ui/README.md](./safety_ai_monitor_ui/README.md)
+- 분석 패키지: [safety_monitor_server/app/analysis/README.md](./safety_monitor_server/app/analysis/README.md)
 - 구조 노트: [docs/ai/ARCHITECTURE_NOTES.md](./docs/ai/ARCHITECTURE_NOTES.md)
 - 개발 컨텍스트: [docs/ai/CODEX_CONTEXT.md](./docs/ai/CODEX_CONTEXT.md)
-- 이벤트 JSON 계약: [docs/ai/event_json_schema.md](./docs/ai/event_json_schema.md)
-- 발표 전 체크리스트: [docs/demo_checklist.md](./docs/demo_checklist.md)

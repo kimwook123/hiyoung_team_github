@@ -1,94 +1,75 @@
 # safety_monitor_server
 
-FastAPI 기반 이벤트 저장/조회 서버입니다.
-
-이 서버는 AI 추론을 직접 수행하지 않고, Python AI Worker가 보낸 결과를 저장하고 GUI가 조회할 수 있게 제공합니다.
-
-## 현재 저장 구조
-
-- DB: `data/monitor.db`
-- 클립 폴더: `data/clips/`
-
-SQLite 테이블:
-
-- `events`
-- `frame_detections`
-- `source_status`
+FastAPI 서버이자 분석 orchestration 계층입니다.
 
 ## 역할
 
+- 영상 소스 등록 API 제공
+- 분석 start/stop/restart 제어
+- 서버 내부 분석 worker 관리
 - 이벤트 저장
-- 프레임별 객체 탐지 스냅샷 저장
+- 프레임 탐지 스냅샷 저장
 - 소스 상태 저장
-- 이벤트 클립 업로드/제공
-- 소스별 reset
-- 이벤트 목록/상세/최신 상태/소스 요약 조회
+- 클립 저장 및 제공
+- GUI 조회 API 제공
 
-## API 목록
+## 저장 구조
+
+- DB: `data/monitor.db`
+- 클립: `data/clips/`
+- 서버 캐시: `data/source_cache/`
+
+주요 테이블:
+
+- `sources`
+- `events`
+- `frame_detections`
+- `frame_detections_latest`
+- `source_status`
+
+## 주요 API
+
+### Source Control
+
+- `GET /api/sources`
+- `POST /api/sources`
+- `POST /api/sources/{source_key}/start`
+- `POST /api/sources/{source_key}/stop`
+- `POST /api/sources/{source_key}/restart`
+- `DELETE /api/sources/{source_key}`
+
+### Event / Detection / Status
 
 - `GET /health`
-- `POST /api/events`
 - `GET /api/events`
 - `GET /api/events/latest`
-- `GET /api/events/sources`
 - `GET /api/events/detail`
-- `POST /api/frame-detections`
+- `GET /api/events/sources`
 - `GET /api/frame-detections/current`
-- `POST /api/source-status`
+- `GET /api/frame-detections/latest`
 - `GET /api/source-status`
-- `POST /api/clips`
+
+### Clip
+
 - `GET /api/clips`
 - `GET /api/clips/{clip_name}`
+
+### Admin
+
 - `POST /api/admin/reset-data`
 
-## 주요 API 설명
+## 분석 worker 구조
 
-### `POST /api/events`
+- 서버는 등록된 소스마다 worker thread를 띄웁니다.
+- worker는 `app/analysis/`의 코어/모델/룰을 직접 사용합니다.
+- 결과 저장은 서버 내부 DB/클립 디렉터리로 직접 처리합니다.
+- 예전처럼 별도 Python AI Worker 프로세스를 사용자 쪽에서 띄우지 않습니다.
 
-- Python AI Worker가 이벤트를 전송합니다.
-- 서버는 이벤트 payload를 DB에 저장합니다.
-- `clip_url`, `clip_available`, `preferred_clip_source` 같은 클립 접근 필드를 정규화할 수 있습니다.
-
-### `POST /api/frame-detections`
-
-- Python AI Worker가 프레임별 객체 탐지 결과를 전송합니다.
-- GUI의 박스 오버레이는 주로 이 데이터를 사용합니다.
-
-### `GET /api/frame-detections/current`
-
-- `source_key + source_time_seconds` 기준으로 가장 가까운 프레임 스냅샷을 반환합니다.
-- 현재 GUI는 활성 소스의 현재 재생 시점에 맞춰 이 API를 반복 조회합니다.
-
-### `POST /api/source-status`
-
-- Python AI Worker가 현재 소스의 분석 상태를 보냅니다.
-- 예:
-  - `running`
-  - `completed`
-  - `stopped`
-  - `error`
-
-### `GET /api/source-status`
-
-- GUI가 소스 칩 상태, FPS, 마지막 처리 시점을 표시할 때 사용합니다.
-
-### `POST /api/admin/reset-data`
-
-- 특정 `source_key` 기준으로 이벤트/프레임 탐지/소스 상태/관련 클립을 정리합니다.
-- 멀티소스 구조에서 다른 소스 데이터는 유지합니다.
-
-## 동시성 메모
-
-- 현재 서버는 SQLite `WAL` 모드로 동작합니다.
-- 여러 GUI 클라이언트의 동시 조회는 비교적 무리 없이 처리하는 방향입니다.
-- 여러 Python 분석 클라이언트가 서로 다른 `source_key`를 쓰는 경우도 현재 규모에서는 실용적으로 동작하는 구조입니다.
-- 다만 대규모 동시 writer 환경까지 보장하는 구조는 아니므로, 장기적으로는 서버형 DB 전환 여지를 두고 있습니다.
-
-## 실행 예시
+## 실행
 
 ```powershell
 cd safety_monitor_server
-py -3.12 -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
+py -3.12 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 또는 루트에서:
@@ -96,3 +77,5 @@ py -3.12 -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```powershell
 run_server.bat
 ```
+
+원격 GUI 클라이언트는 같은 네트워크에서 `http://<서버IP>:8000` 주소로 접속하도록 설정하면 됩니다.

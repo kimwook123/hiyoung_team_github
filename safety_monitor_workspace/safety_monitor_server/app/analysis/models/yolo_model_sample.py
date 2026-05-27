@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 import numpy as np
+import torch
 
 from core.detection_model import Box, Detection, DetectionModel, DetectionResult
 from core.path_helper import to_project_path
@@ -15,6 +16,8 @@ class YoloModelSample(DetectionModel):
         self.model_path = model_path
         self.min_confidence = min_confidence
         self.model = None
+        self.person_confidence = 0.2
+        self.safety_confidence = 0.6
 
     def load(self) -> None:
         # Keep Ultralytics writable even in restricted Windows environments.
@@ -40,34 +43,80 @@ class YoloModelSample(DetectionModel):
         if self.model is None:
             raise RuntimeError("YoloModelSample.load()를 먼저 호출해야 합니다.")
 
-        results = self.model(frame)
-        detections = []
+        # 이 어댑터는 비디오 경로가 아니라 "프레임 1장"을 받으므로 stream=True 제너레이터보다
+        # 단일 결과 리스트로 즉시 받아오는 편이 파이프라인과 더 잘 맞습니다.
+        person_results = self.model.predict(
+            source=frame,
+            conf=self.person_confidence,
+            classes=[2],
+            stream=False,
+            verbose=False,
+        )
+        safety_results = self.model.predict(
+            source=frame,
+            conf=self.safety_confidence,
+            classes=[0, 1],
+            stream=False,
+            verbose=False,
+        )
 
-        for result in results:
-            names = result.names
-            for box_data in result.boxes:
-                score = float(box_data.conf[0])
-                if score < self.min_confidence:
-                    continue
-
-                class_id = int(box_data.cls[0])
-                name = names[class_id]
-                x1, y1, x2, y2 = box_data.xyxy[0].tolist()
-
-                detections.append(
-                    Detection(
-                        name=name,
-                        score=score,
-                        box=Box(
-                            x1=int(x1),
-                            y1=int(y1),
-                            x2=int(x2),
-                            y2=int(y2),
-                        ),
-                    )
-                )
+        person_result = person_results[0] if person_results else None
+        safety_result = safety_results[0] if safety_results else None
+        merged_result = self._merge_results(person_result, safety_result)
+        detections = self._to_detections(
+            merged_result,
+            min_confidence=min(self.person_confidence, self.safety_confidence),
+        )
 
         return DetectionResult(frame_id=frame_id, detections=detections)
 
     def get_name(self) -> str:
         return "YoloModelSample"
+
+    def _merge_results(self, person_result, safety_result):
+        if person_result is None:
+            return safety_result
+        if safety_result is None:
+            return person_result
+        if person_result.boxes is None or person_result.boxes.data is None:
+            return safety_result
+        if safety_result.boxes is None or safety_result.boxes.data is None:
+            return person_result
+
+        person_result.boxes.data = torch.cat(
+            [person_result.boxes.data, safety_result.boxes.data],
+            dim=0,
+        )
+        return person_result
+
+    def _to_detections(self, result, min_confidence: float | None = None) -> list[Detection]:
+        detections = []
+        if result is None or result.boxes is None:
+            return detections
+
+        names = result.names
+        threshold = self.min_confidence if min_confidence is None else min_confidence
+
+        for box_data in result.boxes:
+            score = float(box_data.conf[0])
+            if score < threshold:
+                continue
+
+            class_id = int(box_data.cls[0])
+            name = names[class_id]
+            x1, y1, x2, y2 = box_data.xyxy[0].tolist()
+
+            detections.append(
+                Detection(
+                    name=name,
+                    score=score,
+                    box=Box(
+                        x1=int(x1),
+                        y1=int(y1),
+                        x2=int(x2),
+                        y2=int(y2),
+                    ),
+                )
+            )
+
+        return detections

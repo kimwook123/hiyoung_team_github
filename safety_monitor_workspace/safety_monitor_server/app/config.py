@@ -17,7 +17,8 @@ ANALYSIS_DIR = (SERVER_DIR / "app" / "analysis").resolve()
 ANALYSIS_WEIGHTS_DIR = (ANALYSIS_DIR / "models" / "weights").resolve()
 
 # Analysis runtime
-MODEL_TYPE = "yolo_ensemble"
+#MODEL_TYPE = "yolo_ensemble"
+MODEL_TYPE = "yolo"
 MODEL_PATH = (ANALYSIS_WEIGHTS_DIR / "best.pt").resolve()
 PERSON_MODEL_PATH = (ANALYSIS_WEIGHTS_DIR / "person_detect.pt").resolve()
 SAFETY_MODEL_PATH = (ANALYSIS_WEIGHTS_DIR / "good1.pt").resolve()

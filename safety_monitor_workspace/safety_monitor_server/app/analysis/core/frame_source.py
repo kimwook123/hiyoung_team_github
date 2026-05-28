@@ -67,12 +67,16 @@ class VideoFileFrameSource(FrameSource):
         self.video_path = video_path
         self.start_time_seconds = start_time_seconds if start_time_seconds > 0 else 0.0
         self.cap = None
+        self._fps = 0.0
+        self._frame_count = 0.0
 
     def open(self) -> None:
         # 영상 파일에서 프레임을 읽을 준비를 한다
         self.cap = cv2.VideoCapture(self.video_path)
         if self.cap is None or not self.cap.isOpened():
             raise RuntimeError(f"영상 파일을 열 수 없습니다: {self.video_path}")
+        self._fps = float(self.cap.get(cv2.CAP_PROP_FPS))
+        self._frame_count = float(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
         if self.start_time_seconds > 0:
             self.cap.set(cv2.CAP_PROP_POS_MSEC, self.start_time_seconds * 1000.0)
 
@@ -91,13 +95,32 @@ class VideoFileFrameSource(FrameSource):
             fps = float(temp_cap.get(cv2.CAP_PROP_FPS))
             temp_cap.release()
             return fps if fps > 0 else 30.0
-        fps = float(self.cap.get(cv2.CAP_PROP_FPS))
+        fps = self._fps if self._fps > 0 else float(self.cap.get(cv2.CAP_PROP_FPS))
         return fps if fps > 0 else 30.0
 
     def get_time_seconds(self) -> float | None:
         if self.cap is None:
             return None
+        fps = self.get_fps()
+        frame_index = float(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
         time_ms = float(self.cap.get(cv2.CAP_PROP_POS_MSEC))
+
+        # OpenCV는 일부 mp4에서 POS_MSEC를 비정상적으로 크게 돌려줄 수 있어
+        # 진행률 계산은 프레임 번호 기반 시간을 우선 사용합니다.
+        if fps > 0 and frame_index > 0:
+            frame_based_seconds = max(0.0, (frame_index - 1.0) / fps)
+            if time_ms < 0:
+                return frame_based_seconds
+            time_based_seconds = time_ms / 1000.0
+            if (
+                self._frame_count > 0
+                and time_based_seconds > ((self._frame_count - 1.0) / fps) + (1.0 / fps)
+            ):
+                return frame_based_seconds
+            if abs(time_based_seconds - frame_based_seconds) > max(1.0, 5.0 / fps):
+                return frame_based_seconds
+            return max(0.0, min(time_based_seconds, frame_based_seconds))
+
         if time_ms < 0:
             return None
         return time_ms / 1000.0

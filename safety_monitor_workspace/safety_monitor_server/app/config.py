@@ -22,11 +22,13 @@ MODEL_TYPE = "yolo"
 MODEL_PATH = (ANALYSIS_WEIGHTS_DIR / "best.pt").resolve()
 PERSON_MODEL_PATH = (ANALYSIS_WEIGHTS_DIR / "person_detect.pt").resolve()
 SAFETY_MODEL_PATH = (ANALYSIS_WEIGHTS_DIR / "good1.pt").resolve()
+PREFER_TENSORRT_ENGINE = True
 MIN_CONFIDENCE = 0.3
 ANALYSIS_DEVICE = "cuda:0"
 ANALYSIS_REQUIRE_CUDA = True
 MODEL_INPUT_MAX_WIDTH = 1024
-ANALYSIS_TARGET_FPS = 10.0
+# 0 이하로 두면 source FPS를 기준으로 stride를 만들지 않고 매 프레임 분석합니다.
+ANALYSIS_TARGET_FPS = 0.0
 
 # Analysis rules / tracker
 USE_NO_HELMET_RULE = True

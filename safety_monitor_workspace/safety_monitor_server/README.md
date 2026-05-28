@@ -69,6 +69,10 @@ FastAPI 서버이자 분석 orchestration 계층입니다.
 - 예전처럼 별도 Python AI Worker 프로세스를 사용자 쪽에서 띄우지 않습니다.
 - 파일 영상은 미완료 상태면 서버 재시작 후 자동 이어받기됩니다.
 - 스트림/CCTV 소스는 끊기면 `reconnecting` 상태로 두고 재시도합니다.
+- 기본 YOLO 설정은 `app/config.py` 기준 `MODEL_TYPE="yolo"`, `ANALYSIS_DEVICE="cuda:0"`, `PREFER_TENSORRT_ENGINE=True` 입니다.
+- 동일 이름의 `.engine` 파일이 있으면 TensorRT 엔진을 우선 사용하고, 없거나 사용 불가하면 `.pt` 모델로 동작합니다.
+- 소스별 프레임 탐지 스냅샷은 GUI 오버레이 기준 시간축에 맞춰 `frame_detections`와 `frame_detections_latest`에 저장됩니다.
+- 클립 메타데이터는 이벤트 payload 안에 `clip_url`, `server_clip_path`, `server_clip_name`, `preferred_clip_source` 형태로 함께 저장됩니다.
 
 ## 서버 콘솔 로그
 

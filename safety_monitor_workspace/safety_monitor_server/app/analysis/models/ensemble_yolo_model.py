@@ -6,6 +6,11 @@ import numpy as np
 from core.detection_model import Box, Detection, DetectionModel, DetectionResult
 from core.path_helper import to_project_path
 from models.device_helper import resolve_torch_device
+from models.yolo_runtime_helper import (
+    build_predict_kwargs,
+    load_yolo_model,
+    resolve_runtime_model_path,
+)
 
 # 이 파일은 사람 전용 YOLO와 안전모 전용 YOLO를 함께 돌려 결과를 합치는 어댑터입니다.
 
@@ -18,6 +23,7 @@ class EnsembleYoloModel(DetectionModel):
         min_confidence: float = 0.5,
         device: str = "cuda:0",
         require_cuda: bool = True,
+        prefer_tensorrt_engine: bool = True,
         person_class_map: dict[str, str] | None = None,
         safety_class_map: dict[str, str] | None = None,
     ) -> None:
@@ -28,7 +34,12 @@ class EnsembleYoloModel(DetectionModel):
         self.safety_model = None
         self.requested_device = device
         self.require_cuda = require_cuda
+        self.prefer_tensorrt_engine = prefer_tensorrt_engine
         self.device = "cpu"
+        self.runtime_person_model_path = person_model_path
+        self.runtime_safety_model_path = safety_model_path
+        self.person_predict_kwargs: dict[str, object] = {}
+        self.safety_predict_kwargs: dict[str, object] = {}
         self.person_class_map = person_class_map or {
             "person": "person",
         }
@@ -48,17 +59,47 @@ class EnsembleYoloModel(DetectionModel):
                 "예: pip install ultralytics"
             ) from error
 
-        for model_path in [self.person_model_path, self.safety_model_path]:
+        self.device = resolve_torch_device(
+            requested_device=self.requested_device,
+            require_cuda=self.require_cuda,
+        )
+        self.runtime_person_model_path = resolve_runtime_model_path(
+            yolo_cls=YOLO,
+            model_path=self.person_model_path,
+            device=self.device,
+            prefer_tensorrt_engine=self.prefer_tensorrt_engine,
+        )
+        self.runtime_safety_model_path = resolve_runtime_model_path(
+            yolo_cls=YOLO,
+            model_path=self.safety_model_path,
+            device=self.device,
+            prefer_tensorrt_engine=self.prefer_tensorrt_engine,
+        )
+
+        for model_path in [
+            self.runtime_person_model_path,
+            self.runtime_safety_model_path,
+        ]:
             if not Path(model_path).exists():
                 raise RuntimeError(
                     f"YOLO 가중치 파일을 찾을 수 없습니다: {model_path}"
                 )
 
-        self.person_model = YOLO(self.person_model_path)
-        self.safety_model = YOLO(self.safety_model_path)
-        self.device = resolve_torch_device(
-            requested_device=self.requested_device,
-            require_cuda=self.require_cuda,
+        self.person_model = load_yolo_model(
+            yolo_cls=YOLO,
+            model_path=self.runtime_person_model_path,
+        )
+        self.safety_model = load_yolo_model(
+            yolo_cls=YOLO,
+            model_path=self.runtime_safety_model_path,
+        )
+        self.person_predict_kwargs = build_predict_kwargs(
+            runtime_model_path=self.runtime_person_model_path,
+            device=self.device,
+        )
+        self.safety_predict_kwargs = build_predict_kwargs(
+            runtime_model_path=self.runtime_safety_model_path,
+            device=self.device,
         )
 
     def predict(self, frame: np.ndarray, frame_id: int) -> DetectionResult:
@@ -71,6 +112,7 @@ class EnsembleYoloModel(DetectionModel):
                 model=self.person_model,
                 frame=frame,
                 class_map=self.person_class_map,
+                predict_kwargs=self.person_predict_kwargs,
             )
         )
         detections.extend(
@@ -78,6 +120,7 @@ class EnsembleYoloModel(DetectionModel):
                 model=self.safety_model,
                 frame=frame,
                 class_map=self.safety_class_map,
+                predict_kwargs=self.safety_predict_kwargs,
             )
         )
         return DetectionResult(frame_id=frame_id, detections=detections)
@@ -90,8 +133,14 @@ class EnsembleYoloModel(DetectionModel):
         model,
         frame: np.ndarray,
         class_map: dict[str, str],
+        predict_kwargs: dict[str, object],
     ) -> list[Detection]:
-        results = model.predict(frame, device=self.device, stream=False, verbose=False)
+        results = model.predict(
+            frame,
+            stream=False,
+            verbose=False,
+            **predict_kwargs,
+        )
         detections: list[Detection] = []
 
         for result in results:

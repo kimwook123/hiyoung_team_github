@@ -8,6 +8,7 @@ class VideoService {
 
   final Player player;
   late final VideoController videoController;
+  bool _isDisposed = false;
 
   Stream<Duration> get positionStream => player.stream.position;
   Stream<Duration> get durationStream => player.stream.duration;
@@ -32,7 +33,22 @@ class VideoService {
     await player.seek(position);
   }
 
+  Future<void> setMuted(bool muted) async {
+    try {
+      await player.setVolume(muted ? 0 : 100);
+    } catch (_) {}
+  }
+
   Future<void> dispose() async {
-    await player.dispose();
+    if (_isDisposed) {
+      return;
+    }
+    _isDisposed = true;
+    try {
+      await player.pause();
+    } catch (_) {}
+    try {
+      await player.dispose();
+    } catch (_) {}
   }
 }

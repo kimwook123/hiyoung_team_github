@@ -4,6 +4,8 @@ import queue
 import threading
 from typing import Callable, Generic, TypeVar
 
+from app.log_utils import log_line
+
 T = TypeVar("T")
 
 
@@ -58,6 +60,9 @@ class AsyncTaskWorker(Generic[T]):
 
             try:
                 self.consumer(item)
+            except Exception as error:
+                # 소비자 예외로 worker thread가 죽지 않도록 로그만 남기고 다음 작업을 계속 처리합니다.
+                log_line("ERROR", source=self.name, error=error)
             finally:
                 self.queue.task_done()
 
@@ -109,7 +114,11 @@ class AsyncLatestWorker(Generic[T]):
 
             item = self._take_latest()
             if item is not None:
-                self.consumer(item)
+                try:
+                    self.consumer(item)
+                except Exception as error:
+                    # latest worker도 저장/전송 예외로 중단되지 않게 보호합니다.
+                    log_line("ERROR", source=self.name, error=error)
 
             if self.stop_event.is_set() and self._take_latest() is None:
                 break

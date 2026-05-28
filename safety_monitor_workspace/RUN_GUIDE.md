@@ -11,7 +11,7 @@
 
 ## 2. GUI만 실행
 
-`run_gui_only.bat`
+`run_gui.bat`
 
 - GUI 실행 파일이 있으면 바로 실행합니다.
 - 실행 파일이 없으면 Flutter Windows 빌드를 자동 시도합니다.
@@ -23,21 +23,17 @@
 - 다음 실행부터는 저장된 서버 주소를 기본값으로 사용합니다.
 - 원격 서버 예시: `http://192.168.24.114:8000`
 
-## 3. 서버 + GUI 같이 실행
+## 3. Flutter 디버그 모드
 
-`run_server_and_gui.bat`
+```powershell
+cd safety_ai_monitor_ui
+..\flutter\bin\flutter.bat run -d windows
+```
 
-- 서버를 먼저 실행합니다.
-- 잠시 뒤 GUI를 실행합니다.
-- 같은 PC 로컬 테스트에 적합합니다.
+- 코드 수정 후 GUI를 디버그 모드로 확인할 때 사용합니다.
+- 로컬 `flutter` 명령이 PATH에 없어도 저장소 루트의 `flutter\bin\flutter.bat`로 실행할 수 있습니다.
 
-## 4. Flutter 디버그 모드
-
-`run_flutter_debug.bat`
-
-- 코드 수정 후 GUI를 개발 모드로 확인할 때 사용합니다.
-
-## 5. Windows 빌드
+## 4. Windows 빌드
 
 `build_gui.bat`
 
@@ -56,6 +52,8 @@
   - `safety_ai_monitor_ui/build/windows/x64/runner/Release/safety_ai_monitor_ui.exe`
 - 미완료 파일 영상은 서버 재시작 후 자동 이어받기됩니다.
 - CCTV/RTSP/HTTP 스트림은 서버가 살아 있고 등록 상태가 유지되는 한 계속 분석을 재시도합니다.
+- 이벤트 상세의 `클립 재생`은 별도 새 창이 아니라 현재 GUI 패널에서 클립 재생 모드로 전환됩니다.
+- 여러 영상이 동시에 재생될 수 있지만, 오디오는 현재 선택된 타일만 출력됩니다.
 
 ## 서버 로그 읽는 법
 

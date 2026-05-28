@@ -6,7 +6,7 @@ import torch
 
 from core.detection_model import Box, Detection, DetectionModel, DetectionResult
 from core.path_helper import to_project_path
-from models.device_helper import resolve_torch_device
+from models.yolo_runtime_helper import build_yolo_runtime
 
 # 이 파일은 Ultralytics YOLO 결과를 DetectionResult 공통 형식으로 바꾸는 어댑터입니다.
 
@@ -19,15 +19,19 @@ class YoloModelSample(DetectionModel):
         min_confidence: float = 0.5,
         device: str = "cuda:0",
         require_cuda: bool = True,
+        prefer_tensorrt_engine: bool = True,
     ) -> None:
         self.model_path = model_path
         self.min_confidence = min_confidence
         self.model = None
         self.requested_device = device
         self.require_cuda = require_cuda
+        self.prefer_tensorrt_engine = prefer_tensorrt_engine
         self.device = "cpu"
         self.person_confidence = 0.2
         self.safety_confidence = 0.6
+        self.runtime_model_path = model_path
+        self.predict_kwargs: dict[str, object] = {}
 
     def load(self) -> None:
         # Keep Ultralytics writable even in restricted Windows environments.
@@ -41,13 +45,21 @@ class YoloModelSample(DetectionModel):
                 "예: pip install ultralytics"
             ) from error
 
-        if not Path(self.model_path).exists():
+        self.runtime_model_path = self._resolve_runtime_model_path()
+        if not Path(self.runtime_model_path).exists():
             raise RuntimeError(
-                f"YOLO 가중치 파일을 찾을 수 없습니다: {self.model_path}"
+                f"YOLO 가중치 파일을 찾을 수 없습니다: {self.runtime_model_path}"
             )
 
-        self.model = YOLO(self.model_path)
-        self.device = self._resolve_device()
+        self.model, self.runtime_model_path, self.device, self.predict_kwargs = (
+            build_yolo_runtime(
+                yolo_cls=YOLO,
+                model_path=self.model_path,
+                requested_device=self.requested_device,
+                require_cuda=self.require_cuda,
+                prefer_tensorrt_engine=self.prefer_tensorrt_engine,
+            )
+        )
 
     def predict(self, frame: np.ndarray, frame_id: int) -> DetectionResult:
         # 모델 원본 출력은 그대로 흘리지 않고 Detection/Box 구조로 변환합니다.
@@ -57,20 +69,20 @@ class YoloModelSample(DetectionModel):
         # 이 어댑터는 비디오 경로가 아니라 "프레임 1장"을 받으므로 stream=True 제너레이터보다
         # 단일 결과 리스트로 즉시 받아오는 편이 파이프라인과 더 잘 맞습니다.
         person_results = self.model.predict(
-            device=self.device,
             source=frame,
             conf=self.person_confidence,
             classes=[2],
             stream=False,
             verbose=False,
+            **self.predict_kwargs,
         )
         safety_results = self.model.predict(
-            device=self.device,
             source=frame,
             conf=self.safety_confidence,
             classes=[0, 1],
             stream=False,
             verbose=False,
+            **self.predict_kwargs,
         )
 
         person_result = person_results[0] if person_results else None
@@ -86,11 +98,18 @@ class YoloModelSample(DetectionModel):
     def get_name(self) -> str:
         return "YoloModelSample"
 
-    def _resolve_device(self) -> str:
-        return resolve_torch_device(
-            requested_device=self.requested_device,
-            require_cuda=self.require_cuda,
-        )
+    def _resolve_runtime_model_path(self) -> str:
+        model_path = Path(self.model_path)
+        if not self.prefer_tensorrt_engine:
+            return str(model_path)
+        if model_path.suffix.lower() == ".engine":
+            return str(model_path)
+
+        engine_path = model_path.with_suffix(".engine")
+        if engine_path.exists():
+            return str(engine_path)
+
+        return str(model_path)
 
     def _merge_results(self, person_result, safety_result):
         if person_result is None:

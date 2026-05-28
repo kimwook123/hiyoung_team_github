@@ -7,12 +7,14 @@ from app.config import SERVER_SOURCE_CACHE_DIR, SERVER_UPLOAD_SOURCE_DIR
 from app.realtime_hub import realtime_update_hub
 from app.schemas import (
     SourceActionResponse,
+    SourceConfigUpdateRequest,
     SourceCreateRequest,
     SourceItem,
     SourceListResponse,
     SourceUpsertResponse,
 )
 from app.source_manager import AnalysisSourceManager
+from app.source_rule_config import normalize_rule_config
 
 router = APIRouter(prefix="/api/sources", tags=["sources"])
 
@@ -112,6 +114,7 @@ async def upload_video_source(
 
 def _decorate_source_record(record: dict) -> dict:
     next_record = dict(record)
+    next_record["rule_config"] = normalize_rule_config(next_record.get("rule_config"))
     source_type = str(next_record.get("source_type", "")).strip().lower()
     source_value = str(next_record.get("source_value", "")).strip()
     next_record["server_media_path"] = ""
@@ -187,6 +190,28 @@ def restart_source(source_key: str, request: Request) -> SourceActionResponse:
         source_key=source_key.strip(),
     )
     return SourceActionResponse(ok=True, source_key=source_key, state="starting")
+
+
+@router.patch("/{source_key:path}/config", response_model=SourceUpsertResponse)
+def update_source_config(
+    source_key: str,
+    payload: SourceConfigUpdateRequest,
+    request: Request,
+) -> SourceUpsertResponse:
+    manager = _manager_from_request(request)
+    try:
+        item = manager.update_source_rule_config(
+            source_key,
+            rule_config=payload.rule_config,
+        )
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="source not found") from error
+    realtime_update_hub.publish(
+        "source_changed",
+        action="config_updated",
+        source_key=source_key.strip(),
+    )
+    return SourceUpsertResponse(ok=True, item=SourceItem(**_decorate_source_record(item)))
 
 
 @router.delete("/{source_key:path}", response_model=SourceActionResponse)

@@ -7,6 +7,7 @@ import '../models/api_event_item.dart';
 import '../models/api_server_health.dart';
 import '../models/frame_detection_snapshot.dart';
 import '../models/source_item.dart';
+import '../models/source_rule_config.dart';
 import '../models/source_runtime_status.dart';
 
 // 이 파일은 Flutter에서 FastAPI 서버를 호출하는 HTTP 서비스입니다.
@@ -17,10 +18,10 @@ class EventApiService {
   EventApiService({
     http.Client? client,
     String baseUrl = 'http://127.0.0.1:8000',
-  })  : _client = client ?? http.Client(),
-        baseUrl = baseUrl.endsWith('/')
-            ? baseUrl.substring(0, baseUrl.length - 1)
-            : baseUrl;
+  }) : _client = client ?? http.Client(),
+       baseUrl = baseUrl.endsWith('/')
+           ? baseUrl.substring(0, baseUrl.length - 1)
+           : baseUrl;
 
   final http.Client _client;
   String baseUrl;
@@ -56,19 +57,16 @@ class EventApiService {
     String? sessionId,
   }) async {
     // /api/events는 전체 기록 또는 최신 상태 목록을 가져오는 기본 조회 API입니다.
-    final uri = _buildUri(
-      '/api/events',
-      {
-        'latest_only': latestOnly ? 'true' : null,
-        'limit': limit?.toString(),
-        'event_type': _normalizeQueryValue(eventType),
-        'status': _normalizeQueryValue(status),
-        'source_key': _normalizeQueryValue(sourceKey),
-        'source_type': _normalizeQueryValue(sourceType),
-        'client_id': _normalizeQueryValue(clientId),
-        'session_id': _normalizeQueryValue(sessionId),
-      },
-    );
+    final uri = _buildUri('/api/events', {
+      'latest_only': latestOnly ? 'true' : null,
+      'limit': limit?.toString(),
+      'event_type': _normalizeQueryValue(eventType),
+      'status': _normalizeQueryValue(status),
+      'source_key': _normalizeQueryValue(sourceKey),
+      'source_type': _normalizeQueryValue(sourceType),
+      'client_id': _normalizeQueryValue(clientId),
+      'session_id': _normalizeQueryValue(sessionId),
+    });
 
     return _fetchEventList(uri);
   }
@@ -82,37 +80,34 @@ class EventApiService {
     String? clientId,
     String? sessionId,
   }) async {
-    final uri = _buildUri(
-      '/api/events/latest',
-      {
-        'limit': limit?.toString(),
-        'event_type': _normalizeQueryValue(eventType),
-        'status': _normalizeQueryValue(status),
-        'source_key': _normalizeQueryValue(sourceKey),
-        'source_type': _normalizeQueryValue(sourceType),
-        'client_id': _normalizeQueryValue(clientId),
-        'session_id': _normalizeQueryValue(sessionId),
-      },
-    );
+    final uri = _buildUri('/api/events/latest', {
+      'limit': limit?.toString(),
+      'event_type': _normalizeQueryValue(eventType),
+      'status': _normalizeQueryValue(status),
+      'source_key': _normalizeQueryValue(sourceKey),
+      'source_type': _normalizeQueryValue(sourceType),
+      'client_id': _normalizeQueryValue(clientId),
+      'session_id': _normalizeQueryValue(sessionId),
+    });
 
     return _fetchEventList(uri);
   }
 
-  Future<ApiEventItem?> fetchEventDetail(String eventKey, {String? sourceKey}) async {
+  Future<ApiEventItem?> fetchEventDetail(
+    String eventKey, {
+    String? sourceKey,
+  }) async {
     // 상세 패널은 목록과 별도로 /api/events/detail을 다시 호출해 최신 1건을 가져옵니다.
     final normalizedEventKey = eventKey.trim();
     if (normalizedEventKey.isEmpty) {
       return null;
     }
 
-    final uri = _buildUri(
-      '/api/events/detail',
-      {
-        'event_key': normalizedEventKey,
-        'latest_only': 'true',
-        'source_key': _normalizeQueryValue(sourceKey),
-      },
-    );
+    final uri = _buildUri('/api/events/detail', {
+      'event_key': normalizedEventKey,
+      'latest_only': 'true',
+      'source_key': _normalizeQueryValue(sourceKey),
+    });
 
     try {
       final response = await _client.get(uri);
@@ -173,10 +168,7 @@ class EventApiService {
       final response = await _client.post(
         uri,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'source_key': sourceKey,
-          'source_slug': sourceSlug,
-        }),
+        body: jsonEncode({'source_key': sourceKey, 'source_slug': sourceSlug}),
       );
       return response.statusCode == 200;
     } catch (_) {
@@ -298,18 +290,49 @@ class EventApiService {
   }
 
   Future<bool> deleteSource(String sourceKey, {bool clearData = false}) async {
-    final uri = _buildUri(
-      '/api/sources/${Uri.encodeComponent(sourceKey)}',
-      {
-        'clear_data': clearData ? 'true' : 'false',
-      },
-    );
+    final uri = _buildUri('/api/sources/${Uri.encodeComponent(sourceKey)}', {
+      'clear_data': clearData ? 'true' : 'false',
+    });
     try {
       final response = await _client.delete(uri);
       return response.statusCode == 200;
     } catch (_) {
       return false;
     }
+  }
+
+  Future<SourceItem?> updateSourceRuleConfig({
+    required String sourceKey,
+    required SourceRuleConfig ruleConfig,
+  }) async {
+    final uri = _buildUri(
+      '/api/sources/${Uri.encodeComponent(sourceKey)}/config',
+      const {},
+    );
+    try {
+      final response = await _client.patch(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'rule_config': ruleConfig.toJson()}),
+      );
+      if (response.statusCode != 200) {
+        return null;
+      }
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        return null;
+      }
+      final item = decoded['item'];
+      if (item is Map<String, dynamic>) {
+        return SourceItem.fromJson(item);
+      }
+      if (item is Map) {
+        return SourceItem.fromJson(Map<String, dynamic>.from(item));
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
   }
 
   Future<FrameDetectionSnapshot?> fetchCurrentFrameDetection({
@@ -322,14 +345,11 @@ class EventApiService {
       return null;
     }
 
-    final uri = _buildUri(
-      '/api/frame-detections/current',
-      {
-        'source_key': normalizedSourceKey,
-        'source_time_seconds': sourceTimeSeconds.toString(),
-        'tolerance_seconds': toleranceSeconds.toString(),
-      },
-    );
+    final uri = _buildUri('/api/frame-detections/current', {
+      'source_key': normalizedSourceKey,
+      'source_time_seconds': sourceTimeSeconds.toString(),
+      'tolerance_seconds': toleranceSeconds.toString(),
+    });
 
     try {
       final response = await _client.get(uri);
@@ -368,12 +388,9 @@ class EventApiService {
       return null;
     }
 
-    final uri = _buildUri(
-      '/api/frame-detections/latest',
-      {
-        'source_key': normalizedSourceKey,
-      },
-    );
+    final uri = _buildUri('/api/frame-detections/latest', {
+      'source_key': normalizedSourceKey,
+    });
 
     try {
       final response = await _client.get(uri);
@@ -425,7 +442,10 @@ class EventApiService {
 
       return items
           .whereType<Map>()
-          .map((item) => SourceRuntimeStatus.fromJson(Map<String, dynamic>.from(item)))
+          .map(
+            (item) =>
+                SourceRuntimeStatus.fromJson(Map<String, dynamic>.from(item)),
+          )
           .toList(growable: false);
     } catch (_) {
       return const [];
@@ -494,5 +514,4 @@ class EventApiService {
     }
     return trimmed;
   }
-
 }

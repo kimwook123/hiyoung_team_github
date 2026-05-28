@@ -4,10 +4,7 @@ import '../controllers/video_panel_controller.dart';
 
 // 재생, 프레임 이동, 탐색 슬라이더를 묶은 하단 제어 바입니다.
 class VideoControlBar extends StatelessWidget {
-  const VideoControlBar({
-    super.key,
-    required this.controller,
-  });
+  const VideoControlBar({super.key, required this.controller});
 
   final VideoPanelController controller;
 
@@ -21,8 +18,9 @@ class VideoControlBar extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.black12),
-        borderRadius: BorderRadius.circular(8),
+        color: const Color(0xFF171A20),
+        border: Border.all(color: Colors.white12),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         children: [
@@ -35,7 +33,9 @@ class VideoControlBar extends StatelessWidget {
           Row(
             children: [
               IconButton(
-                onPressed: controller.hasVideo ? controller.movePrevFrame : null,
+                onPressed: controller.hasVideo
+                    ? controller.movePrevFrame
+                    : null,
                 tooltip: '이전 프레임',
                 icon: const Icon(Icons.skip_previous),
               ),
@@ -47,7 +47,9 @@ class VideoControlBar extends StatelessWidget {
                 ),
               ),
               IconButton(
-                onPressed: controller.hasVideo ? controller.moveNextFrame : null,
+                onPressed: controller.hasVideo
+                    ? controller.moveNextFrame
+                    : null,
                 tooltip: '다음 프레임',
                 icon: const Icon(Icons.skip_next),
               ),

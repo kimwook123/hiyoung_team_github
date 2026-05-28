@@ -46,6 +46,7 @@ from app.database import insert_event, insert_frame_detection, upsert_source_sta
 from app.log_utils import log_line
 from app.realtime_hub import realtime_update_hub
 from app.source_identity import build_source_key, build_source_slug, normalize_video_source_value
+from app.source_rule_config import build_default_rule_config, normalize_rule_config, to_roi_tuple
 
 
 def _ensure_analysis_import_path() -> None:
@@ -126,6 +127,7 @@ def build_source_record(
         "client_id": client_id.strip(),
         "session_id": (session_id.strip() or source_key),
         "desired_running": desired_running,
+        "rule_config": build_default_rule_config(),
     }
 
 
@@ -155,7 +157,7 @@ def build_pipeline_for_source(
         raise RuntimeError(f"지원하지 않는 source_type입니다: {source_type}")
 
     model = _build_model()
-    rules = _build_rules()
+    rules = _build_rules(source_record)
     tracker = PersonTracker(
         max_distance=TRACK_MAX_DISTANCE,
         max_missing_frames=TRACK_MAX_MISSING_FRAMES,
@@ -502,17 +504,22 @@ def _build_model():
     raise ValueError(f"지원하지 않는 MODEL_TYPE입니다: {MODEL_TYPE}")
 
 
-def _build_rules() -> list[Any]:
+def _build_rules(source_record: dict[str, Any]) -> list[Any]:
     rules: list[Any] = []
-    if USE_NO_HELMET_RULE:
+    rule_config = normalize_rule_config(source_record.get("rule_config"))
+    if bool(rule_config.get("use_no_helmet_rule", True)):
         rules.append(
             NoHelmetRule(
                 head_ratio=NO_HELMET_HEAD_RATIO,
                 overlap_ratio=NO_HELMET_OVERLAP_RATIO,
             )
         )
-    if USE_DANGER_ZONE_RULE:
-        rules.append(DangerZoneRule(roi=DANGER_ZONE_ROI))
+    danger_zone_roi = to_roi_tuple(rule_config.get("danger_zone_roi"))
+    if (
+        bool(rule_config.get("use_danger_zone_rule", False))
+        and danger_zone_roi is not None
+    ):
+        rules.append(DangerZoneRule(roi=danger_zone_roi))
     return rules
 
 

@@ -3,11 +3,10 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../controllers/video_panel_controller.dart';
 import '../models/event_log_item.dart';
+import '../models/source_rule_config.dart';
 import '../models/video_overlay_detection.dart';
 import 'video_event_overlay.dart';
 
-// 메인 영상 표시 영역입니다.
-// 현재 영상 위에 overlayItems를 얹어서 위험 이벤트를 같은 화면에서 확인할 수 있게 합니다.
 class VideoViewBox extends StatelessWidget {
   const VideoViewBox({
     super.key,
@@ -17,6 +16,15 @@ class VideoViewBox extends StatelessWidget {
     required this.overlaySourceWidth,
     required this.overlaySourceHeight,
     required this.overlayStatusText,
+    this.title = '',
+    this.badgeText = '',
+    this.badgeColor = Colors.green,
+    this.isSelected = false,
+    this.onTap,
+    this.footer,
+    this.dangerZoneRoi,
+    this.enableDangerZoneEditing = false,
+    this.onDangerZoneChanged,
   });
 
   final VideoPanelController controller;
@@ -25,64 +33,364 @@ class VideoViewBox extends StatelessWidget {
   final double overlaySourceWidth;
   final double overlaySourceHeight;
   final String overlayStatusText;
+  final String title;
+  final String badgeText;
+  final Color badgeColor;
+  final bool isSelected;
+  final VoidCallback? onTap;
+  final Widget? footer;
+  final RoiRect? dangerZoneRoi;
+  final bool enableDangerZoneEditing;
+  final ValueChanged<RoiRect>? onDangerZoneChanged;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final borderColor = isSelected
+        ? Theme.of(context).colorScheme.primary
+        : Colors.white12;
+
+    final child = Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(8),
+        color: const Color(0xFF171A20),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor, width: isSelected ? 2 : 1),
       ),
-      child: Stack(
+      child: Column(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: controller.hasVideo
-                ? Video(
-                    controller: controller.videoController,
-                    controls: NoVideoControls,
-                  )
-                : const Center(
+          if (title.isNotEmpty || badgeText.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+              child: Row(
+                children: [
+                  Expanded(
                     child: Text(
-                      '영상을 열면 여기에 표시됩니다.',
-                      style: TextStyle(color: Colors.white70),
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
-          ),
-          VideoEventOverlay(
-            items: overlayItems,
-            detections: overlayDetections,
-            sourceWidth: overlaySourceWidth,
-            sourceHeight: overlaySourceHeight,
-          ),
-          if (controller.hasVideo && overlayStatusText.isNotEmpty)
-            Positioned(
-              left: 12,
-              right: 12,
-              bottom: 12,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.black87,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  child: Text(
-                    overlayStatusText,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
+                  if (badgeText.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: badgeColor.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: badgeColor.withOpacity(0.55)),
+                      ),
+                      child: Text(
+                        badgeText,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: badgeColor,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
-                  ),
+                ],
+              ),
+            ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: controller.hasVideo
+                          ? Video(
+                              controller: controller.videoController,
+                              controls: NoVideoControls,
+                            )
+                          : const Center(
+                              child: Text(
+                                '영상을 열면 여기에 표시됩니다.',
+                                style: TextStyle(color: Colors.white70),
+                              ),
+                            ),
+                    ),
+                    Positioned.fill(
+                      child: VideoEventOverlay(
+                        items: overlayItems,
+                        detections: overlayDetections,
+                        sourceWidth: overlaySourceWidth,
+                        sourceHeight: overlaySourceHeight,
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: _DangerZoneOverlay(
+                        sourceWidth: overlaySourceWidth,
+                        sourceHeight: overlaySourceHeight,
+                        roi: dangerZoneRoi,
+                        enableEditing: enableDangerZoneEditing,
+                        onChanged: onDangerZoneChanged,
+                      ),
+                    ),
+                    if (controller.hasVideo && overlayStatusText.isNotEmpty)
+                      Positioned(
+                        left: 12,
+                        right: 12,
+                        bottom: 12,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Colors.black87,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            child: Text(
+                              overlayStatusText,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
+            ),
+          ),
+          if (footer != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+              child: footer!,
             ),
         ],
       ),
     );
+
+    if (onTap == null) {
+      return child;
+    }
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: child,
+    );
+  }
+}
+
+class _DangerZoneOverlay extends StatefulWidget {
+  const _DangerZoneOverlay({
+    required this.sourceWidth,
+    required this.sourceHeight,
+    required this.roi,
+    required this.enableEditing,
+    required this.onChanged,
+  });
+
+  final double sourceWidth;
+  final double sourceHeight;
+  final RoiRect? roi;
+  final bool enableEditing;
+  final ValueChanged<RoiRect>? onChanged;
+
+  @override
+  State<_DangerZoneOverlay> createState() => _DangerZoneOverlayState();
+}
+
+class _DangerZoneOverlayState extends State<_DangerZoneOverlay> {
+  Offset? _dragStart;
+  Offset? _dragCurrent;
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.sourceWidth <= 0 || widget.sourceHeight <= 0) {
+      return const SizedBox.shrink();
+    }
+
+    return IgnorePointer(
+      ignoring: !widget.enableEditing,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final videoRect = _resolveVideoRect(
+            Size(constraints.maxWidth, constraints.maxHeight),
+          );
+          if (videoRect == null) {
+            return const SizedBox.shrink();
+          }
+
+          final activeRoi = _buildDraftRoi(videoRect) ?? widget.roi;
+
+          return GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onPanStart: widget.enableEditing
+                ? (details) {
+                    setState(() {
+                      _dragStart = details.localPosition;
+                      _dragCurrent = details.localPosition;
+                    });
+                  }
+                : null,
+            onPanUpdate: widget.enableEditing
+                ? (details) {
+                    setState(() {
+                      _dragCurrent = details.localPosition;
+                    });
+                  }
+                : null,
+            onPanEnd: widget.enableEditing
+                ? (_) {
+                    final nextRoi = _buildDraftRoi(videoRect);
+                    setState(() {
+                      _dragStart = null;
+                      _dragCurrent = null;
+                    });
+                    if (nextRoi != null && widget.onChanged != null) {
+                      widget.onChanged!(nextRoi);
+                    }
+                  }
+                : null,
+            child: CustomPaint(
+              painter: _DangerZonePainter(
+                roi: activeRoi,
+                videoRect: videoRect,
+                sourceWidth: widget.sourceWidth,
+                sourceHeight: widget.sourceHeight,
+                isEditing: widget.enableEditing,
+              ),
+              child: const SizedBox.expand(),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  RoiRect? _buildDraftRoi(Rect videoRect) {
+    final start = _dragStart;
+    final current = _dragCurrent;
+    if (start == null || current == null) {
+      return null;
+    }
+
+    if ((current.dx - start.dx).abs() < 4 ||
+        (current.dy - start.dy).abs() < 4) {
+      return null;
+    }
+
+    return RoiRect.normalized(
+      x1: _displayXToSource(start.dx, videoRect),
+      y1: _displayYToSource(start.dy, videoRect),
+      x2: _displayXToSource(current.dx, videoRect),
+      y2: _displayYToSource(current.dy, videoRect),
+    );
+  }
+
+  Rect? _resolveVideoRect(Size bounds) {
+    if (bounds.width <= 0 || bounds.height <= 0) {
+      return null;
+    }
+
+    final videoAspect = widget.sourceWidth / widget.sourceHeight;
+    final boundsAspect = bounds.width / bounds.height;
+
+    if (videoAspect >= boundsAspect) {
+      final displayWidth = bounds.width;
+      final displayHeight = displayWidth / videoAspect;
+      final top = (bounds.height - displayHeight) / 2;
+      return Rect.fromLTWH(0, top, displayWidth, displayHeight);
+    }
+
+    final displayHeight = bounds.height;
+    final displayWidth = displayHeight * videoAspect;
+    final left = (bounds.width - displayWidth) / 2;
+    return Rect.fromLTWH(left, 0, displayWidth, displayHeight);
+  }
+
+  int _displayXToSource(double value, Rect videoRect) {
+    final normalized = ((value - videoRect.left) / videoRect.width).clamp(
+      0.0,
+      1.0,
+    );
+    return (normalized * widget.sourceWidth).round();
+  }
+
+  int _displayYToSource(double value, Rect videoRect) {
+    final normalized = ((value - videoRect.top) / videoRect.height).clamp(
+      0.0,
+      1.0,
+    );
+    return (normalized * widget.sourceHeight).round();
+  }
+}
+
+class _DangerZonePainter extends CustomPainter {
+  const _DangerZonePainter({
+    required this.roi,
+    required this.videoRect,
+    required this.sourceWidth,
+    required this.sourceHeight,
+    required this.isEditing,
+  });
+
+  final RoiRect? roi;
+  final Rect videoRect;
+  final double sourceWidth;
+  final double sourceHeight;
+  final bool isEditing;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (roi == null) {
+      if (isEditing) {
+        final painter = TextPainter(
+          text: const TextSpan(
+            text: '드래그해서 위험구역 지정',
+            style: TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout(maxWidth: size.width - 24);
+        painter.paint(canvas, const Offset(12, 12));
+      }
+      return;
+    }
+
+    final rect = Rect.fromLTRB(
+      _scaleX(roi!.x1.toDouble()),
+      _scaleY(roi!.y1.toDouble()),
+      _scaleX(roi!.x2.toDouble()),
+      _scaleY(roi!.y2.toDouble()),
+    );
+    final fillPaint = Paint()..color = const Color(0x44FF5A5A);
+    final borderPaint = Paint()
+      ..color = const Color(0xFFFF7A7A)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+
+    canvas.drawRect(rect, fillPaint);
+    canvas.drawRect(rect, borderPaint);
+  }
+
+  double _scaleX(double value) {
+    final clamped = value.clamp(0.0, sourceWidth).toDouble();
+    return videoRect.left + (clamped / sourceWidth) * videoRect.width;
+  }
+
+  double _scaleY(double value) {
+    final clamped = value.clamp(0.0, sourceHeight).toDouble();
+    return videoRect.top + (clamped / sourceHeight) * videoRect.height;
+  }
+
+  @override
+  bool shouldRepaint(covariant _DangerZonePainter oldDelegate) {
+    return roi != oldDelegate.roi ||
+        videoRect != oldDelegate.videoRect ||
+        sourceWidth != oldDelegate.sourceWidth ||
+        sourceHeight != oldDelegate.sourceHeight ||
+        isEditing != oldDelegate.isEditing;
   }
 }

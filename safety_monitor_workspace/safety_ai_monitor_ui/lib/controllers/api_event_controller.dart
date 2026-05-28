@@ -15,7 +15,6 @@ class ApiEventController extends ChangeNotifier {
 
   List<ApiEventItem> items = const [];
   Set<String> selectedKeys = <String>{};
-  String visibleSourceKey = '';
   bool isLoading = false;
   String? errorMessage;
   DateTime? lastUpdatedAt;
@@ -26,16 +25,7 @@ class ApiEventController extends ChangeNotifier {
 
   // 화면 위젯은 기존 EventLogItem을 기대하므로 API 응답을 어댑터로 변환해서 노출합니다.
   List<EventLogItem> get logItems =>
-      apiEventsToLogItems(_latestItemsByEventKey(filteredItems));
-  List<ApiEventItem> get filteredItems {
-    final sourceKey = visibleSourceKey.trim();
-    if (sourceKey.isEmpty) {
-      return items;
-    }
-    return items
-        .where((item) => item.sourceKey.trim() == sourceKey)
-        .toList(growable: false);
-  }
+      apiEventsToLogItems(_latestItemsByEventKey(items));
 
   Future<void> loadLatestEvents({
     int? limit,
@@ -62,13 +52,11 @@ class ApiEventController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final normalizedSourceKey = visibleSourceKey.trim();
       final nextItems = await _service.fetchEvents(
         latestOnly: latestOnly,
         limit: limit,
         eventType: eventType,
         status: status,
-        sourceKey: normalizedSourceKey.isEmpty ? null : normalizedSourceKey,
       );
       items = nextItems;
       lastUpdatedAt = DateTime.now();
@@ -174,7 +162,7 @@ class ApiEventController extends ChangeNotifier {
   }
 
   List<ApiEventItem> getItemsForTime(double secondsValue) {
-    return _getItemsForTimeFromSourceList(filteredItems, secondsValue);
+    return _getItemsForTimeFromSourceList(items, secondsValue);
   }
 
   List<ApiEventItem> getItemsForTimeForSource(
@@ -217,22 +205,13 @@ class ApiEventController extends ChangeNotifier {
       return null;
     }
 
-    final orderedItems = [...filteredItems]..sort(_compareByTimeline);
+    final orderedItems = [...items]..sort(_compareByTimeline);
     for (final item in orderedItems.reversed) {
       if (item.eventKey == normalizedEventKey) {
         return item;
       }
     }
     return null;
-  }
-
-  void setVisibleSourceKey(String sourceKey) {
-    if (visibleSourceKey == sourceKey) {
-      return;
-    }
-    visibleSourceKey = sourceKey;
-    selectedKeys = <String>{};
-    notifyListeners();
   }
 
   void selectLogItem(EventLogItem item) {
@@ -248,7 +227,6 @@ class ApiEventController extends ChangeNotifier {
   void clear() {
     items = const [];
     selectedKeys = <String>{};
-    visibleSourceKey = '';
     errorMessage = null;
     lastUpdatedAt = null;
     notifyListeners();

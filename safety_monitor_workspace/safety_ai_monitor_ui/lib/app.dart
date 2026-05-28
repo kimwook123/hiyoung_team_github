@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import 'screens/home_screen.dart';
 
 class SafetyMonitorUiApp extends StatelessWidget {
-  const SafetyMonitorUiApp({super.key});
+  const SafetyMonitorUiApp({super.key, this.home, this.title = 'Safety AI Monitor UI'});
+
+  final Widget? home;
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -11,7 +14,7 @@ class SafetyMonitorUiApp extends StatelessWidget {
     const panel = Color(0xFF1D2027);
     const accent = Color(0xFFE05252);
     return MaterialApp(
-      title: 'Safety AI Monitor UI',
+      title: title,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
@@ -42,7 +45,7 @@ class SafetyMonitorUiApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const HomeScreen(),
+      home: home ?? const HomeScreen(),
     );
   }
 }

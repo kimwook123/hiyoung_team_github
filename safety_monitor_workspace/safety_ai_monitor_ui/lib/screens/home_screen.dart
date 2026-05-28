@@ -43,13 +43,11 @@ class _HomeScreenState extends State<HomeScreen> {
   late final ApiEventController apiEventController;
   late final ApiEventFeedSource apiEventFeed;
   final ScrollController appScrollController = ScrollController();
-  final ScrollController pageScrollController = ScrollController();
-  final ScrollController sourceListScrollController = ScrollController();
-  final ScrollController rightPanelScrollController = ScrollController();
   final TextEditingController streamTextController = TextEditingController();
   final TextEditingController serverBaseUrlTextController =
       TextEditingController(text: _defaultApiServerBaseUrl);
   final List<_SourcePanelSlot> _sourceSlots = [];
+  final Set<String> _slotCreationSourceKeys = <String>{};
   String _activeSlotId = '';
   ApiEventItem? selectedApiEventDetail;
   bool isLoadingApiDetail = false;
@@ -79,6 +77,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool pendingRealtimeStatusesRefresh = false;
   bool isSavingRuleConfig = false;
   bool isEditingDangerZone = false;
+  int _ruleConfigSaveTicket = 0;
 
   @override
   void initState() {
@@ -107,11 +106,9 @@ class _HomeScreenState extends State<HomeScreen> {
       slot.controller.disposeController();
     }
     _emptyVideoController.disposeController();
+    eventApiService.dispose();
     apiEventFeed.dispose();
     appScrollController.dispose();
-    pageScrollController.dispose();
-    sourceListScrollController.dispose();
-    rightPanelScrollController.dispose();
     streamTextController.dispose();
     serverBaseUrlTextController.dispose();
     super.dispose();
@@ -170,10 +167,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final dashboardHeight = math.max(
-            860.0,
-            constraints.maxHeight - 170.0,
-          );
           return Scrollbar(
             controller: appScrollController,
             thumbVisibility: true,
@@ -181,45 +174,59 @@ class _HomeScreenState extends State<HomeScreen> {
               controller: appScrollController,
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    AnimatedBuilder(
-                      animation: videoController,
-                      builder: (context, _) {
-                        return FileBar(
-                          videoPath: videoController.videoPath,
-                          sourceType: videoController.sourceType,
-                          sourceHint: _buildSourceHint(),
-                          sourceCount: _sourceSlots.length,
-                          activeSourceLabel: _buildActiveSourceLabel(),
-                          hasSelectedSource: selectedSourceKey.isNotEmpty,
-                          canReturnFromReplay:
-                              videoController.canReturnFromReplay,
-                          streamTextController: streamTextController,
-                          onPickVideo: _pickVideoFile,
-                          onClearSelectedSource: _clearSelectedSource,
-                          onOpenStream: _openStream,
-                          onReturnLive: _returnToLive,
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    _buildApiControls(),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: dashboardHeight,
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SizedBox(width: 270, child: _buildSourceSidebar()),
-                          const SizedBox(width: 16),
-                          Expanded(child: _buildVideoGridPanel()),
-                          const SizedBox(width: 16),
-                          SizedBox(width: 360, child: _buildInspectorPanel()),
-                        ],
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: math.max(0, constraints.maxHeight - 32),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          children: [
+                            AnimatedBuilder(
+                              animation: videoController,
+                              builder: (context, _) {
+                                return FileBar(
+                                  videoPath: videoController.videoPath,
+                                  sourceType: videoController.sourceType,
+                                  sourceHint: _buildSourceHint(),
+                                  sourceCount: _sourceSlots.length,
+                                  activeSourceLabel: _buildActiveSourceLabel(),
+                                  hasSelectedSource:
+                                      selectedSourceKey.isNotEmpty,
+                                  canReturnFromReplay:
+                                      videoController.canReturnFromReplay,
+                                  streamTextController: streamTextController,
+                                  onPickVideo: _pickVideoFile,
+                                  onClearSelectedSource:
+                                      _clearSelectedSource,
+                                  onOpenStream: _openStream,
+                                  onReturnLive: _returnToLive,
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            _buildApiControls(),
+                            const SizedBox(height: 12),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SizedBox(
+                                  width: 240,
+                                  child: _buildSourceSidebar(),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(child: _buildVideoGridPanel()),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 16),
+                      SizedBox(width: 420, child: _buildInspectorPanel()),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -291,73 +298,81 @@ class _HomeScreenState extends State<HomeScreen> {
     final slots = [..._sourceSlots];
     return _buildPanelCard(
       title: '카메라 목록',
-      expandChild: true,
       child: slots.isEmpty
           ? const Center(child: Text('영상 또는 스트림을 추가하면 여기에 표시됩니다.'))
-          : Scrollbar(
-              controller: sourceListScrollController,
-              thumbVisibility: true,
-              child: ListView.separated(
-                controller: sourceListScrollController,
-                itemCount: slots.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (context, index) {
-                  final slot = slots[index];
-                  final isSelected = slot.slotId == _activeSlotId;
-                  return InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => unawaited(_setActiveSlot(slot.slotId)),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? const Color(0xFF242833)
-                            : const Color(0xFF181B22),
+          : Column(
+              children: [
+                for (var index = 0; index < slots.length; index++) ...[
+                  if (index > 0) const SizedBox(height: 8),
+                  Builder(
+                    builder: (context) {
+                      final slot = slots[index];
+                      final isSelected = slot.slotId == _activeSlotId;
+                      return InkWell(
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: isSelected
-                              ? Theme.of(context).colorScheme.primary
-                              : Colors.white12,
+                        onTap: () => unawaited(_setActiveSlot(slot.slotId)),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? const Color(0xFF242833)
+                                : const Color(0xFF181B22),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSelected
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Colors.white12,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: _colorForSlotStatus(slot),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      slot.label,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _describeSlotStatus(slot),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(color: Colors.white60),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                tooltip: '소스 삭제',
+                                onPressed: () =>
+                                    unawaited(_handleSlotDeleteAction(slot)),
+                                icon: const Icon(Icons.delete_outline),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(
-                              color: _colorForSlotStatus(slot),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  slot.label,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  _describeSlotStatus(slot),
-                                  style: Theme.of(context).textTheme.bodySmall
-                                      ?.copyWith(color: Colors.white60),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
+                      );
+                    },
+                  ),
+                ],
+              ],
             ),
     );
   }
@@ -380,24 +395,20 @@ class _HomeScreenState extends State<HomeScreen> {
           context,
         ).textTheme.bodySmall?.copyWith(color: Colors.white60),
       ),
-      expandChild: true,
-      child: Scrollbar(
-        controller: pageScrollController,
-        thumbVisibility: true,
-        child: GridView.builder(
-          controller: pageScrollController,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 1.28,
-          ),
-          itemCount: _sourceSlots.length,
-          itemBuilder: (context, index) {
-            final slot = _sourceSlots[index];
-            return _buildVideoTile(slot);
-          },
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          childAspectRatio: 1.08,
         ),
+        itemCount: _sourceSlots.length,
+        itemBuilder: (context, index) {
+          final slot = _sourceSlots[index];
+          return _buildVideoTile(slot);
+        },
       ),
     );
   }
@@ -444,8 +455,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                 ],
               ),
-              const SizedBox(height: 8),
-              VideoControlBar(controller: slot.controller),
+              const SizedBox(height: 6),
+              VideoControlBar(controller: slot.controller, compact: true),
             ],
           ),
         );
@@ -455,12 +466,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildInspectorPanel() {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildSelectedSourceSummaryPanel(),
         const SizedBox(height: 12),
         _buildRuleConfigPanel(),
         const SizedBox(height: 12),
-        Expanded(
+        SizedBox(
+          height: 420,
           child: AnimatedBuilder(
             animation: apiEventFeed,
             builder: (context, _) {
@@ -472,28 +485,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        Flexible(
-          child: Scrollbar(
-            controller: rightPanelScrollController,
-            thumbVisibility: true,
-            child: SingleChildScrollView(
-              controller: rightPanelScrollController,
-              child: Column(
-                children: [
-                  if (_activeSlot != null)
-                    AnimatedBuilder(
-                      animation: videoController,
-                      builder: (context, _) {
-                        return VideoControlBar(controller: videoController);
-                      },
-                    ),
-                  const SizedBox(height: 12),
-                  _buildApiDetailPanel(),
-                ],
-              ),
-            ),
-          ),
-        ),
+        _buildApiDetailPanel(),
       ],
     );
   }
@@ -524,6 +516,28 @@ class _HomeScreenState extends State<HomeScreen> {
                   _buildSourceProgressText(source, status),
                 ),
                 _buildDetailLine('sourceKey', source.sourceKey),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _activeSlot == null
+                          ? null
+                          : () => unawaited(
+                              _confirmRemoveSourceSlot(_activeSlot!),
+                            ),
+                      icon: const Icon(Icons.close),
+                      label: const Text('화면/분석 제거'),
+                    ),
+                    FilledButton.tonalIcon(
+                      onPressed: () =>
+                          unawaited(_confirmDeleteRegisteredSource(source)),
+                      icon: const Icon(Icons.delete_forever_outlined),
+                      label: const Text('서버 완전 삭제'),
+                    ),
+                  ],
+                ),
               ],
             ),
     );
@@ -963,7 +977,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 8),
           FilledButton(
             onPressed: () => _openApiDetailClip(item),
-            child: const Text('클립 새 창 재생'),
+            child: const Text('클립 재생'),
           ),
         ],
       ],
@@ -1051,12 +1065,33 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _saveRuleConfig(SourceRuleConfig nextRuleConfig) async {
     final source = _activeSourceItem;
-    if (source == null || isSavingRuleConfig) {
+    if (source == null) {
       return;
     }
 
+    final nextTicket = ++_ruleConfigSaveTicket;
     setState(() {
       isSavingRuleConfig = true;
+      registeredSourcesByKey = {
+        ...registeredSourcesByKey,
+        source.sourceKey: SourceItem(
+          sourceKey: source.sourceKey,
+          sourceSlug: source.sourceSlug,
+          sourceType: source.sourceType,
+          sourceValue: source.sourceValue,
+          sourceDurationSeconds: source.sourceDurationSeconds,
+          serverMediaPath: source.serverMediaPath,
+          mediaUrl: source.mediaUrl,
+          originalSourceType: source.originalSourceType,
+          originalSourceValue: source.originalSourceValue,
+          clientId: source.clientId,
+          sessionId: source.sessionId,
+          desiredRunning: source.desiredRunning,
+          ruleConfig: nextRuleConfig,
+          createdAt: source.createdAt,
+          updatedAt: source.updatedAt,
+        ),
+      };
     });
     final updated = await eventApiService.updateSourceRuleConfig(
       sourceKey: source.sourceKey,
@@ -1067,14 +1102,16 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     setState(() {
-      isSavingRuleConfig = false;
+      isSavingRuleConfig = nextTicket != _ruleConfigSaveTicket;
       if (updated == null) {
         return;
       }
-      registeredSourcesByKey = {
-        ...registeredSourcesByKey,
-        updated.sourceKey: updated,
-      };
+      if (nextTicket == _ruleConfigSaveTicket) {
+        registeredSourcesByKey = {
+          ...registeredSourcesByKey,
+          updated.sourceKey: updated,
+        };
+      }
     });
 
     if (updated == null) {
@@ -1082,9 +1119,11 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    await _refreshSourceStatuses();
-    await _refreshRegisteredSources();
-    _showInfoSnack('소스별 룰 설정을 저장했습니다.');
+    if (nextTicket == _ruleConfigSaveTicket) {
+      await _refreshSourceStatuses();
+      await _refreshRegisteredSources();
+      _showInfoSnack('소스별 룰 설정을 저장했습니다.');
+    }
   }
 
   void _handleDangerZoneChanged(RoiRect roi) {
@@ -1218,59 +1257,75 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _pickVideoFile() async {
-    const group = XTypeGroup(
-      label: 'video',
-      extensions: ['mp4', 'mov', 'avi', 'mkv'],
-    );
-
-    final file = await openFile(acceptedTypeGroups: [group]);
-    if (file == null) {
-      return;
-    }
-
-    final existingSlot = _findSourceSlot(
-      sourceType: 'video',
-      sourceValue: file.path,
-    );
-    if (existingSlot != null) {
-      if (existingSlot.controller.isReplayMode &&
-          existingSlot.controller.canReturnFromReplay) {
-        await existingSlot.controller.returnToLive();
-      }
-      await _setActiveSlot(existingSlot.slotId);
-      await _syncFrameRateFromStatus(
-        sourceType: existingSlot.sourceType,
-        sourceValue: existingSlot.sourceValue,
-        controller: existingSlot.controller,
+    try {
+      const group = XTypeGroup(
+        label: 'video',
+        extensions: ['mp4', 'mov', 'avi', 'mkv'],
       );
-      if (mounted) {
-        _showInfoSnack('이미 등록된 영상 소스로 전환했습니다.');
-      }
-      return;
-    }
 
-    final registeredSource = await _registerSourceOnServer(
-      sourceType: 'video',
-      sourceValue: file.path,
-      resetExisting: true,
-    );
-    if (registeredSource == null) {
-      return;
+      final file = await openFile(acceptedTypeGroups: [group]);
+      if (file == null) {
+        return;
+      }
+
+      final existingSlot = _findSourceSlot(
+        sourceType: 'video',
+        sourceValue: file.path,
+      );
+      if (existingSlot != null) {
+        if (existingSlot.controller.isReplayMode &&
+            existingSlot.controller.canReturnFromReplay) {
+          await existingSlot.controller.returnToLive();
+        }
+        await _setActiveSlot(existingSlot.slotId);
+        await _syncFrameRateFromStatus(
+          sourceType: existingSlot.sourceType,
+          sourceValue: existingSlot.sourceValue,
+          controller: existingSlot.controller,
+        );
+        if (mounted) {
+          _showInfoSnack('이미 등록된 영상 소스로 전환했습니다.');
+        }
+        return;
+      }
+
+      final registeredSource = await _registerSourceOnServer(
+        sourceType: 'video',
+        sourceValue: file.path,
+        resetExisting: true,
+      );
+      if (registeredSource == null) {
+        return;
+      }
+
+      final openPath = _resolveRegisteredSourceOpenPath(registeredSource);
+      final slot = await _addOrActivateSourceSlot(
+        sourceType: registeredSource.sourceType,
+        sourceValue: registeredSource.sourceValue,
+        openPath: openPath,
+        sourceKey: registeredSource.sourceKey,
+        originalSourceType: registeredSource.originalSourceType,
+        originalSourceValue: file.path,
+      );
+      await _syncFrameRateFromStatus(
+        sourceType: registeredSource.sourceType,
+        sourceValue: registeredSource.sourceValue,
+        controller: slot.controller,
+      );
+      if (slot.controller.errorText.trim().isNotEmpty && mounted) {
+        _showInfoSnack(slot.controller.errorText.trim());
+      }
+      unawaited(_refreshApiEventsIfNeeded());
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        apiDetailErrorMessage = '영상 추가 중 오류가 발생했습니다: $error';
+        selectedApiEventDetail = null;
+      });
+      _showInfoSnack('영상 추가 중 오류가 발생했습니다.');
     }
-    final slot = await _addOrActivateSourceSlot(
-      sourceType: registeredSource.sourceType,
-      sourceValue: registeredSource.sourceValue,
-      openPath: file.path,
-      sourceKey: registeredSource.sourceKey,
-      originalSourceType: registeredSource.originalSourceType,
-      originalSourceValue: file.path,
-    );
-    await _syncFrameRateFromStatus(
-      sourceType: registeredSource.sourceType,
-      sourceValue: registeredSource.sourceValue,
-      controller: slot.controller,
-    );
-    unawaited(_refreshApiEventsIfNeeded());
   }
 
   Future<void> _openStream() async {
@@ -1414,14 +1469,12 @@ class _HomeScreenState extends State<HomeScreen> {
     // 클릭 공통 동작:
     // 1) 선택 표시
     // 2) API 상세 조회
-    // 3) 이벤트 시작 시점으로 이동
+    // 3) 해당 소스 타일 강조
+    // 4) 이벤트 시작 시점으로 이동
     apiEventFeed.selectLogItem(item);
 
     final eventKey = item.eventKeyText.trim();
     ApiEventItem? detail;
-    final preferredSourceKey = selectedSourceKey.trim().isNotEmpty
-        ? selectedSourceKey.trim()
-        : apiEventController.visibleSourceKey.trim();
     if (eventKey.isNotEmpty && eventKey != '-') {
       setState(() {
         isLoadingApiDetail = true;
@@ -1430,10 +1483,7 @@ class _HomeScreenState extends State<HomeScreen> {
       });
 
       try {
-        detail = await apiEventController.loadEventDetail(
-          eventKey,
-          sourceKey: preferredSourceKey.isEmpty ? null : preferredSourceKey,
-        );
+        detail = await apiEventController.loadEventDetail(eventKey);
         setState(() {
           selectedApiEventDetail = detail;
           if (detail == null) {
@@ -1452,36 +1502,48 @@ class _HomeScreenState extends State<HomeScreen> {
     if (sourceItem == null) {
       return;
     }
-    if (selectedSourceKey.trim().isEmpty) {
+
+    final targetSlot = _findSourceSlotByKey(sourceItem.sourceKey);
+    if (targetSlot == null) {
+      final source = registeredSourcesByKey[sourceItem.sourceKey.trim()];
+      if (source != null) {
+        await _openRegisteredSource(source);
+      }
+    }
+
+    final resolvedTargetSlot = _findSourceSlotByKey(sourceItem.sourceKey);
+    if (resolvedTargetSlot == null) {
       if (mounted) {
-        _showInfoSnack('이벤트 시작 시점으로 이동하려면 먼저 해당 영상 소스를 선택해 주세요.');
+        _showInfoSnack('해당 이벤트의 소스 화면을 열 수 없습니다.');
       }
       return;
     }
-    if (selectedSourceKey.trim() != sourceItem.sourceKey.trim()) {
-      if (mounted) {
-        _showInfoSnack('현재 선택된 영상 소스의 이벤트만 이동할 수 있습니다.');
-      }
-      return;
+
+    if (_activeSlotId != resolvedTargetSlot.slotId) {
+      await _setActiveSlot(resolvedTargetSlot.slotId);
     }
+
     final targetSeconds = _resolveEventStartSeconds(sourceItem);
     if (targetSeconds < 0) {
       return;
     }
 
-    if (videoController.isReplayMode && videoController.canReturnFromReplay) {
-      await videoController.returnToLive();
+    final targetController = resolvedTargetSlot.controller;
+    if (targetController.isReplayMode && targetController.canReturnFromReplay) {
+      await targetController.returnToLive();
     }
 
-    if (videoController.sourceType == 'stream') {
+    if (targetController.sourceType == 'stream') {
+      await _refreshFrameDetectionsForSource(sourceItem.sourceKey);
       return;
     }
 
     final targetMs = (targetSeconds * 1000).round();
-    final ratio = videoController.totalDuration.inMilliseconds <= 0
+    final ratio = targetController.totalDuration.inMilliseconds <= 0
         ? 0.0
-        : targetMs / videoController.totalDuration.inMilliseconds;
-    await videoController.moveToRatio(ratio);
+        : targetMs / targetController.totalDuration.inMilliseconds;
+    await targetController.moveToRatio(ratio);
+    await _refreshFrameDetectionsForSource(sourceItem.sourceKey);
   }
 
   Future<void> _returnToLive() async {
@@ -1498,13 +1560,20 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     try {
-      if (Platform.isWindows) {
-        await Process.run('cmd', ['/c', 'start', '', resolvedPath]);
-      } else {
-        await Process.start(resolvedPath, const []);
-      }
+      final binding = await _resolveClipTargetController(item);
+      await binding.controller.openReplayClip(
+        resolvedPath,
+        replayStartSeconds: _resolveEventStartSeconds(item),
+        sourceKey: item.sourceKey,
+        preserveReturnContext: binding.preserveReturnContext,
+      );
+      await _refreshFrameDetectionsForSource(item.sourceKey);
       if (mounted) {
-        _showInfoSnack('이벤트 클립을 새 창에서 열었습니다.');
+        _showInfoSnack(
+          binding.preserveReturnContext
+              ? '현재 화면에서 이벤트 클립 재생으로 전환했습니다.'
+              : '현재 화면에서 클립만 재생합니다.',
+        );
       }
     } catch (error) {
       setState(() {
@@ -1673,8 +1742,17 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) {
       return;
     }
-    for (final slot in _sourceSlots) {
+    final slots = List<_SourcePanelSlot>.from(_sourceSlots);
+    for (final slot in slots) {
       await _refreshFrameDetectionsForSlot(slot, silent: true);
+    }
+  }
+
+  Future<void> _syncSlotAudioFocus() async {
+    final activeSlotId = _activeSlotId;
+    final slots = List<_SourcePanelSlot>.from(_sourceSlots);
+    for (final slot in slots) {
+      await slot.controller.setMuted(slot.slotId != activeSlotId);
     }
   }
 
@@ -1841,49 +1919,121 @@ class _HomeScreenState extends State<HomeScreen> {
     String? originalSourceValue,
     String? nextSourceType,
   }) async {
+    return _ensureSourceSlot(
+      sourceType: sourceType,
+      sourceValue: sourceValue,
+      openPath: openPath,
+      sourceKey: sourceKey,
+      originalSourceType: originalSourceType,
+      originalSourceValue: originalSourceValue,
+      nextSourceType: nextSourceType,
+      activate: true,
+    );
+  }
+
+  Future<_SourcePanelSlot> _ensureSourceSlot({
+    required String sourceType,
+    required String sourceValue,
+    required String openPath,
+    required String sourceKey,
+    String? originalSourceType,
+    String? originalSourceValue,
+    String? nextSourceType,
+    required bool activate,
+  }) async {
+    final normalizedSourceKey = sourceKey.trim();
+    if (normalizedSourceKey.isNotEmpty &&
+        _slotCreationSourceKeys.contains(normalizedSourceKey)) {
+      for (var attempt = 0; attempt < 20; attempt++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        final existingSlot = _findSourceSlotByKey(normalizedSourceKey);
+        if (existingSlot != null) {
+          if (activate) {
+            await _setActiveSlot(existingSlot.slotId);
+            unawaited(_refreshApiEventsIfNeeded());
+            unawaited(_refreshFrameDetectionsIfNeeded());
+          }
+          return existingSlot;
+        }
+        if (!_slotCreationSourceKeys.contains(normalizedSourceKey)) {
+          break;
+        }
+      }
+    }
+
     for (final slot in _sourceSlots) {
       if (slot.sourceKey != sourceKey) {
         continue;
       }
-      await _setActiveSlot(slot.slotId);
-      apiEventController.setVisibleSourceKey(sourceKey);
-      unawaited(_refreshApiEventsIfNeeded());
-      unawaited(_refreshFrameDetectionsIfNeeded());
+      if (activate) {
+        await _setActiveSlot(slot.slotId);
+        unawaited(_refreshApiEventsIfNeeded());
+        unawaited(_refreshFrameDetectionsIfNeeded());
+      }
       return slot;
     }
 
-    final slot = _SourcePanelSlot(
-      slotId: 'slot_${DateTime.now().microsecondsSinceEpoch}',
-      sourceType: sourceType,
-      sourceValue: sourceValue,
-      sourceKey: sourceKey,
-      originalSourceType: originalSourceType ?? sourceType,
-      originalSourceValue: originalSourceValue ?? sourceValue,
-      label: _buildSlotLabel(
-        sourceType: originalSourceType ?? sourceType,
-        sourceValue: originalSourceValue ?? sourceValue,
-      ),
-      controller: VideoPanelController(),
-    );
-    await slot.controller.openVideo(
-      openPath,
-      nextSourceType: nextSourceType ?? sourceType,
-    );
+    if (normalizedSourceKey.isNotEmpty) {
+      _slotCreationSourceKeys.add(normalizedSourceKey);
+    }
 
-    setState(() {
-      _sourceSlots.add(slot);
-      _activeSlotId = slot.slotId;
-      selectedApiEventDetail = null;
-      apiDetailErrorMessage = null;
-      frameDetectionSnapshots = const [];
-      frameDetectionLogModifiedAt = null;
-      frameDetectionSourceKey = '';
-    });
-    await _pauseInactiveSlots(exceptSlotId: slot.slotId);
-    apiEventController.setVisibleSourceKey(sourceKey);
-    unawaited(_refreshApiEventsIfNeeded());
-    unawaited(_refreshFrameDetectionsIfNeeded());
-    return slot;
+    try {
+      final slot = _SourcePanelSlot(
+        slotId: 'slot_${DateTime.now().microsecondsSinceEpoch}',
+        sourceType: sourceType,
+        sourceValue: sourceValue,
+        sourceKey: sourceKey,
+        originalSourceType: originalSourceType ?? sourceType,
+        originalSourceValue: originalSourceValue ?? sourceValue,
+        label: _buildSlotLabel(
+          sourceType: originalSourceType ?? sourceType,
+          sourceValue: originalSourceValue ?? sourceValue,
+        ),
+        controller: VideoPanelController(),
+      );
+      try {
+        await slot.controller.openVideo(
+          openPath,
+          nextSourceType: nextSourceType ?? sourceType,
+        );
+      } catch (_) {
+        slot.controller.disposeController();
+        rethrow;
+      }
+
+      final duplicateSlot = _findSourceSlotByKey(sourceKey);
+      if (duplicateSlot != null) {
+        slot.controller.disposeController();
+        if (activate) {
+          await _setActiveSlot(duplicateSlot.slotId);
+          unawaited(_refreshApiEventsIfNeeded());
+          unawaited(_refreshFrameDetectionsIfNeeded());
+        }
+        return duplicateSlot;
+      }
+
+      setState(() {
+        _sourceSlots.add(slot);
+        if (activate || _activeSlotId.isEmpty) {
+          _activeSlotId = slot.slotId;
+        }
+        selectedApiEventDetail = null;
+        apiDetailErrorMessage = null;
+        frameDetectionSnapshots = const [];
+        frameDetectionLogModifiedAt = null;
+        frameDetectionSourceKey = '';
+      });
+      if (activate || _activeSlotId == slot.slotId) {
+        unawaited(_refreshApiEventsIfNeeded());
+      }
+      await _syncSlotAudioFocus();
+      unawaited(_refreshFrameDetectionsIfNeeded());
+      return slot;
+    } finally {
+      if (normalizedSourceKey.isNotEmpty) {
+        _slotCreationSourceKeys.remove(normalizedSourceKey);
+      }
+    }
   }
 
   Future<void> _removeSourceSlot(String slotId) async {
@@ -1930,8 +2080,8 @@ class _HomeScreenState extends State<HomeScreen> {
       lastFrameDetectionStatusUpdatedAtBySourceKey = nextStatusUpdatedMap;
     });
 
+    await _syncSlotAudioFocus();
     apiEventFeed.clearSelection();
-    apiEventController.setVisibleSourceKey(selectedSourceKey);
     await eventApiService.deleteSource(removedSlot.sourceKey, clearData: false);
     await _refreshRegisteredSources();
     await _refreshSourceStatuses();
@@ -1991,8 +2141,8 @@ class _HomeScreenState extends State<HomeScreen> {
       lastFrameDetectionStatusUpdatedAtBySourceKey = nextStatusUpdatedMap;
     });
 
+    await _syncSlotAudioFocus();
     apiEventFeed.clearSelection();
-    apiEventController.setVisibleSourceKey(selectedSourceKey);
     if (_sourceSlots.isNotEmpty) {
       await _syncActiveSlotFrameRateIfNeeded();
     }
@@ -2024,21 +2174,11 @@ class _HomeScreenState extends State<HomeScreen> {
       frameDetectionSourceKey = nextSourceKey;
       isEditingDangerZone = false;
     });
-    await _pauseInactiveSlots(exceptSlotId: slotId);
+    await _syncSlotAudioFocus();
     apiEventFeed.clearSelection();
-    apiEventController.setVisibleSourceKey(selectedSourceKey);
     unawaited(_refreshApiEventsIfNeeded());
     unawaited(_syncActiveSlotFrameRateIfNeeded());
     unawaited(_refreshFrameDetectionsIfNeeded());
-  }
-
-  Future<void> _pauseInactiveSlots({required String exceptSlotId}) async {
-    for (final slot in _sourceSlots) {
-      if (slot.slotId == exceptSlotId) {
-        continue;
-      }
-      await slot.controller.pausePlayback();
-    }
   }
 
   String _buildSlotLabel({
@@ -2121,9 +2261,10 @@ class _HomeScreenState extends State<HomeScreen> {
       registeredSourcesByKey = nextMap;
     });
 
+    await _restoreRegisteredSourceSlots(nextMap.values.toList(growable: false));
+
     if (removedSlotLabels.isNotEmpty) {
       apiEventFeed.clearSelection();
-      apiEventController.setVisibleSourceKey(selectedSourceKey);
       if (_sourceSlots.isNotEmpty) {
         await _syncActiveSlotFrameRateIfNeeded();
       }
@@ -2132,6 +2273,54 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         _showInfoSnack('삭제된 서버 소스 화면을 자동으로 닫았습니다.');
       }
+    }
+  }
+
+  Future<void> _restoreRegisteredSourceSlots(List<SourceItem> sources) async {
+    final previousActiveSlotId = _activeSlotId;
+    for (final source in sources) {
+      final existingSlot = _findSourceSlotByKey(source.sourceKey);
+      if (existingSlot != null) {
+        continue;
+      }
+
+      final openPath = _resolveRegisteredSourceOpenPath(source);
+      if (openPath.isEmpty) {
+        continue;
+      }
+
+      await _ensureSourceSlot(
+        sourceType: source.sourceType,
+        sourceValue: source.sourceValue,
+        openPath: openPath,
+        sourceKey: source.sourceKey,
+        originalSourceType: source.originalSourceType,
+        originalSourceValue: source.originalSourceValue,
+        nextSourceType: source.sourceType,
+        activate: false,
+      );
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    if (previousActiveSlotId.isNotEmpty &&
+        _sourceSlots.any((slot) => slot.slotId == previousActiveSlotId)) {
+      setState(() {
+        _activeSlotId = previousActiveSlotId;
+      });
+      await _syncSlotAudioFocus();
+      unawaited(_refreshFrameDetectionsIfNeeded());
+      return;
+    }
+
+    if (_activeSlotId.isEmpty && _sourceSlots.isNotEmpty) {
+      setState(() {
+        _activeSlotId = _sourceSlots.first.slotId;
+      });
+      await _syncSlotAudioFocus();
+      unawaited(_refreshFrameDetectionsIfNeeded());
     }
   }
 
@@ -2224,7 +2413,9 @@ class _HomeScreenState extends State<HomeScreen> {
       return '아직 이 소스의 프레임 탐지 결과를 기다리는 중입니다.';
     }
 
-    final snapshot = _getOverlaySnapshot();
+    final snapshot = frameDetectionSnapshots.isEmpty
+        ? null
+        : frameDetectionSnapshots.first;
     if (snapshot != null) {
       final snapshotTimeDelta =
           (snapshot.sourceTimeSeconds - videoController.currentOverlaySeconds)
@@ -2411,6 +2602,15 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) {
       _showInfoSnack('"${slot.label}" 소스 분석을 중단하고 화면에서 제거했습니다.');
     }
+  }
+
+  Future<void> _handleSlotDeleteAction(_SourcePanelSlot slot) async {
+    final registeredSource = registeredSourcesByKey[slot.sourceKey.trim()];
+    if (registeredSource != null) {
+      await _confirmDeleteRegisteredSource(registeredSource);
+      return;
+    }
+    await _confirmRemoveSourceSlot(slot);
   }
 
   Future<void> _confirmDeleteRegisteredSource(SourceItem source) async {
@@ -2641,7 +2841,6 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         _showInfoSnack('소스 선택을 해제하고 전체 이벤트 로그 보기로 전환했습니다.');
       }
-      apiEventController.setVisibleSourceKey('');
       unawaited(_refreshApiEventsIfNeeded());
       return;
     }
@@ -2653,7 +2852,6 @@ class _HomeScreenState extends State<HomeScreen> {
       frameDetectionSourceKey = '';
       isEditingDangerZone = false;
     });
-    apiEventController.setVisibleSourceKey('');
     unawaited(_refreshApiEventsIfNeeded());
   }
 

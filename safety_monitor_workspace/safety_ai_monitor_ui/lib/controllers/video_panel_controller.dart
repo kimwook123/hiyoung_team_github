@@ -39,6 +39,7 @@ class VideoPanelController extends ChangeNotifier {
   StreamSubscription<bool>? _playingSub;
   StreamSubscription<int?>? _videoWidthSub;
   StreamSubscription<int?>? _videoHeightSub;
+  bool _isDisposed = false;
 
   VideoController get videoController => _service.videoController;
 
@@ -72,7 +73,7 @@ class VideoPanelController extends ChangeNotifier {
     }
 
     if (path.isEmpty) {
-      notifyListeners();
+      _notifyIfActive();
       return;
     }
 
@@ -80,7 +81,7 @@ class VideoPanelController extends ChangeNotifier {
       final file = File(path);
       if (!await file.exists()) {
         errorText = '영상 파일을 찾을 수 없습니다.';
-        notifyListeners();
+        _notifyIfActive();
         return;
       }
     }
@@ -90,8 +91,14 @@ class VideoPanelController extends ChangeNotifier {
     if (nextSourceType == 'stream') {
       liveSourcePath = path;
     }
-    await _service.openVideo(path);
-    notifyListeners();
+    try {
+      await _service.openVideo(path);
+    } catch (error) {
+      errorText = '영상 열기에 실패했습니다: $error';
+      _notifyIfActive();
+      return;
+    }
+    _notifyIfActive();
   }
 
   Future<void> openReplayClip(
@@ -118,10 +125,13 @@ class VideoPanelController extends ChangeNotifier {
       nextSourceType: 'video',
       preserveReplayContext: true,
     );
+    if (_isDisposed) {
+      return;
+    }
     isReplayMode = true;
     replayBaseSourceSeconds = replayStartSeconds < 0 ? 0.0 : replayStartSeconds;
     replaySourceKey = sourceKey.trim();
-    notifyListeners();
+    _notifyIfActive();
   }
 
   Future<void> returnToLive() async {
@@ -148,7 +158,7 @@ class VideoPanelController extends ChangeNotifier {
       await _service.seek(returnPosition);
     }
 
-    notifyListeners();
+    _notifyIfActive();
   }
 
   Future<void> togglePlay() async {
@@ -188,6 +198,13 @@ class VideoPanelController extends ChangeNotifier {
     await _service.seek(Duration(milliseconds: nextMs));
   }
 
+  Future<void> setMuted(bool muted) async {
+    if (_isDisposed) {
+      return;
+    }
+    await _service.setMuted(muted);
+  }
+
   void clearCurrentSource() {
     videoPath = '';
     liveSourcePath = '';
@@ -201,7 +218,7 @@ class VideoPanelController extends ChangeNotifier {
     replayBaseSourceSeconds = 0.0;
     errorText = '';
     isReplayMode = false;
-    notifyListeners();
+    _notifyIfActive();
   }
 
   void setFrameRate(double value) {
@@ -209,51 +226,71 @@ class VideoPanelController extends ChangeNotifier {
       return;
     }
     frameRate = value;
-    notifyListeners();
+    _notifyIfActive();
   }
 
   void disposeController() {
+    if (_isDisposed) {
+      return;
+    }
+    _isDisposed = true;
     unawaited(_positionSub?.cancel());
     unawaited(_durationSub?.cancel());
     unawaited(_playingSub?.cancel());
     unawaited(_videoWidthSub?.cancel());
     unawaited(_videoHeightSub?.cancel());
     unawaited(_service.dispose());
+    dispose();
   }
 
   void _listenVideoState() {
     // media_kit의 재생 상태 변화를 UI용 필드로 반영합니다.
     _positionSub = _service.positionStream.listen((value) {
+      if (_isDisposed) {
+        return;
+      }
       currentPosition = value;
-      notifyListeners();
+      _notifyIfActive();
     });
 
     _durationSub = _service.durationStream.listen((value) {
+      if (_isDisposed) {
+        return;
+      }
       totalDuration = value;
-      notifyListeners();
+      _notifyIfActive();
     });
 
     _playingSub = _service.playingStream.listen((value) {
+      if (_isDisposed) {
+        return;
+      }
       isPlaying = value;
-      notifyListeners();
+      _notifyIfActive();
     });
 
     _videoWidthSub = _service.videoWidthStream.listen((value) {
+      if (_isDisposed) {
+        return;
+      }
       final nextWidth = value ?? 0;
       if (videoWidth == nextWidth) {
         return;
       }
       videoWidth = nextWidth;
-      notifyListeners();
+      _notifyIfActive();
     });
 
     _videoHeightSub = _service.videoHeightStream.listen((value) {
+      if (_isDisposed) {
+        return;
+      }
       final nextHeight = value ?? 0;
       if (videoHeight == nextHeight) {
         return;
       }
       videoHeight = nextHeight;
-      notifyListeners();
+      _notifyIfActive();
     });
   }
 
@@ -272,5 +309,12 @@ class VideoPanelController extends ChangeNotifier {
     // clip_url처럼 HTTP 주소가 들어오면 로컬 파일 존재 검사를 건너뛰기 위해 사용합니다.
     final normalized = path.trim().toLowerCase();
     return normalized.startsWith('http://') || normalized.startsWith('https://');
+  }
+
+  void _notifyIfActive() {
+    if (_isDisposed) {
+      return;
+    }
+    notifyListeners();
   }
 }

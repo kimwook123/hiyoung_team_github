@@ -37,24 +37,33 @@ class RealtimeUpdateHub:
                 listener_count = len(self._listeners)
             log_line("PUSH", event="client-disconnect", clients=listener_count)
 
-    def publish(self, event_type: str, **payload: Any) -> None:
-        message = {"type": event_type, **payload}
+    def publish(self, message_type: str, **payload: Any) -> None:
+        message = {"type": message_type, **payload}
         encoded = json.dumps(message, ensure_ascii=False)
         with self._lock:
-            listeners = list(self._listeners.values())
+            listeners = list(self._listeners.items())
             listener_count = len(listeners)
         if listener_count <= 0:
             return
         log_line(
             "PUSH",
-            event=event_type,
+            event=message_type,
             clients=listener_count,
             source=str(payload.get("source_key", "")).strip() or None,
             action=str(payload.get("action", "")).strip() or None,
             state=str(payload.get("state", "")).strip() or None,
         )
-        for loop, queue in listeners:
-            loop.call_soon_threadsafe(self._enqueue_message, queue, encoded)
+        stale_listener_ids: list[int] = []
+        for listener_id, (loop, queue) in listeners:
+            try:
+                loop.call_soon_threadsafe(self._enqueue_message, queue, encoded)
+            except RuntimeError:
+                stale_listener_ids.append(listener_id)
+
+        if stale_listener_ids:
+            with self._lock:
+                for listener_id in stale_listener_ids:
+                    self._listeners.pop(listener_id, None)
 
     @staticmethod
     def _enqueue_message(queue: asyncio.Queue[str], payload: str) -> None:

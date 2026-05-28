@@ -34,6 +34,8 @@ class VideoEventOverlay extends StatelessWidget {
             constraints.maxHeight,
           );
           final videoRect = _resolveVideoRect(bounds);
+          final canShowEventCards =
+              constraints.maxWidth >= 220 && constraints.maxHeight >= 110;
 
           return Stack(
             children: [
@@ -45,30 +47,36 @@ class VideoEventOverlay extends StatelessWidget {
                     videoRect,
                   );
                 }),
-              if (items.isNotEmpty)
+              if (items.isNotEmpty && canShowEventCards)
                 Align(
                   alignment: Alignment.topLeft,
                   child: Padding(
                     padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: items.take(3).map((item) {
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.red.withOpacity(0.75),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            '${item.typeText} / ${item.levelText}\n${item.messageText}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
+                    child: SizedBox(
+                      width: math.min(260, constraints.maxWidth - 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: items.take(2).map((item) {
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withOpacity(0.75),
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                          ),
-                        );
-                      }).toList(),
+                            child: Text(
+                              '${item.typeText} / ${item.levelText}\n${item.messageText}',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
                     ),
                   ),
                 ),

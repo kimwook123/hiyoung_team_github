@@ -31,6 +31,7 @@ from app.config import (
     NO_HELMET_HEAD_RATIO,
     NO_HELMET_OVERLAP_RATIO,
     PERSON_MODEL_PATH,
+    PREFER_TENSORRT_ENGINE,
     PIPELINE_PERF_LOG_INTERVAL_FRAMES,
     SAFETY_MODEL_PATH,
     SAVE_EVENT_CLIP,
@@ -486,6 +487,7 @@ def _build_model():
             min_confidence=MIN_CONFIDENCE,
             device=ANALYSIS_DEVICE,
             require_cuda=ANALYSIS_REQUIRE_CUDA,
+            prefer_tensorrt_engine=PREFER_TENSORRT_ENGINE,
         )
     if MODEL_TYPE == "yolo_ensemble":
         return EnsembleYoloModel(
@@ -494,6 +496,7 @@ def _build_model():
             min_confidence=MIN_CONFIDENCE,
             device=ANALYSIS_DEVICE,
             require_cuda=ANALYSIS_REQUIRE_CUDA,
+            prefer_tensorrt_engine=PREFER_TENSORRT_ENGINE,
             person_class_map={"person": "person"},
             safety_class_map={
                 "helmet": "helmet",

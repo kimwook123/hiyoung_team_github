@@ -26,6 +26,10 @@ class EventApiService {
   final http.Client _client;
   String baseUrl;
 
+  void dispose() {
+    _client.close();
+  }
+
   void updateBaseUrl(String nextBaseUrl) {
     final normalized = nextBaseUrl.trim();
     if (normalized.isEmpty) {

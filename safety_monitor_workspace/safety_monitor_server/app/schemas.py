@@ -36,6 +36,7 @@ class SourceItem(BaseModel):
     client_id: str = ""
     session_id: str = ""
     desired_running: bool = True
+    rule_config: dict[str, Any] = {}
     created_at: str
     updated_at: str
 
@@ -57,6 +58,10 @@ class SourceCreateRequest(BaseModel):
 class SourceUpsertResponse(BaseModel):
     ok: bool
     item: SourceItem
+
+
+class SourceConfigUpdateRequest(BaseModel):
+    rule_config: dict[str, Any]
 
 
 class SourceActionResponse(BaseModel):

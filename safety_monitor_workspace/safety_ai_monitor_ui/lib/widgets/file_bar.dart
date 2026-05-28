@@ -54,8 +54,9 @@ class FileBar extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.black12),
-            borderRadius: BorderRadius.circular(8),
+            color: const Color(0xFF171A20),
+            border: Border.all(color: Colors.white12),
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
             children: [
@@ -115,28 +116,22 @@ class _PathCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.black12),
-        borderRadius: BorderRadius.circular(8),
+        color: const Color(0xFF171A20),
+        border: Border.all(color: Colors.white12),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
-          Text(
-            value,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
+          Text(value, maxLines: 2, overflow: TextOverflow.ellipsis),
           const SizedBox(height: 6),
           Text(
             helperText,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Colors.black54,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: Colors.white60),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -145,19 +140,16 @@ class _PathCard extends StatelessWidget {
             sourceCount <= 0
                 ? '등록된 소스가 없습니다.'
                 : '등록된 소스 $sourceCount개 / 현재 화면: $activeSourceLabel',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Colors.black54,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: Colors.white60),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 8),
           Row(
             children: [
-              FilledButton(
-                onPressed: onPressed,
-                child: Text(buttonText),
-              ),
+              FilledButton(onPressed: onPressed, child: Text(buttonText)),
               if (hasSelectedSource) ...[
                 const SizedBox(width: 12),
                 OutlinedButton(

@@ -19,8 +19,9 @@ class EventLogBox extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.black12),
-        borderRadius: BorderRadius.circular(8),
+        color: const Color(0xFF171A20),
+        border: Border.all(color: Colors.white12),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         children: [
@@ -28,10 +29,7 @@ class EventLogBox extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Row(
               children: [
-                Text(
-                  '이벤트 로그',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+                Text('이벤트 로그', style: Theme.of(context).textTheme.titleMedium),
                 const Spacer(),
                 Text('총 ${eventFeed.logItems.length}건'),
               ],
@@ -40,9 +38,7 @@ class EventLogBox extends StatelessWidget {
           const Divider(height: 1),
           Expanded(
             child: eventFeed.logItems.isEmpty
-                ? const Center(
-                    child: Text('표시할 로그가 없습니다.'),
-                  )
+                ? const Center(child: Text('표시할 로그가 없습니다.'))
                 : ListView.separated(
                     itemCount: eventFeed.logItems.length,
                     separatorBuilder: (_, __) => const Divider(height: 1),
@@ -50,8 +46,9 @@ class EventLogBox extends StatelessWidget {
                       final item = eventFeed.logItems[index];
                       return _LogTile(
                         item: item,
-                        isSelected:
-                            eventFeed.selectedKeys.contains(item.eventKeyText),
+                        isSelected: eventFeed.selectedKeys.contains(
+                          item.eventKeyText,
+                        ),
                         onTap: () => onTapItem(item),
                       );
                     },

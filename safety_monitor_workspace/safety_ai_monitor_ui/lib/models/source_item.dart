@@ -1,3 +1,5 @@
+import 'source_rule_config.dart';
+
 class SourceItem {
   const SourceItem({
     required this.sourceKey,
@@ -12,6 +14,7 @@ class SourceItem {
     required this.clientId,
     required this.sessionId,
     required this.desiredRunning,
+    required this.ruleConfig,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -28,6 +31,7 @@ class SourceItem {
   final String clientId;
   final String sessionId;
   final bool desiredRunning;
+  final SourceRuleConfig ruleConfig;
   final String createdAt;
   final String updatedAt;
 
@@ -45,6 +49,13 @@ class SourceItem {
       clientId: json['client_id']?.toString() ?? '',
       sessionId: json['session_id']?.toString() ?? '',
       desiredRunning: json['desired_running'] == true,
+      ruleConfig: SourceRuleConfig.fromJson(
+        json['rule_config'] is Map<String, dynamic>
+            ? json['rule_config'] as Map<String, dynamic>
+            : json['rule_config'] is Map
+            ? Map<String, dynamic>.from(json['rule_config'] as Map)
+            : null,
+      ),
       createdAt: json['created_at']?.toString() ?? '',
       updatedAt: json['updated_at']?.toString() ?? '',
     );

@@ -13,6 +13,7 @@ import '../models/api_event_item.dart';
 import '../models/event_log_item.dart';
 import '../models/frame_detection_snapshot.dart';
 import '../models/source_item.dart';
+import '../models/source_rule_config.dart';
 import '../models/source_runtime_status.dart';
 import '../models/video_overlay_detection.dart';
 import '../services/event_api_service.dart';
@@ -41,7 +42,9 @@ class _HomeScreenState extends State<HomeScreen> {
   late final EventApiService eventApiService;
   late final ApiEventController apiEventController;
   late final ApiEventFeedSource apiEventFeed;
+  final ScrollController appScrollController = ScrollController();
   final ScrollController pageScrollController = ScrollController();
+  final ScrollController sourceListScrollController = ScrollController();
   final ScrollController rightPanelScrollController = ScrollController();
   final TextEditingController streamTextController = TextEditingController();
   final TextEditingController serverBaseUrlTextController =
@@ -61,6 +64,9 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime? frameDetectionLogModifiedAt;
   String frameDetectionSourceKey = '';
   List<FrameDetectionSnapshot> frameDetectionSnapshots = const [];
+  Map<String, FrameDetectionSnapshot> frameDetectionBySourceKey = const {};
+  Map<String, double> lastFrameDetectionRequestSecondsBySourceKey = const {};
+  Map<String, String> lastFrameDetectionStatusUpdatedAtBySourceKey = const {};
   Map<String, SourceItem> registeredSourcesByKey = const {};
   Map<String, SourceRuntimeStatus> sourceStatusesByKey = const {};
   String lastFrameDetectionRequestSourceKey = '';
@@ -71,6 +77,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool pendingRealtimeEventsRefresh = false;
   bool pendingRealtimeSourcesRefresh = false;
   bool pendingRealtimeStatusesRefresh = false;
+  bool isSavingRuleConfig = false;
+  bool isEditingDangerZone = false;
 
   @override
   void initState() {
@@ -100,7 +108,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     _emptyVideoController.disposeController();
     apiEventFeed.dispose();
+    appScrollController.dispose();
     pageScrollController.dispose();
+    sourceListScrollController.dispose();
     rightPanelScrollController.dispose();
     streamTextController.dispose();
     serverBaseUrlTextController.dispose();
@@ -116,6 +126,22 @@ class _HomeScreenState extends State<HomeScreen> {
     return null;
   }
 
+  SourceItem? get _activeSourceItem {
+    final sourceKey = selectedSourceKey.trim();
+    if (sourceKey.isEmpty) {
+      return null;
+    }
+    return registeredSourcesByKey[sourceKey];
+  }
+
+  SourceRuleConfig get _activeRuleConfig =>
+      _activeSourceItem?.ruleConfig ??
+      const SourceRuleConfig(
+        useNoHelmetRule: true,
+        useDangerZoneRule: false,
+        dangerZoneRoi: null,
+      );
+
   VideoPanelController get videoController =>
       _activeSlot?.controller ?? _emptyVideoController;
 
@@ -129,129 +155,67 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Safety AI Monitor UI'),
+        title: Row(
+          children: [
+            const Text('Safety AI Guard'),
+            const SizedBox(width: 12),
+            Text(
+              _formatDateTime(DateTime.now()),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: Colors.white70),
+            ),
+          ],
+        ),
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final contentAreaHeight = math.max(
-            720.0,
-            constraints.maxHeight - 180.0,
+          final dashboardHeight = math.max(
+            860.0,
+            constraints.maxHeight - 170.0,
           );
-
           return Scrollbar(
-            controller: pageScrollController,
+            controller: appScrollController,
             thumbVisibility: true,
             child: SingleChildScrollView(
-              controller: pageScrollController,
+              controller: appScrollController,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
-                    // 상단 입력 영역은 기존 파일 기반 흐름을 그대로 유지합니다.
                     AnimatedBuilder(
                       animation: videoController,
                       builder: (context, _) {
                         return FileBar(
                           videoPath: videoController.videoPath,
                           sourceType: videoController.sourceType,
-                            sourceHint: _buildSourceHint(),
-                            sourceCount: _sourceSlots.length,
-                            activeSourceLabel: _buildActiveSourceLabel(),
-                            hasSelectedSource: selectedSourceKey.isNotEmpty,
-                            canReturnFromReplay: videoController.canReturnFromReplay,
-                            streamTextController: streamTextController,
-                            onPickVideo: _pickVideoFile,
-                            onClearSelectedSource: _clearSelectedSource,
-                            onOpenStream: _openStream,
-                            onReturnLive: _returnToLive,
+                          sourceHint: _buildSourceHint(),
+                          sourceCount: _sourceSlots.length,
+                          activeSourceLabel: _buildActiveSourceLabel(),
+                          hasSelectedSource: selectedSourceKey.isNotEmpty,
+                          canReturnFromReplay:
+                              videoController.canReturnFromReplay,
+                          streamTextController: streamTextController,
+                          onPickVideo: _pickVideoFile,
+                          onClearSelectedSource: _clearSelectedSource,
+                          onOpenStream: _openStream,
+                          onReturnLive: _returnToLive,
                         );
                       },
                     ),
-                    const SizedBox(height: 16),
-                    _buildSourceTabs(),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     _buildApiControls(),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     SizedBox(
-                      height: contentAreaHeight,
+                      height: dashboardHeight,
                       child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            flex: 3,
-                            child: Column(
-                              children: [
-                                Expanded(
-                                  child: AnimatedBuilder(
-                                        animation: Listenable.merge(
-                                          [
-                                            videoController,
-                                            apiEventFeed,
-                                          ],
-                                        ),
-                                        builder: (context, _) {
-                                          // 오버레이는 현재 활성 feed에서 프레임 기준 이벤트만 받아 재사용합니다.
-                                          return VideoViewBox(
-                                            controller: videoController,
-                                            overlayItems: _getOverlayItems(),
-                                            overlayDetections: _getOverlayDetections(),
-                                            overlaySourceWidth: _getOverlaySourceWidth(),
-                                            overlaySourceHeight: _getOverlaySourceHeight(),
-                                            overlayStatusText: _buildOverlayStatusText(),
-                                          );
-                                        },
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                AnimatedBuilder(
-                                  animation: videoController,
-                                  builder: (context, _) {
-                                    return VideoControlBar(controller: videoController);
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
+                          SizedBox(width: 270, child: _buildSourceSidebar()),
                           const SizedBox(width: 16),
-                          Expanded(
-                            flex: 2,
-                            child: LayoutBuilder(
-                              builder: (context, constraints) {
-                                return Column(
-                                  children: [
-                                    Flexible(
-                                      fit: FlexFit.loose,
-                                      child: Scrollbar(
-                                        controller: rightPanelScrollController,
-                                        thumbVisibility: true,
-                                        child: SingleChildScrollView(
-                                          controller: rightPanelScrollController,
-                                          child: Column(
-                                            children: [
-                                              _buildApiServerHealthPanel(),
-                                              const SizedBox(height: 12),
-                                              _buildApiDetailPanel(),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Expanded(
-                                      child: AnimatedBuilder(
-                                        animation: apiEventFeed,
-                                        builder: (context, _) {
-                                          return EventLogBox(
-                                            eventFeed: apiEventFeed,
-                                            onTapItem: _onTapEventItem,
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
-                          ),
+                          Expanded(child: _buildVideoGridPanel()),
+                          const SizedBox(width: 16),
+                          SizedBox(width: 360, child: _buildInspectorPanel()),
                         ],
                       ),
                     ),
@@ -323,6 +287,376 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildSourceSidebar() {
+    final slots = [..._sourceSlots];
+    return _buildPanelCard(
+      title: '카메라 목록',
+      expandChild: true,
+      child: slots.isEmpty
+          ? const Center(child: Text('영상 또는 스트림을 추가하면 여기에 표시됩니다.'))
+          : Scrollbar(
+              controller: sourceListScrollController,
+              thumbVisibility: true,
+              child: ListView.separated(
+                controller: sourceListScrollController,
+                itemCount: slots.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final slot = slots[index];
+                  final isSelected = slot.slotId == _activeSlotId;
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => unawaited(_setActiveSlot(slot.slotId)),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? const Color(0xFF242833)
+                            : const Color(0xFF181B22),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.white12,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              color: _colorForSlotStatus(slot),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  slot.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _describeSlotStatus(slot),
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(color: Colors.white60),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+    );
+  }
+
+  Widget _buildVideoGridPanel() {
+    if (_sourceSlots.isEmpty) {
+      return _buildPanelCard(
+        title: '실시간 모니터',
+        child: const Center(
+          child: Text('왼쪽 상단에서 소스를 추가하면 여러 영상을 동시에 볼 수 있습니다.'),
+        ),
+      );
+    }
+
+    return _buildPanelCard(
+      title: '실시간 모니터',
+      trailing: Text(
+        '가로 2열',
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: Colors.white60),
+      ),
+      expandChild: true,
+      child: Scrollbar(
+        controller: pageScrollController,
+        thumbVisibility: true,
+        child: GridView.builder(
+          controller: pageScrollController,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: 1.28,
+          ),
+          itemCount: _sourceSlots.length,
+          itemBuilder: (context, index) {
+            final slot = _sourceSlots[index];
+            return _buildVideoTile(slot);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVideoTile(_SourcePanelSlot slot) {
+    final isSelected = slot.slotId == _activeSlotId;
+    return AnimatedBuilder(
+      animation: Listenable.merge([slot.controller, apiEventFeed]),
+      builder: (context, _) {
+        return VideoViewBox(
+          controller: slot.controller,
+          title: slot.label,
+          badgeText: _describeSlotStatus(slot),
+          badgeColor: _colorForSlotStatus(slot),
+          isSelected: isSelected,
+          onTap: () => unawaited(_setActiveSlot(slot.slotId)),
+          overlayItems: _getOverlayItemsForSlot(slot),
+          overlayDetections: _getOverlayDetectionsForSlot(slot),
+          overlaySourceWidth: _getOverlaySourceWidthForSlot(slot),
+          overlaySourceHeight: _getOverlaySourceHeightForSlot(slot),
+          overlayStatusText: _buildTileStatusText(slot),
+          dangerZoneRoi: isSelected ? _activeRuleConfig.dangerZoneRoi : null,
+          enableDangerZoneEditing: isSelected && isEditingDangerZone,
+          onDangerZoneChanged: isSelected ? _handleDangerZoneChanged : null,
+          footer: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      slot.sourceType == 'stream'
+                          ? 'LIVE'
+                          : '${_formatDuration(slot.controller.currentPosition)} / ${_formatDuration(slot.controller.totalDuration)}',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: Colors.white70),
+                    ),
+                  ),
+                  if (slot.controller.canReturnFromReplay)
+                    TextButton(
+                      onPressed: () =>
+                          unawaited(slot.controller.returnToLive()),
+                      child: const Text('클립 닫기'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              VideoControlBar(controller: slot.controller),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildInspectorPanel() {
+    return Column(
+      children: [
+        _buildSelectedSourceSummaryPanel(),
+        const SizedBox(height: 12),
+        _buildRuleConfigPanel(),
+        const SizedBox(height: 12),
+        Expanded(
+          child: AnimatedBuilder(
+            animation: apiEventFeed,
+            builder: (context, _) {
+              return EventLogBox(
+                eventFeed: apiEventFeed,
+                onTapItem: _onTapEventItem,
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+        Flexible(
+          child: Scrollbar(
+            controller: rightPanelScrollController,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: rightPanelScrollController,
+              child: Column(
+                children: [
+                  if (_activeSlot != null)
+                    AnimatedBuilder(
+                      animation: videoController,
+                      builder: (context, _) {
+                        return VideoControlBar(controller: videoController);
+                      },
+                    ),
+                  const SizedBox(height: 12),
+                  _buildApiDetailPanel(),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSelectedSourceSummaryPanel() {
+    final source = _activeSourceItem;
+    final status = source == null
+        ? null
+        : sourceStatusesByKey[source.sourceKey];
+    return _buildPanelCard(
+      title: '선택된 영상',
+      child: source == null
+          ? const Text('영상 타일을 클릭하면 해당 소스의 로그와 룰 설정이 여기에 표시됩니다.')
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  source.sourceSlug,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _buildDetailLine('type', source.sourceType),
+                _buildDetailLine('status', status?.state ?? '-'),
+                _buildDetailLine(
+                  'progress',
+                  _buildSourceProgressText(source, status),
+                ),
+                _buildDetailLine('sourceKey', source.sourceKey),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildRuleConfigPanel() {
+    final source = _activeSourceItem;
+    final ruleConfig = _activeRuleConfig;
+    return _buildPanelCard(
+      title: '소스별 룰 설정',
+      trailing: isSavingRuleConfig
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : null,
+      child: source == null
+          ? const Text('먼저 영상 타일을 선택해 주세요.')
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SwitchListTile(
+                  value: ruleConfig.useNoHelmetRule,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('안전모 미착용 룰'),
+                  subtitle: const Text('사람과 helmet/head 탐지 결과 기준'),
+                  onChanged: (value) {
+                    unawaited(
+                      _saveRuleConfig(
+                        ruleConfig.copyWith(useNoHelmetRule: value),
+                      ),
+                    );
+                  },
+                ),
+                const Divider(height: 20),
+                SwitchListTile(
+                  value: ruleConfig.useDangerZoneRule,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('위험구역 룰'),
+                  subtitle: Text(
+                    ruleConfig.dangerZoneRoi == null
+                        ? '선택 후 드래그로 구역을 지정하세요.'
+                        : '드래그 사각형 안에 사람 중심점이 들어오면 이벤트 발생',
+                  ),
+                  onChanged: (value) {
+                    unawaited(
+                      _saveRuleConfig(
+                        ruleConfig.copyWith(useDangerZoneRule: value),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.tonal(
+                      onPressed: () {
+                        setState(() {
+                          isEditingDangerZone = !isEditingDangerZone;
+                        });
+                      },
+                      child: Text(
+                        isEditingDangerZone ? '위험구역 편집 종료' : '위험구역 드래그 편집',
+                      ),
+                    ),
+                    OutlinedButton(
+                      onPressed: ruleConfig.dangerZoneRoi == null
+                          ? null
+                          : () {
+                              unawaited(
+                                _saveRuleConfig(
+                                  ruleConfig.copyWith(clearDangerZoneRoi: true),
+                                ),
+                              );
+                            },
+                      child: const Text('위험구역 초기화'),
+                    ),
+                  ],
+                ),
+                if (ruleConfig.dangerZoneRoi != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'ROI: (${ruleConfig.dangerZoneRoi!.x1}, ${ruleConfig.dangerZoneRoi!.y1}) '
+                    '- (${ruleConfig.dangerZoneRoi!.x2}, ${ruleConfig.dangerZoneRoi!.y2})',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.white70),
+                  ),
+                ],
+              ],
+            ),
+    );
+  }
+
+  Widget _buildPanelCard({
+    required String title,
+    required Widget child,
+    Widget? trailing,
+    bool expandChild = false,
+  }) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: const Color(0xFF171A20),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white12),
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                title,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const Spacer(),
+              if (trailing != null) trailing,
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (expandChild) Expanded(child: child) else child,
+        ],
+      ),
+    );
+  }
+
   Widget _buildSourceTabs() {
     return Container(
       width: double.infinity,
@@ -336,16 +670,13 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           Row(
             children: [
-              Text(
-                '소스 화면 전환',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
+              Text('소스 화면 전환', style: Theme.of(context).textTheme.titleSmall),
               const Spacer(),
               Text(
                 '총 ${_sourceSlots.length}개',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Colors.black54,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.black54),
               ),
             ],
           ),
@@ -353,9 +684,9 @@ class _HomeScreenState extends State<HomeScreen> {
           if (_sourceSlots.isEmpty)
             Text(
               '영상 추가 또는 스트림 추가를 누르면 소스가 여기에 쌓이고, 칩을 눌러 화면을 전환할 수 있습니다.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.black54,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.black54),
             )
           else
             Wrap(
@@ -373,8 +704,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     onSelected: (_) => unawaited(_setActiveSlot(slot.slotId)),
                     onDeleted: () => _confirmRemoveSourceSlot(slot),
                   ),
-                ],
-              ),
+              ],
+            ),
           if (registeredSourcesByKey.isNotEmpty) ...[
             const SizedBox(height: 12),
             _buildRegisteredSourcesSummary(),
@@ -397,79 +728,73 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-            Text(
-              '서버 등록 소스',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '분석/보관 기준은 서버 등록 소스입니다. 각 소스의 상태, 진행도, 화면 열기, 관리자용 완전 삭제를 여기서 확인합니다.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.black54,
-              ),
-            ),
-            const SizedBox(height: 8),
-            for (final source in sourceEntries)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.black12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        source.sourceSlug,
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                      const SizedBox(height: 4),
-                      Text('type: ${source.sourceType}'),
-                      Text('source_key: ${source.sourceKey}'),
-                      Text(
-                        'state: ${_describeServerSourceState(source.sourceKey)}',
-                      ),
-                      Text(
-                        'progress: ${_buildSourceProgressText(source, sourceStatusesByKey[source.sourceKey])}',
-                      ),
-                      Text(
-                        'client: ${source.clientId.isEmpty ? '-' : source.clientId}',
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        alignment: WrapAlignment.end,
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          OutlinedButton(
-                            onPressed: () => unawaited(
-                              _openRegisteredSource(source),
-                            ),
-                            child: const Text('화면에 열기'),
-                          ),
-                          OutlinedButton(
-                            onPressed: () => unawaited(
-                              _confirmDeleteRegisteredSource(source),
-                            ),
-                            child: const Text('서버 완전 삭제 (관리자용)'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+          Text('서버 등록 소스', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 4),
+          Text(
+            '분석/보관 기준은 서버 등록 소스입니다. 각 소스의 상태, 진행도, 화면 열기, 관리자용 완전 삭제를 여기서 확인합니다.',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+          ),
+          const SizedBox(height: 8),
+          for (final source in sourceEntries)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.black12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      source.sourceSlug,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 4),
+                    Text('type: ${source.sourceType}'),
+                    Text('source_key: ${source.sourceKey}'),
+                    Text(
+                      'state: ${_describeServerSourceState(source.sourceKey)}',
+                    ),
+                    Text(
+                      'progress: ${_buildSourceProgressText(source, sourceStatusesByKey[source.sourceKey])}',
+                    ),
+                    Text(
+                      'client: ${source.clientId.isEmpty ? '-' : source.clientId}',
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton(
+                          onPressed: () =>
+                              unawaited(_openRegisteredSource(source)),
+                          child: const Text('화면에 열기'),
+                        ),
+                        OutlinedButton(
+                          onPressed: () =>
+                              unawaited(_confirmDeleteRegisteredSource(source)),
+                          child: const Text('서버 완전 삭제 (관리자용)'),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-          ],
-        ),
-      );
+            ),
+        ],
+      ),
+    );
   }
 
   Widget _buildApiStatusText() {
-    String text =
-        '3초마다 자동 새로고침되며 "API 새로고침"으로 수동 갱신도 가능합니다.';
+    String text = '3초마다 자동 새로고침되며 "API 새로고침"으로 수동 갱신도 가능합니다.';
 
     if (apiEventController.isLoading) {
       text = 'API 이벤트 불러오는 중...';
@@ -489,9 +814,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Text(
       text,
-      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-        color: Colors.black54,
-      ),
+      style: Theme.of(
+        context,
+      ).textTheme.bodySmall?.copyWith(color: Colors.black54),
     );
   }
 
@@ -507,10 +832,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'API 이벤트 상세',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+          Text('API 이벤트 상세', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           if (isLoadingApiDetail)
             const Text('상세 정보 불러오는 중...')
@@ -580,9 +902,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 ] else
                   Text(
                     'API 모드 진입 시 서버 상태를 자동 확인합니다.',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.black54,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.black54),
                   ),
               ],
             ],
@@ -621,10 +943,7 @@ class _HomeScreenState extends State<HomeScreen> {
           'preferredClipSource',
           item.preferredClipSource.isEmpty ? '-' : item.preferredClipSource,
         ),
-        _buildDetailLine(
-          'clipUploadOk',
-          item.clipUploadOk ? 'true' : 'false',
-        ),
+        _buildDetailLine('clipUploadOk', item.clipUploadOk ? 'true' : 'false'),
         _buildDetailLine('clipUrl', item.clipUrl.isEmpty ? '-' : item.clipUrl),
         _buildDetailLine(
           'serverClipName',
@@ -644,7 +963,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 8),
           FilledButton(
             onPressed: () => _openApiDetailClip(item),
-            child: const Text('클립 열기'),
+            child: const Text('클립 새 창 재생'),
           ),
         ],
       ],
@@ -658,34 +977,32 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // 탐지 근거는 너무 길어지지 않도록 일부만 보여 줍니다.
     final visibleDetections = detail.relatedDetections.take(5).toList();
-    final remainingCount = detail.relatedDetections.length - visibleDetections.length;
+    final remainingCount =
+        detail.relatedDetections.length - visibleDetections.length;
 
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '관련 탐지 객체',
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
+          Text('관련 탐지 객체', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 6),
           for (final detection in visibleDetections) ...[
             Text(_formatDetectionSummary(detection)),
             Text(
               _formatDetectionBoxLine(detection),
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.black54,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.black54),
             ),
             const SizedBox(height: 6),
           ],
           if (remainingCount > 0)
             Text(
               '외 $remainingCount개',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.black54,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.black54),
             ),
         ],
       ),
@@ -697,6 +1014,85 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.only(bottom: 4),
       child: Text('$label: ${value.isEmpty ? '-' : value}'),
     );
+  }
+
+  String _formatDuration(Duration value) {
+    final hours = value.inHours;
+    final minutes = value.inMinutes.remainder(60);
+    final seconds = value.inSeconds.remainder(60);
+    if (hours > 0) {
+      return '$hours:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  String _buildTileStatusText(_SourcePanelSlot slot) {
+    final runtimeStatus = sourceStatusesByKey[slot.sourceKey.trim()];
+    if (slot.controller.errorText.trim().isNotEmpty) {
+      return '영상 재생 오류: ${slot.controller.errorText.trim()}';
+    }
+    if (runtimeStatus == null) {
+      return '분석 준비 중입니다.';
+    }
+    if (runtimeStatus.errorMessage.trim().isNotEmpty) {
+      return runtimeStatus.errorMessage.trim();
+    }
+    if (!frameDetectionBySourceKey.containsKey(slot.sourceKey.trim())) {
+      return runtimeStatus.isRunning ? '탐지 결과를 불러오는 중입니다.' : '탐지 대기 중입니다.';
+    }
+    if (runtimeStatus.sourceDurationSeconds > 0) {
+      return _buildSourceProgressText(
+        registeredSourcesByKey[slot.sourceKey.trim()],
+        runtimeStatus,
+      );
+    }
+    return runtimeStatus.isRunning ? '실시간 분석 중입니다.' : '대기 중입니다.';
+  }
+
+  Future<void> _saveRuleConfig(SourceRuleConfig nextRuleConfig) async {
+    final source = _activeSourceItem;
+    if (source == null || isSavingRuleConfig) {
+      return;
+    }
+
+    setState(() {
+      isSavingRuleConfig = true;
+    });
+    final updated = await eventApiService.updateSourceRuleConfig(
+      sourceKey: source.sourceKey,
+      ruleConfig: nextRuleConfig,
+    );
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      isSavingRuleConfig = false;
+      if (updated == null) {
+        return;
+      }
+      registeredSourcesByKey = {
+        ...registeredSourcesByKey,
+        updated.sourceKey: updated,
+      };
+    });
+
+    if (updated == null) {
+      _showInfoSnack('룰 설정 저장에 실패했습니다.');
+      return;
+    }
+
+    await _refreshSourceStatuses();
+    await _refreshRegisteredSources();
+    _showInfoSnack('소스별 룰 설정을 저장했습니다.');
+  }
+
+  void _handleDangerZoneChanged(RoiRect roi) {
+    final nextConfig = _activeRuleConfig.copyWith(
+      useDangerZoneRule: true,
+      dangerZoneRoi: roi,
+    );
+    unawaited(_saveRuleConfig(nextConfig));
   }
 
   String _formatDetectionSummary(Map<String, dynamic> detection) {
@@ -853,22 +1249,22 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-      final registeredSource = await _registerSourceOnServer(
-        sourceType: 'video',
-        sourceValue: file.path,
-        resetExisting: true,
-      );
-      if (registeredSource == null) {
-        return;
-      }
-      final slot = await _addOrActivateSourceSlot(
-        sourceType: registeredSource.sourceType,
-        sourceValue: registeredSource.sourceValue,
-        openPath: file.path,
-        sourceKey: registeredSource.sourceKey,
-        originalSourceType: registeredSource.originalSourceType,
-        originalSourceValue: file.path,
-      );
+    final registeredSource = await _registerSourceOnServer(
+      sourceType: 'video',
+      sourceValue: file.path,
+      resetExisting: true,
+    );
+    if (registeredSource == null) {
+      return;
+    }
+    final slot = await _addOrActivateSourceSlot(
+      sourceType: registeredSource.sourceType,
+      sourceValue: registeredSource.sourceValue,
+      openPath: file.path,
+      sourceKey: registeredSource.sourceKey,
+      originalSourceType: registeredSource.originalSourceType,
+      originalSourceValue: file.path,
+    );
     await _syncFrameRateFromStatus(
       sourceType: registeredSource.sourceType,
       sourceValue: registeredSource.sourceValue,
@@ -929,64 +1325,25 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_refreshApiEventsIfNeeded());
   }
 
-  List<EventLogItem> _getOverlayItems() {
-    if (!videoController.hasVideo || _effectiveOverlaySourceKey().isEmpty) {
+  List<EventLogItem> _getOverlayItemsForSlot(_SourcePanelSlot slot) {
+    if (!slot.controller.hasVideo || slot.sourceKey.trim().isEmpty) {
       return const [];
     }
 
-    return apiEventController.getLogItemsForTime(
-      videoController.currentOverlaySeconds,
+    return apiEventController.getLogItemsForTimeForSource(
+      slot.controller.currentOverlaySeconds,
+      sourceKey: slot.sourceKey,
     );
   }
 
-  FrameDetectionSnapshot? _getOverlaySnapshot() {
-    if (_effectiveOverlaySourceKey().isEmpty || frameDetectionSnapshots.isEmpty) {
-      return null;
-    }
-
-    if (frameDetectionSnapshots.length == 1) {
-      return frameDetectionSnapshots.first;
-    }
-
-    final currentSeconds = videoController.currentOverlaySeconds;
-    FrameDetectionSnapshot? beforeOrEqual;
-    FrameDetectionSnapshot? after;
-
-    for (final snapshot in frameDetectionSnapshots) {
-      if (snapshot.sourceTimeSeconds <= currentSeconds) {
-        beforeOrEqual = snapshot;
-        continue;
-      }
-      after = snapshot;
-      break;
-    }
-
-    final frameTolerance = math.max(
-      0.08,
-      (videoController.frameRate <= 0 ? 1 / 30 : 1 / videoController.frameRate) *
-          1.5,
-    );
-
-    FrameDetectionSnapshot? best;
-    if (beforeOrEqual != null &&
-        (currentSeconds - beforeOrEqual.sourceTimeSeconds).abs() <=
-            frameTolerance) {
-      best = beforeOrEqual;
-    }
-    if (after != null &&
-        (after.sourceTimeSeconds - currentSeconds).abs() <= frameTolerance) {
-      if (best == null ||
-          (after.sourceTimeSeconds - currentSeconds).abs() <
-              (best.sourceTimeSeconds - currentSeconds).abs()) {
-        best = after;
-      }
-    }
-
-    return best;
+  FrameDetectionSnapshot? _getOverlaySnapshotForSlot(_SourcePanelSlot slot) {
+    return frameDetectionBySourceKey[slot.sourceKey.trim()];
   }
 
-  List<VideoOverlayDetection> _getOverlayDetections() {
-    final snapshot = _getOverlaySnapshot();
+  List<VideoOverlayDetection> _getOverlayDetectionsForSlot(
+    _SourcePanelSlot slot,
+  ) {
+    final snapshot = _getOverlaySnapshotForSlot(slot);
     if (snapshot == null) {
       return const [];
     }
@@ -1029,24 +1386,25 @@ class _HomeScreenState extends State<HomeScreen> {
     return detections;
   }
 
-  double _getOverlaySourceWidth() {
-    final snapshot = _getOverlaySnapshot();
+  double _getOverlaySourceWidthForSlot(_SourcePanelSlot slot) {
+    final snapshot = _getOverlaySnapshotForSlot(slot);
     if (snapshot != null && snapshot.frameWidth > 0) {
       return snapshot.frameWidth.toDouble();
     }
-    return videoController.videoWidth.toDouble();
+    return slot.controller.videoWidth.toDouble();
   }
 
-  double _getOverlaySourceHeight() {
-    final snapshot = _getOverlaySnapshot();
+  double _getOverlaySourceHeightForSlot(_SourcePanelSlot slot) {
+    final snapshot = _getOverlaySnapshotForSlot(slot);
     if (snapshot != null && snapshot.frameHeight > 0) {
       return snapshot.frameHeight.toDouble();
     }
-    return videoController.videoHeight.toDouble();
+    return slot.controller.videoHeight.toDouble();
   }
 
   String _effectiveOverlaySourceKey() {
-    if (videoController.isReplayMode && videoController.replaySourceKey.isNotEmpty) {
+    if (videoController.isReplayMode &&
+        videoController.replaySourceKey.isNotEmpty) {
       return videoController.replaySourceKey;
     }
     return selectedSourceKey;
@@ -1089,23 +1447,24 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-      final sourceItem = apiEventController.findItemByEventKey(item.eventKeyText) ?? detail;
-      if (sourceItem == null) {
-        return;
+    final sourceItem =
+        apiEventController.findItemByEventKey(item.eventKeyText) ?? detail;
+    if (sourceItem == null) {
+      return;
+    }
+    if (selectedSourceKey.trim().isEmpty) {
+      if (mounted) {
+        _showInfoSnack('이벤트 시작 시점으로 이동하려면 먼저 해당 영상 소스를 선택해 주세요.');
       }
-      if (selectedSourceKey.trim().isEmpty) {
-        if (mounted) {
-          _showInfoSnack('이벤트 시작 시점으로 이동하려면 먼저 해당 영상 소스를 선택해 주세요.');
-        }
-        return;
+      return;
+    }
+    if (selectedSourceKey.trim() != sourceItem.sourceKey.trim()) {
+      if (mounted) {
+        _showInfoSnack('현재 선택된 영상 소스의 이벤트만 이동할 수 있습니다.');
       }
-      if (selectedSourceKey.trim() != sourceItem.sourceKey.trim()) {
-        if (mounted) {
-          _showInfoSnack('현재 선택된 영상 소스의 이벤트만 이동할 수 있습니다.');
-        }
-        return;
-      }
-      final targetSeconds = _resolveEventStartSeconds(sourceItem);
+      return;
+    }
+    final targetSeconds = _resolveEventStartSeconds(sourceItem);
     if (targetSeconds < 0) {
       return;
     }
@@ -1122,9 +1481,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final ratio = videoController.totalDuration.inMilliseconds <= 0
         ? 0.0
         : targetMs / videoController.totalDuration.inMilliseconds;
-    await videoController.moveToRatio(
-      ratio,
-    );
+    await videoController.moveToRatio(ratio);
   }
 
   Future<void> _returnToLive() async {
@@ -1132,8 +1489,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openApiDetailClip(ApiEventItem item) async {
-    // API 상세 패널의 "클립 열기"는 서버 clip_url/server_clip_path를 우선 사용하고,
-    // 둘 다 없을 때만 레거시 local clipPath를 fallback으로 사용합니다.
     final resolvedPath = _resolveApiClipSource(item);
     if (resolvedPath.isEmpty) {
       setState(() {
@@ -1143,17 +1498,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     try {
-      final targetBinding = await _resolveClipTargetController(item);
-      final targetController = targetBinding.controller;
-      await targetController.openReplayClip(
-        resolvedPath,
-        replayStartSeconds: _resolveEventStartSeconds(item),
-        sourceKey: item.sourceKey,
-        preserveReturnContext: targetBinding.preserveReturnContext,
-      );
-      await _refreshFrameDetectionsForSource(item.sourceKey);
+      if (Platform.isWindows) {
+        await Process.run('cmd', ['/c', 'start', '', resolvedPath]);
+      } else {
+        await Process.start(resolvedPath, const []);
+      }
       if (mounted) {
-        _showInfoSnack('이벤트 클립을 열었습니다.');
+        _showInfoSnack('이벤트 클립을 새 창에서 열었습니다.');
       }
     } catch (error) {
       setState(() {
@@ -1322,51 +1673,65 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) {
       return;
     }
+    for (final slot in _sourceSlots) {
+      await _refreshFrameDetectionsForSlot(slot, silent: true);
+    }
+  }
 
-    final sourceKey = _effectiveOverlaySourceKey();
-    if (sourceKey.isEmpty) {
-      if (frameDetectionSnapshots.isNotEmpty || frameDetectionSourceKey.isNotEmpty) {
-        setState(() {
-          frameDetectionSnapshots = const [];
-          frameDetectionLogModifiedAt = null;
-          frameDetectionSourceKey = '';
-          lastFrameDetectionRequestSourceKey = '';
-          lastFrameDetectionRequestSeconds = -1;
-          lastFrameDetectionStatusUpdatedAt = '';
-        });
-      }
+  Future<void> _refreshFrameDetectionsForSource(String sourceKey) async {
+    final slot = _findSourceSlotByKey(sourceKey);
+    if (slot == null) {
+      return;
+    }
+    await _refreshFrameDetectionsForSlot(slot, silent: false);
+  }
+
+  Future<void> _refreshFrameDetectionsForSlot(
+    _SourcePanelSlot slot, {
+    required bool silent,
+  }) async {
+    final sourceKey = slot.sourceKey.trim();
+    if (sourceKey.isEmpty || !mounted || !slot.controller.hasVideo) {
       return;
     }
 
-    final currentOverlaySeconds = videoController.currentOverlaySeconds;
-    final runtimeStatus = sourceStatusesByKey[sourceKey.trim()];
-    final frameIntervalSeconds = videoController.frameRate <= 0
+    final runtimeStatus = sourceStatusesByKey[sourceKey];
+    final currentOverlaySeconds = slot.controller.currentOverlaySeconds;
+    final frameIntervalSeconds = slot.controller.frameRate <= 0
         ? (1 / 30)
-        : (1 / videoController.frameRate);
-    final isLiveLikeSource = videoController.isStreamMode && !videoController.isReplayMode;
-    final movedEnough = lastFrameDetectionRequestSourceKey != sourceKey ||
-        (currentOverlaySeconds - lastFrameDetectionRequestSeconds).abs() >=
-            (frameIntervalSeconds * 0.5);
-    final statusChanged = (runtimeStatus?.updatedAt ?? '') !=
-        lastFrameDetectionStatusUpdatedAt;
-    final isTerminalState = runtimeStatus != null &&
+        : (1 / slot.controller.frameRate);
+    final isLiveLikeSource =
+        slot.controller.isStreamMode && !slot.controller.isReplayMode;
+    final lastRequestedSeconds =
+        lastFrameDetectionRequestSecondsBySourceKey[sourceKey] ?? -1;
+    final lastStatusUpdatedAt =
+        lastFrameDetectionStatusUpdatedAtBySourceKey[sourceKey] ?? '';
+    final movedEnough =
+        (currentOverlaySeconds - lastRequestedSeconds).abs() >=
+        (frameIntervalSeconds * 0.5);
+    final statusChanged =
+        (runtimeStatus?.updatedAt ?? '') != lastStatusUpdatedAt;
+    final existingSnapshot = frameDetectionBySourceKey[sourceKey];
+    final hasUsableSnapshot =
+        existingSnapshot != null &&
+        (!isLiveLikeSource
+            ? (existingSnapshot.sourceTimeSeconds - currentOverlaySeconds)
+                      .abs() <=
+                  math.max(0.08, frameIntervalSeconds * 1.5)
+            : true);
+    final isTerminalState =
+        runtimeStatus != null &&
         (runtimeStatus.state == 'completed' ||
             runtimeStatus.state == 'stopped' ||
             runtimeStatus.state == 'error');
-    final hasUsableSnapshot = frameDetectionSourceKey == sourceKey &&
-        frameDetectionSnapshots.isNotEmpty &&
-        (!isLiveLikeSource
-            ? (frameDetectionSnapshots.first.sourceTimeSeconds - currentOverlaySeconds)
-                    .abs() <=
-                math.max(0.08, frameIntervalSeconds * 1.5)
-            : true);
-    if (!videoController.isPlaying &&
+    if (silent &&
+        !slot.controller.isPlaying &&
         !statusChanged &&
         isTerminalState &&
         hasUsableSnapshot) {
       return;
     }
-    if (!movedEnough && !statusChanged) {
+    if (silent && !movedEnough && !statusChanged) {
       return;
     }
 
@@ -1376,10 +1741,7 @@ class _HomeScreenState extends State<HomeScreen> {
         sourceKey: sourceKey,
       );
     } else {
-      final toleranceSeconds = math.max(
-        0.20,
-        frameIntervalSeconds * 4.0,
-      );
+      final toleranceSeconds = math.max(0.20, frameIntervalSeconds * 4.0);
       snapshot = await eventApiService.fetchCurrentFrameDetection(
         sourceKey: sourceKey,
         sourceTimeSeconds: currentOverlaySeconds,
@@ -1391,51 +1753,31 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     setState(() {
-      frameDetectionSnapshots = snapshot == null ? const [] : [snapshot];
+      final nextSnapshotMap = <String, FrameDetectionSnapshot>{
+        ...frameDetectionBySourceKey,
+      };
+      if (snapshot == null) {
+        nextSnapshotMap.remove(sourceKey);
+      } else {
+        nextSnapshotMap[sourceKey] = snapshot;
+      }
+      frameDetectionBySourceKey = nextSnapshotMap;
       frameDetectionLogModifiedAt = DateTime.now();
-      frameDetectionSourceKey = sourceKey;
-      lastFrameDetectionRequestSourceKey = sourceKey;
-      lastFrameDetectionRequestSeconds = currentOverlaySeconds;
-      lastFrameDetectionStatusUpdatedAt = runtimeStatus?.updatedAt ?? '';
-    });
-  }
-
-  Future<void> _refreshFrameDetectionsForSource(String sourceKey) async {
-    final normalizedSourceKey = sourceKey.trim();
-    if (normalizedSourceKey.isEmpty) {
-      return;
-    }
-
-    final isLiveLikeSource = videoController.isStreamMode && !videoController.isReplayMode;
-    final FrameDetectionSnapshot? snapshot;
-    if (isLiveLikeSource) {
-      snapshot = await eventApiService.fetchLatestFrameDetection(
-        sourceKey: normalizedSourceKey,
-      );
-    } else {
-      final toleranceSeconds = math.max(
-        0.20,
-        (videoController.frameRate <= 0 ? 1 / 30 : 1 / videoController.frameRate) *
-            4.0,
-      );
-      snapshot = await eventApiService.fetchCurrentFrameDetection(
-        sourceKey: normalizedSourceKey,
-        sourceTimeSeconds: videoController.currentOverlaySeconds,
-        toleranceSeconds: toleranceSeconds,
-      );
-    }
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      frameDetectionSnapshots = snapshot == null ? const [] : [snapshot];
-      frameDetectionLogModifiedAt = DateTime.now();
-      frameDetectionSourceKey = normalizedSourceKey;
-      lastFrameDetectionRequestSourceKey = normalizedSourceKey;
-      lastFrameDetectionRequestSeconds = videoController.currentOverlaySeconds;
-      lastFrameDetectionStatusUpdatedAt =
-          sourceStatusesByKey[normalizedSourceKey]?.updatedAt ?? '';
+      if (_activeSlot?.sourceKey.trim() == sourceKey) {
+        frameDetectionSnapshots = snapshot == null ? const [] : [snapshot];
+        frameDetectionSourceKey = sourceKey;
+        lastFrameDetectionRequestSourceKey = sourceKey;
+        lastFrameDetectionRequestSeconds = currentOverlaySeconds;
+        lastFrameDetectionStatusUpdatedAt = runtimeStatus?.updatedAt ?? '';
+      }
+      lastFrameDetectionRequestSecondsBySourceKey = {
+        ...lastFrameDetectionRequestSecondsBySourceKey,
+        sourceKey: currentOverlaySeconds,
+      };
+      lastFrameDetectionStatusUpdatedAtBySourceKey = {
+        ...lastFrameDetectionStatusUpdatedAtBySourceKey,
+        sourceKey: runtimeStatus?.updatedAt ?? '',
+      };
     });
   }
 
@@ -1510,19 +1852,19 @@ class _HomeScreenState extends State<HomeScreen> {
       return slot;
     }
 
-      final slot = _SourcePanelSlot(
-        slotId: 'slot_${DateTime.now().microsecondsSinceEpoch}',
-        sourceType: sourceType,
-        sourceValue: sourceValue,
-        sourceKey: sourceKey,
-        originalSourceType: originalSourceType ?? sourceType,
-        originalSourceValue: originalSourceValue ?? sourceValue,
-        label: _buildSlotLabel(
-          sourceType: originalSourceType ?? sourceType,
-          sourceValue: originalSourceValue ?? sourceValue,
-        ),
-        controller: VideoPanelController(),
-      );
+    final slot = _SourcePanelSlot(
+      slotId: 'slot_${DateTime.now().microsecondsSinceEpoch}',
+      sourceType: sourceType,
+      sourceValue: sourceValue,
+      sourceKey: sourceKey,
+      originalSourceType: originalSourceType ?? sourceType,
+      originalSourceValue: originalSourceValue ?? sourceValue,
+      label: _buildSlotLabel(
+        sourceType: originalSourceType ?? sourceType,
+        sourceValue: originalSourceValue ?? sourceValue,
+      ),
+      controller: VideoPanelController(),
+    );
     await slot.controller.openVideo(
       openPath,
       nextSourceType: nextSourceType ?? sourceType,
@@ -1560,6 +1902,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
     removedSlot.controller.disposeController();
     setState(() {
+      final nextSnapshotMap = <String, FrameDetectionSnapshot>{
+        ...frameDetectionBySourceKey,
+      };
+      nextSnapshotMap.remove(removedSlot!.sourceKey.trim());
+      final nextRequestSecondsMap = <String, double>{
+        ...lastFrameDetectionRequestSecondsBySourceKey,
+      };
+      nextRequestSecondsMap.remove(removedSlot.sourceKey.trim());
+      final nextStatusUpdatedMap = <String, String>{
+        ...lastFrameDetectionStatusUpdatedAtBySourceKey,
+      };
+      nextStatusUpdatedMap.remove(removedSlot.sourceKey.trim());
       _sourceSlots
         ..clear()
         ..addAll(nextSlots);
@@ -1571,6 +1925,9 @@ class _HomeScreenState extends State<HomeScreen> {
       frameDetectionSnapshots = const [];
       frameDetectionLogModifiedAt = null;
       frameDetectionSourceKey = '';
+      frameDetectionBySourceKey = nextSnapshotMap;
+      lastFrameDetectionRequestSecondsBySourceKey = nextRequestSecondsMap;
+      lastFrameDetectionStatusUpdatedAtBySourceKey = nextStatusUpdatedMap;
     });
 
     apiEventFeed.clearSelection();
@@ -1606,6 +1963,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
     removedSlot.controller.disposeController();
     setState(() {
+      final nextSnapshotMap = <String, FrameDetectionSnapshot>{
+        ...frameDetectionBySourceKey,
+      };
+      nextSnapshotMap.remove(removedSlot!.sourceKey.trim());
+      final nextRequestSecondsMap = <String, double>{
+        ...lastFrameDetectionRequestSecondsBySourceKey,
+      };
+      nextRequestSecondsMap.remove(removedSlot.sourceKey.trim());
+      final nextStatusUpdatedMap = <String, String>{
+        ...lastFrameDetectionStatusUpdatedAtBySourceKey,
+      };
+      nextStatusUpdatedMap.remove(removedSlot.sourceKey.trim());
       _sourceSlots
         ..clear()
         ..addAll(nextSlots);
@@ -1617,6 +1986,9 @@ class _HomeScreenState extends State<HomeScreen> {
       frameDetectionSnapshots = const [];
       frameDetectionLogModifiedAt = null;
       frameDetectionSourceKey = '';
+      frameDetectionBySourceKey = nextSnapshotMap;
+      lastFrameDetectionRequestSecondsBySourceKey = nextRequestSecondsMap;
+      lastFrameDetectionStatusUpdatedAtBySourceKey = nextStatusUpdatedMap;
     });
 
     apiEventFeed.clearSelection();
@@ -1632,13 +2004,25 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_activeSlotId == slotId) {
       return;
     }
+    _SourcePanelSlot? nextSlot;
+    for (final slot in _sourceSlots) {
+      if (slot.slotId == slotId) {
+        nextSlot = slot;
+        break;
+      }
+    }
+    final nextSourceKey = nextSlot?.sourceKey.trim() ?? '';
+    final nextSnapshot = frameDetectionBySourceKey[nextSourceKey];
     setState(() {
       _activeSlotId = slotId;
       selectedApiEventDetail = null;
       apiDetailErrorMessage = null;
-      frameDetectionSnapshots = const [];
+      frameDetectionSnapshots = nextSnapshot == null
+          ? const []
+          : [nextSnapshot];
       frameDetectionLogModifiedAt = null;
-      frameDetectionSourceKey = '';
+      frameDetectionSourceKey = nextSourceKey;
+      isEditingDangerZone = false;
     });
     await _pauseInactiveSlots(exceptSlotId: slotId);
     apiEventFeed.clearSelection();
@@ -1759,20 +2143,18 @@ class _HomeScreenState extends State<HomeScreen> {
         .where((item) => item.isNotEmpty)
         .toSet();
     final removedSlots = _sourceSlots
-        .where(
-          (slot) => !normalizedRemaining.contains(slot.sourceKey.trim()),
-        )
+        .where((slot) => !normalizedRemaining.contains(slot.sourceKey.trim()))
         .toList(growable: false);
     if (removedSlots.isEmpty) {
       return const [];
     }
 
     final nextSlots = _sourceSlots
-        .where(
-          (slot) => normalizedRemaining.contains(slot.sourceKey.trim()),
-        )
+        .where((slot) => normalizedRemaining.contains(slot.sourceKey.trim()))
         .toList(growable: false);
-    final removedActive = removedSlots.any((slot) => slot.slotId == _activeSlotId);
+    final removedActive = removedSlots.any(
+      (slot) => slot.slotId == _activeSlotId,
+    );
 
     for (final slot in removedSlots) {
       slot.controller.disposeController();
@@ -1837,14 +2219,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final status = sourceStatusesByKey[sourceKey];
 
-    if (frameDetectionSourceKey != sourceKey || frameDetectionSnapshots.isEmpty) {
+    if (frameDetectionSourceKey != sourceKey ||
+        frameDetectionSnapshots.isEmpty) {
       return '아직 이 소스의 프레임 탐지 결과를 기다리는 중입니다.';
     }
 
     final snapshot = _getOverlaySnapshot();
     if (snapshot != null) {
       final snapshotTimeDelta =
-          (snapshot.sourceTimeSeconds - videoController.currentOverlaySeconds).abs();
+          (snapshot.sourceTimeSeconds - videoController.currentOverlaySeconds)
+              .abs();
       if (snapshotTimeDelta <= 0.15) {
         if (snapshot.detections.isEmpty) {
           return '현재 시점에는 탐지된 객체가 없습니다.';
@@ -1859,7 +2243,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (status != null &&
         status.state.trim().toLowerCase() != 'completed' &&
-        status.lastSourceTimeSeconds + 0.02 < videoController.currentOverlaySeconds) {
+        status.lastSourceTimeSeconds + 0.02 <
+            videoController.currentOverlaySeconds) {
       return '현재 재생 시점은 아직 Python 분석이 끝나지 않았습니다.';
     }
 
@@ -1974,7 +2359,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<_ClipTargetBinding> _resolveClipTargetController(ApiEventItem item) async {
+  Future<_ClipTargetBinding> _resolveClipTargetController(
+    ApiEventItem item,
+  ) async {
     final ensured = await _ensureSlotForEventSource(item);
     if (ensured) {
       final targetSlot = _findSourceSlotByKey(item.sourceKey);
@@ -2144,7 +2531,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (state == 'completed') {
       return 'complete';
     }
-    return runtimeStatus.state.trim().isEmpty ? 'unknown' : runtimeStatus.state.trim();
+    return runtimeStatus.state.trim().isEmpty
+        ? 'unknown'
+        : runtimeStatus.state.trim();
   }
 
   String _buildSourceProgressText(
@@ -2152,9 +2541,7 @@ class _HomeScreenState extends State<HomeScreen> {
     SourceRuntimeStatus? status,
   ) {
     final durationSeconds =
-        source?.sourceDurationSeconds ??
-        status?.sourceDurationSeconds ??
-        0.0;
+        source?.sourceDurationSeconds ?? status?.sourceDurationSeconds ?? 0.0;
     final lastSeconds = status?.lastSourceTimeSeconds ?? 0.0;
     if (durationSeconds <= 0) {
       if (lastSeconds > 0) {
@@ -2235,10 +2622,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final messenger = ScaffoldMessenger.maybeOf(context);
     messenger?.hideCurrentSnackBar();
     messenger?.showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: const Duration(seconds: 2),
-      ),
+      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
     );
   }
 
@@ -2252,6 +2636,7 @@ class _HomeScreenState extends State<HomeScreen> {
         frameDetectionSnapshots = const [];
         frameDetectionLogModifiedAt = null;
         frameDetectionSourceKey = '';
+        isEditingDangerZone = false;
       });
       if (mounted) {
         _showInfoSnack('소스 선택을 해제하고 전체 이벤트 로그 보기로 전환했습니다.');
@@ -2266,6 +2651,7 @@ class _HomeScreenState extends State<HomeScreen> {
       frameDetectionSnapshots = const [];
       frameDetectionLogModifiedAt = null;
       frameDetectionSourceKey = '';
+      isEditingDangerZone = false;
     });
     apiEventController.setVisibleSourceKey('');
     unawaited(_refreshApiEventsIfNeeded());
@@ -2276,7 +2662,10 @@ class _HomeScreenState extends State<HomeScreen> {
     required String sourceValue,
   }) {
     final normalizedType = sourceType.trim().toLowerCase();
-    final normalizedValue = sourceValue.trim().replaceAll('\\', '/').toLowerCase();
+    final normalizedValue = sourceValue
+        .trim()
+        .replaceAll('\\', '/')
+        .toLowerCase();
     return '$normalizedType|$normalizedValue';
   }
 
@@ -2448,9 +2837,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final configPath = File(
         '${Directory.current.path}${Platform.pathSeparator}server_config.json',
       );
-      final payload = {
-        'api_base_url': baseUrl,
-      };
+      final payload = {'api_base_url': baseUrl};
       await configPath.writeAsString(
         const JsonEncoder.withIndent('  ').convert(payload),
       );

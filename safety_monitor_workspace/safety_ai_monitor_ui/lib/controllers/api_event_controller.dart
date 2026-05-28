@@ -9,7 +9,7 @@ import '../services/event_api_service.dart';
 // FastAPI 서버에서 이벤트와 health 정보를 가져와 API 모드 상태를 관리하는 controller입니다.
 class ApiEventController extends ChangeNotifier {
   ApiEventController({EventApiService? service})
-      : _service = service ?? EventApiService();
+    : _service = service ?? EventApiService();
 
   final EventApiService _service;
 
@@ -80,7 +80,10 @@ class ApiEventController extends ChangeNotifier {
     }
   }
 
-  Future<ApiEventItem?> loadEventDetail(String eventKey, {String? sourceKey}) async {
+  Future<ApiEventItem?> loadEventDetail(
+    String eventKey, {
+    String? sourceKey,
+  }) async {
     // 선택한 이벤트 한 건의 상세 정보를 GET /api/events/detail로 조회합니다.
     final normalizedEventKey = eventKey.trim();
     if (normalizedEventKey.isEmpty) {
@@ -155,6 +158,15 @@ class ApiEventController extends ChangeNotifier {
     return apiEventsToLogItems(getItemsForTime(secondsValue));
   }
 
+  List<EventLogItem> getLogItemsForTimeForSource(
+    double secondsValue, {
+    required String sourceKey,
+  }) {
+    return apiEventsToLogItems(
+      getItemsForTimeForSource(secondsValue, sourceKey: sourceKey),
+    );
+  }
+
   List<EventLogItem> getLogItemsForFrame(int frameValue) {
     // 기존 공통 인터페이스 호환용 메서드입니다.
     // 현재 화면의 실제 오버레이/이동은 source_time_seconds 기준을 사용합니다.
@@ -162,10 +174,32 @@ class ApiEventController extends ChangeNotifier {
   }
 
   List<ApiEventItem> getItemsForTime(double secondsValue) {
+    return _getItemsForTimeFromSourceList(filteredItems, secondsValue);
+  }
+
+  List<ApiEventItem> getItemsForTimeForSource(
+    double secondsValue, {
+    required String sourceKey,
+  }) {
+    final normalizedSourceKey = sourceKey.trim();
+    if (normalizedSourceKey.isEmpty) {
+      return const [];
+    }
+    final sourceItems = items
+        .where((item) => item.sourceKey.trim() == normalizedSourceKey)
+        .toList(growable: false);
+    return _getItemsForTimeFromSourceList(sourceItems, secondsValue);
+  }
+
+  List<ApiEventItem> _getItemsForTimeFromSourceList(
+    List<ApiEventItem> sourceItems,
+    double secondsValue,
+  ) {
     final selectedMap = <String, ApiEventItem>{};
-    final orderedItems = [...filteredItems]..sort(_compareByTimeline);
+    final orderedItems = [...sourceItems]..sort(_compareByTimeline);
     for (final item in orderedItems) {
-      if (item.sourceTimeSeconds.isNaN || item.sourceTimeSeconds > secondsValue) {
+      if (item.sourceTimeSeconds.isNaN ||
+          item.sourceTimeSeconds > secondsValue) {
         continue;
       }
       if (selectedMap.containsKey(item.eventKey)) {
@@ -233,7 +267,9 @@ class ApiEventController extends ChangeNotifier {
   }
 
   int _compareByTimeline(ApiEventItem left, ApiEventItem right) {
-    final timeCompare = left.sourceTimeSeconds.compareTo(right.sourceTimeSeconds);
+    final timeCompare = left.sourceTimeSeconds.compareTo(
+      right.sourceTimeSeconds,
+    );
     if (timeCompare != 0) {
       return timeCompare;
     }
@@ -270,7 +306,8 @@ class ApiEventController extends ChangeNotifier {
     if (parsed != null) {
       return parsed;
     }
-    if (item.status.trim().toUpperCase() == 'END' && !item.sourceTimeSeconds.isNaN) {
+    if (item.status.trim().toUpperCase() == 'END' &&
+        !item.sourceTimeSeconds.isNaN) {
       return item.sourceTimeSeconds;
     }
     return null;

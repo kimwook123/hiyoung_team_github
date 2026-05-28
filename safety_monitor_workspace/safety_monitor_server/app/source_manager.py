@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,7 @@ from app.database import (
     upsert_source_status,
 )
 from app.log_utils import log_line
+from app.source_rule_config import normalize_rule_config
 
 
 @dataclass
@@ -79,6 +81,11 @@ class AnalysisSourceManager:
         )
         source_key = str(source_record.get("source_key", "")).strip()
         source_slug = str(source_record.get("source_slug", "")).strip()
+        existing_source = get_source(DATABASE_PATH, source_key)
+        if existing_source is not None:
+            source_record["rule_config"] = normalize_rule_config(
+                existing_source.get("rule_config")
+            )
 
         upsert_source(DATABASE_PATH, source_record)
         if reset_existing:
@@ -112,6 +119,50 @@ class AnalysisSourceManager:
                 },
             )
         return get_source(DATABASE_PATH, source_key) or source_record
+
+    def update_source_rule_config(
+        self,
+        source_key: str,
+        *,
+        rule_config: dict,
+    ) -> dict[str, Any]:
+        normalized_source_key = source_key.strip()
+        source_record = get_source(DATABASE_PATH, normalized_source_key)
+        if source_record is None:
+            raise KeyError(normalized_source_key)
+
+        source_type = str(source_record.get("source_type", "")).strip().lower()
+        source_record["rule_config"] = normalize_rule_config(rule_config)
+        source_record["updated_at"] = datetime.now().isoformat()
+
+        should_reanalyze_from_start = source_type == "video"
+        if should_reanalyze_from_start:
+            source_record["desired_running"] = True
+
+        upsert_source(DATABASE_PATH, source_record)
+
+        if should_reanalyze_from_start:
+            self.stop_source(
+                normalized_source_key,
+                update_desired_running=False,
+            )
+            reset_source_data(
+                DATABASE_PATH,
+                source_key=normalized_source_key,
+                source_slug=str(source_record.get("source_slug", "")).strip(),
+                server_clip_dir=SERVER_CLIP_DIR,
+            )
+            self.start_source(normalized_source_key)
+            return get_source(DATABASE_PATH, normalized_source_key) or source_record
+
+        with self._lock:
+            existing_worker = self._workers.get(normalized_source_key)
+            is_running = existing_worker is not None and existing_worker.thread.is_alive()
+
+        if is_running:
+            self.restart_source(normalized_source_key)
+
+        return get_source(DATABASE_PATH, normalized_source_key) or source_record
 
     def list_registered_sources(self) -> list[dict[str, Any]]:
         return list_sources(DATABASE_PATH)

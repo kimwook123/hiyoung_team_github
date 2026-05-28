@@ -12,6 +12,8 @@ import cv2
 
 from app.config import (
     ANALYSIS_DIR,
+    ANALYSIS_DEVICE,
+    ANALYSIS_REQUIRE_CUDA,
     ANALYSIS_PROGRESS_LOG_INTERVAL_SECONDS,
     ANALYSIS_TARGET_FPS,
     DANGER_ZONE_ROI,
@@ -480,12 +482,16 @@ def _build_model():
         return YoloModelSample(
             model_path=str(MODEL_PATH),
             min_confidence=MIN_CONFIDENCE,
+            device=ANALYSIS_DEVICE,
+            require_cuda=ANALYSIS_REQUIRE_CUDA,
         )
     if MODEL_TYPE == "yolo_ensemble":
         return EnsembleYoloModel(
             person_model_path=str(PERSON_MODEL_PATH),
             safety_model_path=str(SAFETY_MODEL_PATH),
             min_confidence=MIN_CONFIDENCE,
+            device=ANALYSIS_DEVICE,
+            require_cuda=ANALYSIS_REQUIRE_CUDA,
             person_class_map={"person": "person"},
             safety_class_map={
                 "helmet": "helmet",

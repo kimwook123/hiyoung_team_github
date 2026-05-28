@@ -5,6 +5,7 @@ import numpy as np
 
 from core.detection_model import Box, Detection, DetectionModel, DetectionResult
 from core.path_helper import to_project_path
+from models.device_helper import resolve_torch_device
 
 # 이 파일은 사람 전용 YOLO와 안전모 전용 YOLO를 함께 돌려 결과를 합치는 어댑터입니다.
 
@@ -15,6 +16,8 @@ class EnsembleYoloModel(DetectionModel):
         person_model_path: str,
         safety_model_path: str,
         min_confidence: float = 0.5,
+        device: str = "cuda:0",
+        require_cuda: bool = True,
         person_class_map: dict[str, str] | None = None,
         safety_class_map: dict[str, str] | None = None,
     ) -> None:
@@ -23,6 +26,9 @@ class EnsembleYoloModel(DetectionModel):
         self.min_confidence = min_confidence
         self.person_model = None
         self.safety_model = None
+        self.requested_device = device
+        self.require_cuda = require_cuda
+        self.device = "cpu"
         self.person_class_map = person_class_map or {
             "person": "person",
         }
@@ -50,6 +56,10 @@ class EnsembleYoloModel(DetectionModel):
 
         self.person_model = YOLO(self.person_model_path)
         self.safety_model = YOLO(self.safety_model_path)
+        self.device = resolve_torch_device(
+            requested_device=self.requested_device,
+            require_cuda=self.require_cuda,
+        )
 
     def predict(self, frame: np.ndarray, frame_id: int) -> DetectionResult:
         if self.person_model is None or self.safety_model is None:
@@ -81,7 +91,7 @@ class EnsembleYoloModel(DetectionModel):
         frame: np.ndarray,
         class_map: dict[str, str],
     ) -> list[Detection]:
-        results = model(frame, verbose=False)
+        results = model.predict(frame, device=self.device, stream=False, verbose=False)
         detections: list[Detection] = []
 
         for result in results:

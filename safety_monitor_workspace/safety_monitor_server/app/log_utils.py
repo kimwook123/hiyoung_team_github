@@ -263,6 +263,7 @@ def _compact_field_text(tag: str, fields: dict[str, object]) -> str:
 
     if tag == "PERF":
         _push(parts, "", _text("source"))
+        _push(parts, "avg=", _text("avg"))
         _push(parts, "total=", _text("total"))
         _push(parts, "", _text("top"))
         return " ".join(parts)

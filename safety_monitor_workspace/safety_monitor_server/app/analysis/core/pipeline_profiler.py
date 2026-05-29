@@ -68,6 +68,7 @@ class PipelineProfiler:
             "PERF",
             source=source_text,
             frames=self.frame_count,
+            avg=f"{total_ms:.1f}ms/frame",
             total=f"{total_ms:.1f}ms",
             top=" ".join(top_parts) if top_parts else "none",
         )

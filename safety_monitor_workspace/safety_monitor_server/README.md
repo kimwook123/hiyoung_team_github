@@ -75,7 +75,7 @@
 - `[REQ-SUM]`: 고빈도 polling 요청 요약
 - `[SRC]`: 소스 lifecycle
 - `[PROGRESS]`: 분석 진행 상태
-- `[PERF]`: 프레임 처리 성능
+- `[PERF]`: 프레임 처리 성능, 프레임 1장당 평균 분석 시간
 - `[WARN]`: 경고
 - `[ERROR]`: 예외와 실패
 

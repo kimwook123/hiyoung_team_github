@@ -17,10 +17,10 @@ if not exist "%SERVER_DIR%\main.py" (
   exit /b 1
 )
 
-call %PYTHON_CMD% -c "import fastapi, uvicorn, cv2, numpy, requests, yt_dlp, websockets, torch" > nul 2>&1
+call %PYTHON_CMD% -c "import fastapi, uvicorn, websockets, pydantic, multipart" > nul 2>&1
 if errorlevel 1 (
   echo Required server packages are missing.
-  echo This server needs FastAPI, Uvicorn, OpenCV, NumPy, Requests, yt-dlp, WebSocket support, and PyTorch.
+  echo This server needs FastAPI, Uvicorn, WebSocket support, and multipart form handling.
   choice /M "Install server requirements now"
   if errorlevel 2 (
     echo Skipping package installation. Server was not started.
@@ -38,14 +38,6 @@ if errorlevel 1 (
 
 echo Python interpreter:
 call %PYTHON_CMD% -c "import sys; print(sys.executable)"
-
-call %PYTHON_CMD% -c "import torch; raise SystemExit(0 if torch.cuda.is_available() else 1)" > nul 2>&1
-if errorlevel 1 (
-  echo CUDA is not available in the Python 3.12 environment used by the server.
-  echo Install the CUDA-enabled PyTorch build for Python 3.12 before starting the server.
-  pause
-  exit /b 1
-)
 
 echo Starting Safety Monitor Server on http://0.0.0.0:8000
 pushd "%SERVER_DIR%"

@@ -1,0 +1,305 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+
+class EmbeddedBackendService extends ChangeNotifier {
+  EmbeddedBackendService._();
+
+  static final EmbeddedBackendService instance = EmbeddedBackendService._();
+
+  static const String localBaseUrl = 'http://127.0.0.1:8100';
+  static const Duration _healthTimeout = Duration(seconds: 8);
+  static const Duration _pollInterval = Duration(milliseconds: 500);
+
+  Process? _backendProcess;
+  IOSink? _logSink;
+  bool _isStarting = false;
+  bool _isRunning = false;
+  String _lastErrorMessage = '';
+  String _logFilePath = '';
+
+  bool get isStarting => _isStarting;
+  bool get isRunning => _isRunning;
+  String get lastErrorMessage => _lastErrorMessage;
+  String get logFilePath => _logFilePath;
+
+  Future<void> ensureStarted() async {
+    final projectRoot = _findClientProjectRoot();
+    if (projectRoot == null) {
+      _setError('Client project root could not be resolved.');
+      return;
+    }
+
+    _logFilePath = _join(projectRoot.path, 'embedded_backend_runtime.log');
+    if (await _isHealthy()) {
+      _isRunning = true;
+      _lastErrorMessage = '';
+      notifyListeners();
+      return;
+    }
+
+    if (_isStarting) {
+      final ok = await _waitForHealth();
+      if (!ok) {
+        _setError('Embedded backend did not become healthy.');
+      }
+      return;
+    }
+
+    _isStarting = true;
+    _isRunning = false;
+    _lastErrorMessage = '';
+    notifyListeners();
+
+    try {
+      await _terminateTrackedProcessIfNeeded(projectRoot);
+
+      final backendDir = Directory(_join(projectRoot.path, 'embedded_backend'));
+      final backendEntry = File(_join(backendDir.path, 'main.py'));
+      if (!backendEntry.existsSync()) {
+        _setError('Embedded backend entry file was not found.');
+        return;
+      }
+
+      final pythonExecutable = _findPythonExecutable(projectRoot);
+      if (pythonExecutable == null) {
+        _setError('Python executable for the embedded backend was not found.');
+        return;
+      }
+
+      final remoteServerUrl = _readRemoteServerUrl(projectRoot);
+      final logFile = File(_logFilePath);
+      logFile.parent.createSync(recursive: true);
+      _logSink?.close();
+      _logSink = logFile.openWrite(mode: FileMode.writeOnlyAppend);
+      _writeLog('=== starting embedded backend ===');
+      _writeLog('python=$pythonExecutable');
+      _writeLog('backendDir=${backendDir.path}');
+      if (remoteServerUrl.isNotEmpty) {
+        _writeLog('remoteServer=$remoteServerUrl');
+      }
+
+      final process = await Process.start(
+        pythonExecutable,
+        const [
+          '-m',
+          'uvicorn',
+          'main:app',
+          '--host',
+          '127.0.0.1',
+          '--port',
+          '8100',
+          '--no-access-log',
+        ],
+        workingDirectory: backendDir.path,
+        runInShell: false,
+        environment: {
+          ...Platform.environment,
+          if (remoteServerUrl.isNotEmpty)
+            'SAFETY_MONITOR_SERVER_URL': remoteServerUrl,
+        },
+      );
+      _backendProcess = process;
+      await _writePidFile(projectRoot, process.pid);
+      _attachLogging(process);
+
+      final ok = await _waitForHealth();
+      if (!ok) {
+        _setError(
+          'Embedded backend failed to start. Check $logFilePath for details.',
+        );
+        await shutdown();
+        return;
+      }
+
+      _isRunning = true;
+      _lastErrorMessage = '';
+      notifyListeners();
+    } catch (error) {
+      _setError('Embedded backend startup failed: $error');
+    } finally {
+      _isStarting = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> shutdown() async {
+    final process = _backendProcess;
+    _backendProcess = null;
+    _isRunning = false;
+    notifyListeners();
+
+    if (process != null) {
+      try {
+        process.kill(ProcessSignal.sigterm);
+      } catch (_) {
+        try {
+          process.kill();
+        } catch (_) {
+          // Ignore shutdown failures on app exit.
+        }
+      }
+    }
+
+    try {
+      final projectRoot = _findClientProjectRoot();
+      if (projectRoot != null) {
+        final pidFile = File(_join(projectRoot.path, 'embedded_backend.pid'));
+        if (pidFile.existsSync()) {
+          pidFile.deleteSync();
+        }
+      }
+    } catch (_) {
+      // Ignore pid cleanup failures.
+    }
+  }
+
+  Future<bool> _waitForHealth() async {
+    final deadline = DateTime.now().add(_healthTimeout);
+    while (DateTime.now().isBefore(deadline)) {
+      if (await _isHealthy()) {
+        return true;
+      }
+      await Future<void>.delayed(_pollInterval);
+    }
+    return false;
+  }
+
+  Future<bool> _isHealthy() async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
+    try {
+      final request = await client.getUrl(Uri.parse('$localBaseUrl/health'));
+      final response = await request.close();
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<void> _terminateTrackedProcessIfNeeded(Directory projectRoot) async {
+    final pidFile = File(_join(projectRoot.path, 'embedded_backend.pid'));
+    if (!pidFile.existsSync()) {
+      return;
+    }
+
+    final rawPid = pidFile.readAsStringSync().trim();
+    final pid = int.tryParse(rawPid);
+    if (pid == null) {
+      pidFile.deleteSync();
+      return;
+    }
+
+    if (await _isHealthy()) {
+      return;
+    }
+
+    try {
+      Process.killPid(pid, ProcessSignal.sigterm);
+    } catch (_) {
+      try {
+        Process.killPid(pid);
+      } catch (_) {
+        // Ignore failures when the old process is already gone.
+      }
+    }
+    pidFile.deleteSync();
+    await Future<void>.delayed(const Duration(seconds: 1));
+  }
+
+  Future<void> _writePidFile(Directory projectRoot, int pid) async {
+    final pidFile = File(_join(projectRoot.path, 'embedded_backend.pid'));
+    await pidFile.writeAsString('$pid', flush: true);
+  }
+
+  void _attachLogging(Process process) {
+    process.stdout
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .listen((line) => _writeLog(line));
+    process.stderr
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .listen((line) => _writeLog('ERR $line'));
+  }
+
+  void _writeLog(String line) {
+    final sink = _logSink;
+    if (sink == null) {
+      return;
+    }
+    sink.writeln('${DateTime.now().toIso8601String()} $line');
+  }
+
+  void _setError(String message) {
+    _lastErrorMessage = message;
+    _isRunning = false;
+    notifyListeners();
+  }
+
+  Directory? _findClientProjectRoot() {
+    final roots = <Directory>{
+      Directory.current,
+      File(Platform.resolvedExecutable).parent,
+    };
+    for (final root in roots) {
+      Directory? current = root.absolute;
+      for (var depth = 0; depth < 8 && current != null; depth++) {
+        final backendEntry = File(
+          _join(current.path, 'embedded_backend', 'main.py'),
+        );
+        if (backendEntry.existsSync()) {
+          return current;
+        }
+        current = current.parent.path == current.path ? null : current.parent;
+      }
+    }
+    return null;
+  }
+
+  String? _findPythonExecutable(Directory projectRoot) {
+    final workspaceRoot = projectRoot.parent;
+    final candidates = <String>[
+      _join(workspaceRoot.path, '.venv', 'Scripts', 'python.exe'),
+      _join(workspaceRoot.path, '.venv', 'Scripts', 'pythonw.exe'),
+      _join(workspaceRoot.path, '.venv', 'Scripts', 'py.exe'),
+    ];
+    for (final candidate in candidates) {
+      if (File(candidate).existsSync()) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  String _readRemoteServerUrl(Directory projectRoot) {
+    final settingsFile = File(_join(projectRoot.path, 'client_settings.json'));
+    if (!settingsFile.existsSync()) {
+      return '';
+    }
+    try {
+      final decoded = jsonDecode(settingsFile.readAsStringSync());
+      if (decoded is! Map<String, dynamic>) {
+        return '';
+      }
+      final value = decoded['remote_server_base_url']?.toString().trim() ?? '';
+      return value;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  String _join(String first, String second, [String? third, String? fourth]) {
+    final parts = <String>[first, second];
+    if (third != null) {
+      parts.add(third);
+    }
+    if (fourth != null) {
+      parts.add(fourth);
+    }
+    return parts.join(Platform.pathSeparator);
+  }
+}

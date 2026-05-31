@@ -6,7 +6,7 @@ if "%ROOT_DIR:~-1%"=="\" set "ROOT_DIR=%ROOT_DIR:~0,-1%"
 set "VIEWER_DIR=%ROOT_DIR%\safety_monitor_viewer"
 set "VIEWER_BUILD_DIR=%VIEWER_DIR%\build\windows\x64\runner\Release"
 set "VIEWER_EXE=%VIEWER_BUILD_DIR%\safety_monitor_viewer.exe"
-set "CONFIG_PATH=%VIEWER_BUILD_DIR%\server_config.json"
+set "CONFIG_PATH=%VIEWER_DIR%\server_config.json"
 set "FLUTTER_CMD=flutter"
 set "LOCAL_FLUTTER_CMD=%ROOT_DIR%\flutter\bin\flutter.bat"
 
@@ -20,7 +20,7 @@ if not exist "%VIEWER_DIR%\pubspec.yaml" (
 if not exist "%VIEWER_EXE%" (
   set "VIEWER_BUILD_DIR=%VIEWER_DIR%\build\windows\x64\runner\Debug"
   set "VIEWER_EXE=%VIEWER_BUILD_DIR%\safety_monitor_viewer.exe"
-  set "CONFIG_PATH=%VIEWER_BUILD_DIR%\server_config.json"
+  set "CONFIG_PATH=%VIEWER_DIR%\server_config.json"
 )
 
 if not exist "%VIEWER_EXE%" (
@@ -86,7 +86,7 @@ if not exist "%VIEWER_EXE%" (
 
   set "VIEWER_BUILD_DIR=%VIEWER_DIR%\build\windows\x64\runner\Release"
   set "VIEWER_EXE=%VIEWER_BUILD_DIR%\safety_monitor_viewer.exe"
-  set "CONFIG_PATH=%VIEWER_BUILD_DIR%\server_config.json"
+  set "CONFIG_PATH=%VIEWER_DIR%\server_config.json"
 )
 
 if not exist "%VIEWER_EXE%" (
@@ -115,7 +115,7 @@ if not "%INPUT_SERVER_URL%"=="" (
   set "SERVER_URL=%INPUT_SERVER_URL%"
 )
 
-if not exist "%VIEWER_BUILD_DIR%" mkdir "%VIEWER_BUILD_DIR%"
+if not exist "%VIEWER_DIR%" mkdir "%VIEWER_DIR%"
 > "%CONFIG_PATH%" echo {
 >> "%CONFIG_PATH%" echo   "api_base_url": "%SERVER_URL%"
 >> "%CONFIG_PATH%" echo }

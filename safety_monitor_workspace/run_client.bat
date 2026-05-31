@@ -30,7 +30,7 @@ if not exist "%BACKEND_DIR%\main.py" (
   exit /b 1
 )
 
-call %PYTHON_CMD% -c "import fastapi, uvicorn, cv2, numpy, requests, yt_dlp, websockets, torch, tensorrt, onnx, onnxruntime" > nul 2>&1
+call %PYTHON_CMD% -c "import fastapi, uvicorn, cv2, numpy, requests, yt_dlp, websockets, torch, tensorrt, onnx, onnxruntime, ultralytics" > nul 2>&1
 if errorlevel 1 (
   echo Required embedded backend packages are missing.
   choice /M "Install embedded backend requirements now"
@@ -51,6 +51,17 @@ if errorlevel 1 (
 call %PYTHON_CMD% -c "import torch; raise SystemExit(0 if torch.cuda.is_available() else 1)" > nul 2>&1
 if errorlevel 1 (
   echo CUDA is not available in the Python environment used by the embedded backend.
+  pause
+  exit /b 1
+)
+
+set "YOLO_CONFIG_DIR=%BACKEND_DIR%\data\ultralytics"
+if not exist "%YOLO_CONFIG_DIR%" mkdir "%YOLO_CONFIG_DIR%"
+
+echo Checking TensorRT runtime engine...
+call %PYTHON_CMD% "%BACKEND_DIR%\ensure_runtime_engine.py"
+if errorlevel 1 (
+  echo Failed to prepare a CUDA TensorRT runtime engine for the client backend.
   pause
   exit /b 1
 )

@@ -82,9 +82,11 @@ class VideoViewBox extends StatelessWidget {
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: badgeColor.withOpacity(0.15),
+                        color: badgeColor.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: badgeColor.withOpacity(0.55)),
+                        border: Border.all(
+                          color: badgeColor.withValues(alpha: 0.55),
+                        ),
                       ),
                       child: Text(
                         badgeText,
@@ -199,7 +201,7 @@ class _PreviewFallback extends StatelessWidget {
     return Image.network(
       previewImageUrl,
       fit: BoxFit.cover,
-      errorBuilder: (context, _, __) {
+      errorBuilder: (context, error, stackTrace) {
         return const Center(
           child: Text(
             'Waiting for live preview.',

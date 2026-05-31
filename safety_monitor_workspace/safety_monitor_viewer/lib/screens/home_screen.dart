@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../controllers/api_event_controller.dart';
@@ -19,7 +18,6 @@ import '../models/source_runtime_status.dart';
 import '../models/video_overlay_detection.dart';
 import '../services/event_api_service.dart';
 import '../widgets/event_log_box.dart';
-import '../widgets/file_bar.dart';
 import '../widgets/video_control_bar.dart';
 import '../widgets/video_view_box.dart';
 
@@ -45,7 +43,6 @@ class _HomeScreenState extends State<HomeScreen> {
   late final ApiEventController apiEventController;
   late final ApiEventFeedSource apiEventFeed;
   final ScrollController appScrollController = ScrollController();
-  final TextEditingController streamTextController = TextEditingController();
   final TextEditingController serverBaseUrlTextController =
       TextEditingController(text: _defaultApiServerBaseUrl);
   final List<_SourcePanelSlot> _sourceSlots = [];
@@ -73,14 +70,12 @@ class _HomeScreenState extends State<HomeScreen> {
   String lastFrameDetectionRequestSourceKey = '';
   double lastFrameDetectionRequestSeconds = -1;
   String lastFrameDetectionStatusUpdatedAt = '';
-  late final String clientId;
   bool isRealtimeConnected = false;
   bool pendingRealtimeEventsRefresh = false;
   bool pendingRealtimeSourcesRefresh = false;
   bool pendingRealtimeStatusesRefresh = false;
   bool isSavingRuleConfig = false;
   bool isEditingDangerZone = false;
-  int _ruleConfigSaveTicket = 0;
 
   @override
   void initState() {
@@ -89,7 +84,6 @@ class _HomeScreenState extends State<HomeScreen> {
     eventApiService = EventApiService(baseUrl: _defaultApiServerBaseUrl);
     apiEventController = ApiEventController(service: eventApiService);
     apiEventFeed = ApiEventFeedSource(apiEventController);
-    clientId = 'gui_${DateTime.now().microsecondsSinceEpoch}';
     unawaited(_initializeServerConnection());
     _startApiAutoRefresh();
     _startFrameDetectionRefresh();
@@ -112,7 +106,6 @@ class _HomeScreenState extends State<HomeScreen> {
     eventApiService.dispose();
     apiEventFeed.dispose();
     appScrollController.dispose();
-    streamTextController.dispose();
     serverBaseUrlTextController.dispose();
     super.dispose();
   }
@@ -190,27 +183,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             AnimatedBuilder(
                               animation: videoController,
                               builder: (context, _) {
-                                return FileBar(
-                                  videoPath: videoController.videoPath,
-                                  sourceType: videoController.sourceType,
-                                  sourceHint: _buildSourceHint(),
-                                  sourceCount: _sourceSlots.length,
-                                  activeSourceLabel: _buildActiveSourceLabel(),
-                                  hasSelectedSource:
-                                      selectedSourceKey.isNotEmpty,
-                                  canReturnFromReplay:
-                                      videoController.canReturnFromReplay,
-                                  isReadOnly: _isViewerReadOnly,
-                                  streamTextController: streamTextController,
-                                  onPickVideo: _isViewerReadOnly
-                                      ? null
-                                      : _pickVideoFile,
-                                  onClearSelectedSource: _clearSelectedSource,
-                                  onOpenStream: _isViewerReadOnly
-                                      ? null
-                                      : _openStream,
-                                  onReturnLive: _returnToLive,
-                                );
+                                return _buildViewerSourceHeader();
                               },
                             ),
                             const SizedBox(height: 12),
@@ -245,59 +218,62 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildApiControls() {
-    // GUI는 API 서버를 기준으로 최신 이벤트를 polling 하며 재생 화면과 함께 보여 줍니다.
+  Widget _buildViewerSourceHeader() {
+    final activePath = videoController.videoPath.trim();
+    final sourceLabel = activePath.isEmpty ? 'No source opened' : activePath;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.black12),
-        borderRadius: BorderRadius.circular(8),
+        color: const Color(0xFF171A20),
+        border: Border.all(color: Colors.white12),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Text(
-                '이벤트 소스: API 서버',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-              const Spacer(),
-              FilledButton(
-                // 자동 polling이 있어도, 사용자가 즉시 다시 받고 싶을 때 수동 갱신할 수 있게 둡니다.
-                onPressed: _refreshApiEvents,
-                child: const Text('API 새로고침'),
-              ),
-            ],
-          ),
+          Text('Server Source', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: serverBaseUrlTextController,
-                  decoration: const InputDecoration(
-                    labelText: '서버 주소',
-                    hintText: 'http://192.168.0.10:8000',
-                    border: OutlineInputBorder(),
-                    isDense: true,
+          Text(sourceLabel, maxLines: 2, overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 6),
+          Text(
+            _buildSourceHint(),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: Colors.white60),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            sourceOverviewsByKey.isEmpty
+                ? 'No server sources available yet.'
+                : 'Server sources: ${sourceOverviewsByKey.length} / Active panel: ${_buildActiveSourceLabel()}',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: Colors.white60),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (selectedSourceKey.isNotEmpty ||
+              videoController.canReturnFromReplay) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                if (selectedSourceKey.isNotEmpty)
+                  OutlinedButton(
+                    onPressed: _clearSelectedSource,
+                    child: const Text('Clear Selection'),
                   ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              OutlinedButton(
-                onPressed: () => unawaited(_applyServerBaseUrl()),
-                child: const Text('서버 적용'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          AnimatedBuilder(
-            animation: apiEventFeed,
-            builder: (context, _) {
-              return _buildApiStatusText();
-            },
-          ),
+                if (videoController.canReturnFromReplay) ...[
+                  if (selectedSourceKey.isNotEmpty) const SizedBox(width: 12),
+                  OutlinedButton(
+                    onPressed: _returnToLive,
+                    child: const Text('Close Clip'),
+                  ),
+                ],
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -445,7 +421,7 @@ class _HomeScreenState extends State<HomeScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFF172435),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: accentColor.withOpacity(0.35)),
+        border: Border.all(color: accentColor.withValues(alpha: 0.35)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -483,7 +459,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return detailParts.join(' | ');
   }
 
-  Widget _buildSourceSidebar() {
+  Widget buildSourceSidebar() {
     final slots = [..._sourceSlots];
     slots.sort((left, right) {
       final leftOverview = sourceOverviewsByKey[left.sourceKey.trim()];
@@ -686,12 +662,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildVideoGridPanel() {
+  Widget buildVideoGridPanel() {
     if (_sourceSlots.isEmpty) {
       return _buildPanelCard(
         title: '실시간 모니터',
         child: const Center(
-          child: Text('왼쪽 상단에서 소스를 추가하면 여러 영상을 동시에 볼 수 있습니다.'),
+          child: Text('서버에 저장된 소스를 열면 여러 영상을 동시에 비교해서 볼 수 있습니다.'),
         ),
       );
     }
@@ -787,7 +763,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      slot.sourceType == 'stream'
+                      slot.sourceType == 'stream' || slot.sourceType == 'camera'
                           ? 'LIVE'
                           : '${_formatDuration(slot.controller.currentPosition)} / ${_formatDuration(slot.controller.totalDuration)}',
                       style: Theme.of(
@@ -844,9 +820,9 @@ class _HomeScreenState extends State<HomeScreen> {
         ? null
         : sourceStatusesByKey[source.sourceKey];
     return _buildPanelCard(
-      title: '선택된 영상',
+      title: '선택된 소스',
       child: source == null
-          ? const Text('영상 타일을 클릭하면 해당 소스의 로그와 룰 설정이 여기에 표시됩니다.')
+          ? const Text('소스를 선택하면 상태, 진행도, 이벤트, 클립 정보를 여기에서 확인할 수 있습니다.')
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -876,16 +852,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               _confirmRemoveSourceSlot(_activeSlot!),
                             ),
                       icon: const Icon(Icons.close),
-                      label: const Text('화면/분석 제거'),
-                    ),
-                    FilledButton.tonalIcon(
-                      onPressed: _isViewerReadOnly
-                          ? null
-                          : () => unawaited(
-                              _confirmDeleteRegisteredSource(source),
-                            ),
-                      icon: const Icon(Icons.delete_forever_outlined),
-                      label: const Text('서버 완전 삭제'),
+                      label: const Text('패널 닫기'),
                     ),
                   ],
                 ),
@@ -907,7 +874,7 @@ class _HomeScreenState extends State<HomeScreen> {
             )
           : null,
       child: source == null
-          ? const Text('먼저 영상 타일을 선택해 주세요.')
+          ? const Text('먼저 소스를 선택해 주세요.')
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1019,7 +986,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
               const Spacer(),
-              if (trailing != null) trailing,
+              if (trailing case final Widget trailingWidget) trailingWidget,
             ],
           ),
           const SizedBox(height: 12),
@@ -1029,7 +996,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildSourceTabs() {
+  Widget buildSourceTabs() {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -1103,7 +1070,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Text('서버 등록 소스', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 4),
           Text(
-            '분석/보관 기준은 서버 등록 소스입니다. 각 소스의 상태, 진행도, 화면 열기, 관리자용 완전 삭제를 여기서 확인합니다.',
+            '서버에 저장된 소스의 상태, 진행도, 패널 열기를 여기에서 확인합니다.',
             style: Theme.of(
               context,
             ).textTheme.bodySmall?.copyWith(color: Colors.black54),
@@ -1147,15 +1114,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         OutlinedButton(
                           onPressed: () =>
                               unawaited(_openRegisteredSource(source)),
-                          child: const Text('화면에 열기'),
-                        ),
-                        OutlinedButton(
-                          onPressed: _isViewerReadOnly
-                              ? null
-                              : () => unawaited(
-                                  _confirmDeleteRegisteredSource(source),
-                                ),
-                          child: const Text('서버 완전 삭제 (관리자용)'),
+                          child: const Text('패널 열기'),
                         ),
                       ],
                     ),
@@ -1222,7 +1181,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildApiServerHealthPanel() {
+  Widget buildApiServerHealthPanel() {
     // /health 호출 결과를 보여 주는 보조 패널입니다.
     // 서버가 꺼졌는지, events.jsonl을 찾았는지 빠르게 점검할 때 사용합니다.
     return Container(
@@ -1425,73 +1384,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _saveRuleConfig(SourceRuleConfig nextRuleConfig) async {
-    if (_isViewerReadOnly) {
-      _showInfoSnack(
-        'Viewer is read-only. Change rule settings from the client app.',
-      );
-      return;
-    }
-    final source = _activeSourceItem;
-    if (source == null) {
-      return;
-    }
-
-    final nextTicket = ++_ruleConfigSaveTicket;
-    setState(() {
-      isSavingRuleConfig = true;
-      registeredSourcesByKey = {
-        ...registeredSourcesByKey,
-        source.sourceKey: SourceItem(
-          sourceKey: source.sourceKey,
-          sourceSlug: source.sourceSlug,
-          sourceType: source.sourceType,
-          sourceValue: source.sourceValue,
-          sourceDurationSeconds: source.sourceDurationSeconds,
-          serverMediaPath: source.serverMediaPath,
-          mediaUrl: source.mediaUrl,
-          previewUrl: source.previewUrl,
-          originalSourceType: source.originalSourceType,
-          originalSourceValue: source.originalSourceValue,
-          clientId: source.clientId,
-          sessionId: source.sessionId,
-          desiredRunning: source.desiredRunning,
-          ruleConfig: nextRuleConfig,
-          createdAt: source.createdAt,
-          updatedAt: source.updatedAt,
-        ),
-      };
-    });
-    final updated = await eventApiService.updateSourceRuleConfig(
-      sourceKey: source.sourceKey,
-      ruleConfig: nextRuleConfig,
+    _showInfoSnack(
+      'Viewer is read-only. Change rule settings from the client app.',
     );
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      isSavingRuleConfig = nextTicket != _ruleConfigSaveTicket;
-      if (updated == null) {
-        return;
-      }
-      if (nextTicket == _ruleConfigSaveTicket) {
-        registeredSourcesByKey = {
-          ...registeredSourcesByKey,
-          updated.sourceKey: updated,
-        };
-      }
-    });
-
-    if (updated == null) {
-      _showInfoSnack('룰 설정 저장에 실패했습니다.');
-      return;
-    }
-
-    if (nextTicket == _ruleConfigSaveTicket) {
-      await _refreshSourceStatuses();
-      await _refreshRegisteredSources();
-      _showInfoSnack('소스별 룰 설정을 저장했습니다.');
-    }
   }
 
   void _handleDangerZoneChanged(RoiRect roi) {
@@ -1547,7 +1442,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return null;
   }
 
-  String _buildDetectionLabel(
+  String buildDetectionLabel(
     ApiEventItem item,
     Map<String, dynamic> detection,
   ) {
@@ -1572,7 +1467,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return name;
   }
 
-  Color _colorForLevel(String level) {
+  Color colorForLevel(String level) {
     switch (level.trim().toUpperCase()) {
       case 'DANGER':
         return Colors.redAccent;
@@ -1622,142 +1517,6 @@ class _HomeScreenState extends State<HomeScreen> {
         '${value.hour.toString().padLeft(2, '0')}:'
         '${value.minute.toString().padLeft(2, '0')}:'
         '${value.second.toString().padLeft(2, '0')}';
-  }
-
-  Future<void> _pickVideoFile() async {
-    if (_isViewerReadOnly) {
-      _showInfoSnack(
-        'Viewer is read-only. Register local sources from the client app.',
-      );
-      return;
-    }
-    try {
-      const group = XTypeGroup(
-        label: 'video',
-        extensions: ['mp4', 'mov', 'avi', 'mkv'],
-      );
-
-      final file = await openFile(acceptedTypeGroups: [group]);
-      if (file == null) {
-        return;
-      }
-
-      final existingSlot = _findSourceSlot(
-        sourceType: 'video',
-        sourceValue: file.path,
-      );
-      if (existingSlot != null) {
-        if (existingSlot.controller.isReplayMode &&
-            existingSlot.controller.canReturnFromReplay) {
-          await existingSlot.controller.returnToLive();
-        }
-        await _setActiveSlot(existingSlot.slotId);
-        await _syncFrameRateFromStatus(
-          sourceType: existingSlot.sourceType,
-          sourceValue: existingSlot.sourceValue,
-          controller: existingSlot.controller,
-        );
-        if (mounted) {
-          _showInfoSnack('이미 등록된 영상 소스로 전환했습니다.');
-        }
-        return;
-      }
-
-      final registeredSource = await _registerSourceOnServer(
-        sourceType: 'video',
-        sourceValue: file.path,
-        resetExisting: true,
-      );
-      if (registeredSource == null) {
-        return;
-      }
-
-      final openPath = _resolveRegisteredSourceOpenPath(registeredSource);
-      final slot = await _addOrActivateSourceSlot(
-        sourceType: registeredSource.sourceType,
-        sourceValue: registeredSource.sourceValue,
-        openPath: openPath,
-        sourceKey: registeredSource.sourceKey,
-        originalSourceType: registeredSource.originalSourceType,
-        originalSourceValue: file.path,
-      );
-      await _syncFrameRateFromStatus(
-        sourceType: registeredSource.sourceType,
-        sourceValue: registeredSource.sourceValue,
-        controller: slot.controller,
-      );
-      if (slot.controller.errorText.trim().isNotEmpty && mounted) {
-        _showInfoSnack(slot.controller.errorText.trim());
-      }
-      unawaited(_refreshApiEventsIfNeeded());
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        apiDetailErrorMessage = '영상 추가 중 오류가 발생했습니다: $error';
-        selectedApiEventDetail = null;
-      });
-      _showInfoSnack('영상 추가 중 오류가 발생했습니다.');
-    }
-  }
-
-  Future<void> _openStream() async {
-    if (_isViewerReadOnly) {
-      _showInfoSnack(
-        'Viewer is read-only. Register local sources from the client app.',
-      );
-      return;
-    }
-    final streamUrl = streamTextController.text.trim();
-    if (streamUrl.isEmpty) {
-      return;
-    }
-
-    final existingSlot = _findSourceSlot(
-      sourceType: 'stream',
-      sourceValue: streamUrl,
-    );
-    if (existingSlot != null) {
-      if (existingSlot.controller.isReplayMode &&
-          existingSlot.controller.canReturnFromReplay) {
-        await existingSlot.controller.returnToLive();
-      }
-      await _setActiveSlot(existingSlot.slotId);
-      await _syncFrameRateFromStatus(
-        sourceType: existingSlot.sourceType,
-        sourceValue: existingSlot.sourceValue,
-        controller: existingSlot.controller,
-      );
-      if (mounted) {
-        _showInfoSnack('이미 등록된 스트림 소스로 전환했습니다.');
-      }
-      return;
-    }
-
-    final registeredSource = await _registerSourceOnServer(
-      sourceType: 'stream',
-      sourceValue: streamUrl,
-      resetExisting: true,
-    );
-    if (registeredSource == null) {
-      return;
-    }
-    final slot = await _addOrActivateSourceSlot(
-      sourceType: registeredSource.sourceType,
-      sourceValue: registeredSource.sourceValue,
-      openPath: registeredSource.sourceValue,
-      nextSourceType: registeredSource.sourceType,
-      sourceKey: registeredSource.sourceKey,
-      originalSourceType: registeredSource.originalSourceType,
-      originalSourceValue: registeredSource.originalSourceValue,
-    );
-    await _syncFrameRateFromStatus(
-      sourceType: registeredSource.sourceType,
-      sourceValue: registeredSource.sourceValue,
-      controller: slot.controller,
-    );
-    unawaited(_refreshApiEventsIfNeeded());
   }
 
   List<EventLogItem> _getOverlayItemsForSlot(_SourcePanelSlot slot) {
@@ -1955,7 +1714,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final resolvedPath = _resolveApiClipSource(item);
     if (resolvedPath.isEmpty) {
       setState(() {
-        apiDetailErrorMessage = '클립 경로가 비어 있습니다.';
+        apiDetailErrorMessage = '재생할 클립 경로가 비어 있습니다.';
       });
       return;
     }
@@ -1972,8 +1731,8 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         _showInfoSnack(
           binding.preserveReturnContext
-              ? '현재 화면에서 이벤트 클립 재생으로 전환했습니다.'
-              : '현재 화면에서 클립만 재생합니다.',
+              ? '현재 패널을 이벤트 클립 재생으로 전환했습니다.'
+              : '현재 패널에서 클립만 재생합니다.',
         );
       }
     } catch (error) {
@@ -2035,6 +1794,20 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _applyServerBaseUrl() async {
     final nextBaseUrl = serverBaseUrlTextController.text.trim();
     if (nextBaseUrl.isEmpty) {
+      if (mounted) {
+        _showInfoSnack('서버 주소를 입력해 주세요.');
+      }
+      return;
+    }
+    final serverUri = Uri.tryParse(nextBaseUrl);
+    final serverScheme = serverUri?.scheme.toLowerCase() ?? '';
+    if (serverUri == null ||
+        !serverUri.hasScheme ||
+        !{'http', 'https'}.contains(serverScheme) ||
+        serverUri.host.trim().isEmpty) {
+      if (mounted) {
+        _showInfoSnack('서버 주소는 http:// 또는 https:// 형식이어야 합니다.');
+      }
       return;
     }
     eventApiService.updateBaseUrl(nextBaseUrl);
@@ -2049,50 +1822,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) {
       _showInfoSnack('서버 주소를 ${eventApiService.baseUrl} 로 적용했습니다.');
     }
-  }
-
-  Future<SourceItem?> _registerSourceOnServer({
-    required String sourceType,
-    required String sourceValue,
-    bool resetExisting = true,
-  }) async {
-    if (_isViewerReadOnly) {
-      _showInfoSnack('Viewer does not register sources. Use the client app.');
-      return null;
-    }
-    final registeredSource = sourceType.trim() == 'video'
-        ? await eventApiService.uploadVideoSource(
-            filePath: sourceValue,
-            clientId: clientId,
-            resetExisting: resetExisting,
-            startImmediately: true,
-          )
-        : await eventApiService.registerSource(
-            sourceType: sourceType,
-            sourceValue: sourceValue,
-            clientId: clientId,
-            resetExisting: resetExisting,
-            startImmediately: true,
-          );
-    if (registeredSource == null && mounted) {
-      setState(() {
-        apiDetailErrorMessage = sourceType.trim() == 'video'
-            ? '서버에 영상 파일을 업로드하지 못했습니다.'
-            : '서버에 소스를 등록하지 못했습니다.';
-        selectedApiEventDetail = null;
-      });
-      return null;
-    }
-
-    if (mounted) {
-      setState(() {
-        apiDetailErrorMessage = null;
-        selectedApiEventDetail = null;
-      });
-    }
-    unawaited(_refreshRegisteredSources());
-    unawaited(_refreshSourceStatuses());
-    return registeredSource;
   }
 
   void _startApiAutoRefresh() {
@@ -2492,7 +2221,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     await _syncSlotAudioFocus();
     apiEventFeed.clearSelection();
-    await eventApiService.deleteSource(removedSlot.sourceKey, clearData: false);
     await _refreshRegisteredSources();
     await _refreshSourceStatuses();
     if (_sourceSlots.isNotEmpty) {
@@ -2502,7 +2230,7 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_refreshFrameDetectionsIfNeeded());
   }
 
-  Future<void> _removeLocalSlotBySourceKey(String sourceKey) async {
+  Future<void> removeLocalSlotBySourceKey(String sourceKey) async {
     final normalizedSourceKey = sourceKey.trim();
     if (normalizedSourceKey.isEmpty) {
       return;
@@ -2538,7 +2266,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _sourceSlots
         ..clear()
         ..addAll(nextSlots);
-      if (_activeSlotId == removedSlot!.slotId) {
+      if (_activeSlotId == removedSlot.slotId) {
         _activeSlotId = _sourceSlots.isEmpty ? '' : _sourceSlots.last.slotId;
       }
       selectedApiEventDetail = null;
@@ -2809,13 +2537,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _buildSourceHint() {
     if (selectedSourceKey.isEmpty) {
-      return '소스를 추가하고 칩을 눌러 화면을 전환할 수 있습니다. 선택된 소스가 없으면 전체 이벤트 로그를 표시합니다.';
+      return '서버에 저장된 소스를 열면 여기서 진행 중 영상과 완료된 영상, 이벤트, 클립을 함께 조회할 수 있습니다.';
     }
 
-    return '현재 화면의 소스 로그와 객체 박스만 표시하며, 분석 상태는 서버에서 계속 갱신됩니다.';
+    return '현재 선택한 서버 소스의 영상, 객체 박스, 이벤트, 클립 재생 상태를 확인하는 화면입니다.';
   }
 
-  String _buildOverlayStatusText() {
+  String buildOverlayStatusText() {
     if (videoController.errorText.trim().isNotEmpty) {
       return '영상 재생 오류: ${videoController.errorText.trim()}';
     }
@@ -2830,7 +2558,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (!sourceStatusesByKey.containsKey(sourceKey)) {
-      return '이 소스 분석 준비 중입니다. Python worker가 서버에 상태를 보내면 박스가 갱신됩니다.';
+      return '이 소스는 아직 분석 준비 중입니다. 서버 상태가 갱신되면 박스가 표시됩니다.';
     }
 
     final status = sourceStatusesByKey[sourceKey];
@@ -2863,7 +2591,7 @@ class _HomeScreenState extends State<HomeScreen> {
         status.state.trim().toLowerCase() != 'completed' &&
         status.lastSourceTimeSeconds + 0.02 <
             videoController.currentOverlaySeconds) {
-      return '현재 재생 시점은 아직 Python 분석이 끝나지 않았습니다.';
+      return '현재 재생 시점의 분석 결과가 아직 서버에 도착하지 않았습니다.';
     }
 
     if (snapshot.detections.isEmpty) {
@@ -2897,7 +2625,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return null;
   }
 
-  _SourcePanelSlot? _findSourceSlot({
+  _SourcePanelSlot? findSourceSlot({
     required String sourceType,
     required String sourceValue,
   }) {
@@ -3005,8 +2733,8 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('소스 닫기'),
-          content: Text('"${slot.label}" 소스 화면을 닫고 분석도 중단합니다. 계속할까요?'),
+          title: const Text('패널 닫기'),
+          content: Text('"${slot.label}" 소스 화면만 닫습니다. 계속할까요?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -3014,7 +2742,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('닫기'),
+              child: const Text('패널 닫기'),
             ),
           ],
         );
@@ -3027,76 +2755,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
     await _removeSourceSlot(slot.slotId);
     if (mounted) {
-      _showInfoSnack('"${slot.label}" 소스 분석을 중단하고 화면에서 제거했습니다.');
+      _showInfoSnack('"${slot.label}" 소스 화면을 닫았습니다.');
     }
   }
 
   Future<void> _handleSlotDeleteAction(_SourcePanelSlot slot) async {
-    final registeredSource = registeredSourcesByKey[slot.sourceKey.trim()];
-    if (registeredSource != null) {
-      await _confirmDeleteRegisteredSource(registeredSource);
-      return;
-    }
     await _confirmRemoveSourceSlot(slot);
-  }
-
-  Future<void> _confirmDeleteRegisteredSource(SourceItem source) async {
-    if (_isViewerReadOnly) {
-      _showInfoSnack(
-        'Viewer is read-only. Remove sources from the client app.',
-      );
-      return;
-    }
-    final runtimeStatus = sourceStatusesByKey[source.sourceKey];
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('서버 소스 완전 삭제 (관리자용)'),
-          content: Text(
-            '"${source.sourceSlug}"\n'
-            'type: ${source.sourceType}\n'
-            'state: ${runtimeStatus?.state ?? 'unknown'}\n\n'
-            '이 소스와 관련된 서버 이벤트 로그, 프레임 탐지 데이터, 클립 파일, 업로드 원본 영상을 함께 삭제합니다. 계속할까요?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('취소'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('서버 완전 삭제'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true) {
-      return;
-    }
-
-    final ok = await eventApiService.deleteSource(
-      source.sourceKey,
-      clearData: true,
-    );
-    if (!ok) {
-      if (mounted) {
-        _showInfoSnack('서버 소스 삭제에 실패했습니다.');
-      }
-      return;
-    }
-
-    await _removeLocalSlotBySourceKey(source.sourceKey);
-    await _refreshRegisteredSources();
-    await _refreshSourceStatuses();
-    unawaited(_refreshApiEventsIfNeeded());
-    unawaited(_refreshFrameDetectionsIfNeeded());
-
-    if (mounted) {
-      _showInfoSnack('"${source.sourceSlug}" 서버 데이터 삭제를 완료했습니다. (관리자용)');
-    }
   }
 
   Future<void> _openRegisteredSource(SourceItem source) async {
@@ -3453,9 +3117,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<String> _loadServerBaseUrlConfig() async {
     try {
-      final configPath = File(
-        '${Directory.current.path}${Platform.pathSeparator}server_config.json',
-      );
+      final configPath = _resolveViewerConfigFile();
       if (!await configPath.exists()) {
         return '';
       }
@@ -3472,9 +3134,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _saveServerBaseUrlConfig(String baseUrl) async {
     try {
-      final configPath = File(
-        '${Directory.current.path}${Platform.pathSeparator}server_config.json',
-      );
+      final configPath = _resolveViewerConfigFile();
       final payload = {'api_base_url': baseUrl};
       await configPath.writeAsString(
         const JsonEncoder.withIndent('  ').convert(payload),
@@ -3482,6 +3142,34 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {
       // 설정 파일 저장 실패는 앱 동작을 막지 않습니다.
     }
+  }
+
+  File _resolveViewerConfigFile() {
+    final projectRoot = _findViewerProjectRoot();
+    return File(
+      '${projectRoot.path}${Platform.pathSeparator}server_config.json',
+    );
+  }
+
+  Directory _findViewerProjectRoot() {
+    final roots = <Directory>{
+      Directory.current.absolute,
+      File(Platform.resolvedExecutable).parent.absolute,
+    };
+    for (final root in roots) {
+      Directory? current = root;
+      for (var depth = 0; depth < 8 && current != null; depth++) {
+        final pubspec = File(
+          '${current.path}${Platform.pathSeparator}pubspec.yaml',
+        );
+        final libDir = Directory('${current.path}${Platform.pathSeparator}lib');
+        if (pubspec.existsSync() && libDir.existsSync()) {
+          return current;
+        }
+        current = current.parent.path == current.path ? null : current.parent;
+      }
+    }
+    return Directory.current.absolute;
   }
 }
 

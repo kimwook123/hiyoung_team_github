@@ -4,7 +4,6 @@ from pathlib import Path
 import numpy as np
 
 from core.detection_model import Box, Detection, DetectionModel, DetectionResult
-from core.path_helper import to_project_path
 from models.device_helper import resolve_torch_device
 from models.yolo_runtime_helper import (
     build_predict_kwargs,
@@ -49,7 +48,10 @@ class EnsembleYoloModel(DetectionModel):
         }
 
     def load(self) -> None:
-        os.environ.setdefault("YOLO_CONFIG_DIR", to_project_path("Ultralytics"))
+        os.environ.setdefault(
+            "YOLO_CONFIG_DIR",
+            str(Path(__file__).resolve().parents[3] / "data" / "ultralytics"),
+        )
 
         try:
             from ultralytics import YOLO

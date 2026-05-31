@@ -360,6 +360,45 @@ class EventApiService {
     }
   }
 
+  Future<bool> startSource(String sourceKey) async {
+    final uri = _buildUri(
+      '/api/sources/${Uri.encodeComponent(sourceKey)}/start',
+      const {},
+    );
+    try {
+      final response = await _client.post(uri);
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> stopSource(String sourceKey) async {
+    final uri = _buildUri(
+      '/api/sources/${Uri.encodeComponent(sourceKey)}/stop',
+      const {},
+    );
+    try {
+      final response = await _client.post(uri);
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> restartSource(String sourceKey) async {
+    final uri = _buildUri(
+      '/api/sources/${Uri.encodeComponent(sourceKey)}/restart',
+      const {},
+    );
+    try {
+      final response = await _client.post(uri);
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<SourceItem?> updateSourceRuleConfig({
     required String sourceKey,
     required SourceRuleConfig ruleConfig,

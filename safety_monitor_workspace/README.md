@@ -13,13 +13,13 @@ This workspace is organized as a `client -> server -> viewer` system.
 
 - `safety_monitor_server/`
   - Does not run inference.
-  - Stores source metadata, source status, frame detections, events, and event clips.
+  - Stores source metadata, source status, frame detections, events, event clips, uploaded source media, and preview images.
   - Exposes read/write APIs for clients and read APIs for viewers.
 
 - `safety_monitor_viewer/`
   - Flutter Windows viewer.
   - Reads server data and visualizes source status, detections, events, and clips.
-  - Treated as read-only for source registration and rule changes.
+  - Treated as read-only for source registration, analysis control, and rule changes.
 
 ## Launch
 
@@ -34,4 +34,6 @@ run_viewer.bat
 - The client is expected to run on the machine that owns the local video files and GPU.
 - The client app auto-starts its embedded backend on `http://127.0.0.1:8100`.
 - The server stores event clips in `safety_monitor_server/data/clips/`.
+- The server stores uploaded source media in `safety_monitor_server/data/uploaded_sources/`.
+- The server stores latest source previews in `safety_monitor_server/data/source_cache/` and `/api/source-previews`.
 - The viewer can inspect server data and replay uploaded event clips without owning the weights.

@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -8,7 +7,6 @@ import '../models/api_server_health.dart';
 import '../models/frame_detection_snapshot.dart';
 import '../models/source_overview_item.dart';
 import '../models/source_item.dart';
-import '../models/source_rule_config.dart';
 import '../models/source_runtime_status.dart';
 
 // 이 파일은 Flutter에서 FastAPI 서버를 호출하는 HTTP 서비스입니다.
@@ -193,95 +191,6 @@ class EventApiService {
     }
   }
 
-  Future<SourceItem?> registerSource({
-    required String sourceType,
-    required String sourceValue,
-    String clientId = '',
-    String sessionId = '',
-    bool resetExisting = true,
-    bool startImmediately = true,
-  }) async {
-    final uri = _buildUri('/api/sources', const {});
-    try {
-      final response = await _client.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'source_type': sourceType,
-          'source_value': sourceValue,
-          'client_id': clientId,
-          'session_id': sessionId,
-          'reset_existing': resetExisting,
-          'start_immediately': startImmediately,
-        }),
-      );
-      if (response.statusCode != 200) {
-        return null;
-      }
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map<String, dynamic>) {
-        return null;
-      }
-      final item = decoded['item'];
-      if (item is Map<String, dynamic>) {
-        return SourceItem.fromJson(item);
-      }
-      if (item is Map) {
-        return SourceItem.fromJson(Map<String, dynamic>.from(item));
-      }
-    } catch (_) {
-      return null;
-    }
-    return null;
-  }
-
-  Future<SourceItem?> uploadVideoSource({
-    required String filePath,
-    String clientId = '',
-    String sessionId = '',
-    bool resetExisting = true,
-    bool startImmediately = true,
-  }) async {
-    final file = File(filePath);
-    if (!await file.exists()) {
-      return null;
-    }
-
-    final baseUri = Uri.parse(baseUrl);
-    final request = http.MultipartRequest(
-      'POST',
-      baseUri.replace(path: '/api/sources/upload'),
-    );
-    request.fields['client_id'] = clientId;
-    request.fields['session_id'] = sessionId;
-    request.fields['reset_existing'] = resetExisting ? 'true' : 'false';
-    request.fields['start_immediately'] = startImmediately ? 'true' : 'false';
-    request.files.add(await http.MultipartFile.fromPath('file', filePath));
-
-    try {
-      final streamed = await request.send();
-      if (streamed.statusCode != 200) {
-        return null;
-      }
-      final response = await http.Response.fromStream(streamed);
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map<String, dynamic>) {
-        return null;
-      }
-      final item = decoded['item'];
-      if (item is Map<String, dynamic>) {
-        return SourceItem.fromJson(item);
-      }
-      if (item is Map) {
-        return SourceItem.fromJson(Map<String, dynamic>.from(item));
-      }
-    } catch (_) {
-      return null;
-    }
-
-    return null;
-  }
-
   Future<List<SourceItem>> fetchSources() async {
     final uri = _buildUri('/api/sources', const {});
     try {
@@ -337,52 +246,6 @@ class EventApiService {
     } catch (_) {
       return const [];
     }
-  }
-
-  Future<bool> deleteSource(String sourceKey, {bool clearData = false}) async {
-    final uri = _buildUri('/api/sources/${Uri.encodeComponent(sourceKey)}', {
-      'clear_data': clearData ? 'true' : 'false',
-    });
-    try {
-      final response = await _client.delete(uri);
-      return response.statusCode == 200;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  Future<SourceItem?> updateSourceRuleConfig({
-    required String sourceKey,
-    required SourceRuleConfig ruleConfig,
-  }) async {
-    final uri = _buildUri(
-      '/api/sources/${Uri.encodeComponent(sourceKey)}/config',
-      const {},
-    );
-    try {
-      final response = await _client.patch(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'rule_config': ruleConfig.toJson()}),
-      );
-      if (response.statusCode != 200) {
-        return null;
-      }
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map<String, dynamic>) {
-        return null;
-      }
-      final item = decoded['item'];
-      if (item is Map<String, dynamic>) {
-        return SourceItem.fromJson(item);
-      }
-      if (item is Map) {
-        return SourceItem.fromJson(Map<String, dynamic>.from(item));
-      }
-    } catch (_) {
-      return null;
-    }
-    return null;
   }
 
   Future<FrameDetectionSnapshot?> fetchCurrentFrameDetection({

@@ -433,11 +433,23 @@ def upsert_source_status(db_path: Path, status_record: dict) -> dict:
     return saved_record
 
 
-def list_source_statuses(db_path: Path) -> list[dict]:
+def list_source_statuses(
+    db_path: Path,
+    *,
+    client_id: str | None = None,
+    session_id: str | None = None,
+) -> list[dict]:
+    query = "SELECT payload_json FROM source_status WHERE 1=1"
+    parameters: list[object] = []
+    if client_id is not None:
+        query += " AND client_id = ?"
+        parameters.append(client_id)
+    if session_id is not None:
+        query += " AND session_id = ?"
+        parameters.append(session_id)
+    query += " ORDER BY updated_at DESC, source_key DESC"
     with _connect(db_path) as connection:
-        rows = connection.execute(
-            "SELECT payload_json FROM source_status ORDER BY updated_at DESC, source_key DESC"
-        ).fetchall()
+        rows = connection.execute(query, parameters).fetchall()
     return [_decode_payload(row["payload_json"]) for row in rows]
 
 
@@ -551,12 +563,103 @@ def upsert_source(db_path: Path, source_record: dict) -> dict:
     return saved_record
 
 
-def list_sources(db_path: Path) -> list[dict]:
+def list_sources(
+    db_path: Path,
+    *,
+    client_id: str | None = None,
+    session_id: str | None = None,
+) -> list[dict]:
+    query = "SELECT payload_json FROM sources WHERE 1=1"
+    parameters: list[object] = []
+    if client_id is not None:
+        query += " AND client_id = ?"
+        parameters.append(client_id)
+    if session_id is not None:
+        query += " AND session_id = ?"
+        parameters.append(session_id)
+    query += " ORDER BY updated_at DESC, source_key DESC"
     with _connect(db_path) as connection:
-        rows = connection.execute(
-            "SELECT payload_json FROM sources ORDER BY updated_at DESC, source_key DESC"
-        ).fetchall()
+        rows = connection.execute(query, parameters).fetchall()
     return [_decode_payload(row["payload_json"]) for row in rows]
+
+
+def list_source_overviews(
+    db_path: Path,
+    *,
+    client_id: str | None = None,
+    session_id: str | None = None,
+) -> list[dict]:
+    query = """
+        SELECT
+            s.source_key,
+            s.payload_json AS source_payload_json,
+            ss.payload_json AS status_payload_json,
+            (
+                SELECT MAX(received_at)
+                FROM events e
+                WHERE e.source_key = s.source_key
+            ) AS last_event_received_at,
+            (
+                SELECT MAX(received_at)
+                FROM frame_detections fd
+                WHERE fd.source_key = s.source_key
+            ) AS last_frame_received_at
+        FROM sources s
+        LEFT JOIN source_status ss
+            ON ss.source_key = s.source_key
+        WHERE 1=1
+    """
+    parameters: list[object] = []
+    if client_id is not None:
+        query += " AND s.client_id = ?"
+        parameters.append(client_id)
+    if session_id is not None:
+        query += " AND s.session_id = ?"
+        parameters.append(session_id)
+    query += " ORDER BY COALESCE(ss.updated_at, s.updated_at) DESC, s.source_key DESC"
+
+    with _connect(db_path) as connection:
+        rows = connection.execute(query, parameters).fetchall()
+
+    items: list[dict] = []
+    for row in rows:
+        source_payload = _decode_payload(row["source_payload_json"])
+        status_payload = _decode_payload(row["status_payload_json"] or "{}")
+        items.append(
+            {
+                "client_id": str(source_payload.get("client_id", "")).strip(),
+                "session_id": str(source_payload.get("session_id", "")).strip(),
+                "source_key": str(source_payload.get("source_key", "")).strip(),
+                "source_slug": str(source_payload.get("source_slug", "")).strip(),
+                "source_type": str(source_payload.get("source_type", "")).strip(),
+                "source_value": str(source_payload.get("source_value", "")).strip(),
+                "source_duration_seconds": _to_float(
+                    source_payload.get("source_duration_seconds")
+                ),
+                "media_url": str(source_payload.get("media_url", "")).strip(),
+                "preview_url": str(source_payload.get("preview_url", "")).strip(),
+                "desired_running": bool(source_payload.get("desired_running", False)),
+                "state": str(status_payload.get("state", "")).strip() or "unknown",
+                "is_running": bool(status_payload.get("is_running", False)),
+                "source_fps": _to_float(status_payload.get("source_fps")),
+                "last_frame_id": _to_int(
+                    status_payload.get("last_frame_id"),
+                    default=-1,
+                ),
+                "last_source_time_seconds": _to_float(
+                    status_payload.get("last_source_time_seconds")
+                ),
+                "last_event_received_at": str(row["last_event_received_at"] or ""),
+                "last_frame_received_at": str(row["last_frame_received_at"] or ""),
+                "error_message": str(status_payload.get("error_message", "")).strip(),
+                "updated_at": str(
+                    status_payload.get("updated_at")
+                    or source_payload.get("updated_at")
+                    or ""
+                ).strip(),
+            }
+        )
+    return items
 
 
 def get_source(db_path: Path, source_key: str) -> dict | None:

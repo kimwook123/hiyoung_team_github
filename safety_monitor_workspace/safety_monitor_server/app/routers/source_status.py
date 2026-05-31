@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, HTTPException, Query
 
 from app.config import DATABASE_PATH
 from app.database import list_source_statuses, upsert_source_status
@@ -36,8 +36,15 @@ def upsert_status(
 
 
 @router.get("", response_model=SourceStatusListResponse)
-def list_source_status() -> SourceStatusListResponse:
-    records = list_source_statuses(DATABASE_PATH)
+def list_source_status(
+    client_id: str | None = Query(default=None),
+    session_id: str | None = Query(default=None),
+) -> SourceStatusListResponse:
+    records = list_source_statuses(
+        DATABASE_PATH,
+        client_id=client_id,
+        session_id=session_id,
+    )
     items = [
         SourceStatusItem(
             source_key=str(record.get("source_key", "")).strip(),

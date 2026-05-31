@@ -1,0 +1,63 @@
+import hashlib
+from pathlib import Path
+
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
+
+from app.config import SERVER_SOURCE_PREVIEW_DIR
+
+router = APIRouter(prefix="/api/source-previews", tags=["source-previews"])
+
+
+def _preview_path(source_key: str) -> Path:
+    normalized = source_key.strip()
+    digest = hashlib.sha1(normalized.encode("utf-8")).hexdigest()
+    return (SERVER_SOURCE_PREVIEW_DIR / f"{digest}.jpg").resolve()
+
+
+@router.post("")
+async def upload_source_preview(
+    source_key: str = Form(...),
+    file: UploadFile = File(...),
+) -> dict[str, object]:
+    normalized_source_key = source_key.strip()
+    if not normalized_source_key:
+        raise HTTPException(status_code=400, detail="source_key is required")
+
+    preview_path = _preview_path(normalized_source_key)
+    try:
+        with preview_path.open("wb") as output:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                output.write(chunk)
+    finally:
+        await file.close()
+
+    if not preview_path.exists() or preview_path.stat().st_size <= 0:
+        preview_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail="preview upload is empty")
+
+    return {
+        "ok": True,
+        "source_key": normalized_source_key,
+        "url": f"/api/source-previews/latest?source_key={normalized_source_key}",
+    }
+
+
+@router.get("/latest")
+def get_latest_source_preview(source_key: str) -> FileResponse:
+    normalized_source_key = source_key.strip()
+    if not normalized_source_key:
+        raise HTTPException(status_code=400, detail="source_key is required")
+
+    preview_path = _preview_path(normalized_source_key)
+    if not preview_path.exists() or not preview_path.is_file():
+        raise HTTPException(status_code=404, detail="source preview not found")
+
+    return FileResponse(
+        path=preview_path,
+        filename=preview_path.name,
+        media_type="image/jpeg",
+    )

@@ -31,6 +31,7 @@ class SourceItem(BaseModel):
     source_duration_seconds: float = 0.0
     server_media_path: str = ""
     media_url: str = ""
+    preview_url: str = ""
     original_source_type: str = ""
     original_source_value: str = ""
     client_id: str = ""
@@ -44,6 +45,33 @@ class SourceItem(BaseModel):
 class SourceListResponse(BaseModel):
     count: int
     items: list[SourceItem]
+
+
+class SourceOverviewItem(BaseModel):
+    client_id: str = ""
+    session_id: str = ""
+    source_key: str
+    source_slug: str = ""
+    source_type: str
+    source_value: str
+    source_duration_seconds: float = 0.0
+    media_url: str = ""
+    preview_url: str = ""
+    desired_running: bool = False
+    state: str = "unknown"
+    is_running: bool = False
+    source_fps: float = 0.0
+    last_frame_id: int = -1
+    last_source_time_seconds: float = 0.0
+    last_event_received_at: str = ""
+    last_frame_received_at: str = ""
+    error_message: str = ""
+    updated_at: str = ""
+
+
+class SourceOverviewListResponse(BaseModel):
+    count: int
+    items: list[SourceOverviewItem]
 
 
 class SourceCreateRequest(BaseModel):

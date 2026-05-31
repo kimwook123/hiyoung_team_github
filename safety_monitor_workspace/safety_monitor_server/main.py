@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
-from time import perf_counter
 from time import monotonic
+from time import perf_counter
 
 from fastapi import FastAPI
 from fastapi import Request
@@ -9,62 +9,38 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import (
     DATABASE_PATH,
     ENABLE_SERVER_REQUEST_LOG,
-    LEGACY_SOURCE_CACHE_DIR,
     SERVER_REQUEST_LOG_SUMMARY_INTERVAL_SECONDS,
     SERVER_REQUEST_LOG_SUMMARY_PATHS,
-    SERVER_CLIP_DIR,
-    SERVER_DATA_DIR,
-    SERVER_SOURCE_CACHE_DIR,
     ensure_server_dirs,
 )
-from app.database import (
-    init_db,
-    migrate_legacy_analysis_paths,
-    prune_orphan_source_data,
-    prune_orphan_source_statuses,
-)
+from app.database import init_db
 from app.log_utils import log_line
 from app.routers.admin import router as admin_router
 from app.routers.clips import router as clips_router
 from app.routers.events import router as events_router
 from app.routers.frame_detections import router as frame_detections_router
 from app.routers.realtime import router as realtime_router
-from app.routers.sources import router as sources_router
 from app.routers.source_media import router as source_media_router
+from app.routers.source_previews import router as source_previews_router
+from app.routers.sources import router as sources_router
 from app.routers.source_status import router as source_status_router
 from app.schemas import HealthResponse
-from app.source_manager import AnalysisSourceManager
 
-# 이 파일은 FastAPI 서버의 진입점입니다.
-# 서버 소유 데이터 폴더를 준비하고, 이벤트/클립 라우터를 등록합니다.
 
 ensure_server_dirs()
-SERVER_DATA_DIR.mkdir(parents=True, exist_ok=True)
-SERVER_CLIP_DIR.mkdir(parents=True, exist_ok=True)
 init_db(DATABASE_PATH)
-migrate_legacy_analysis_paths(
-    DATABASE_PATH,
-    legacy_source_cache_dir=LEGACY_SOURCE_CACHE_DIR,
-    server_source_cache_dir=SERVER_SOURCE_CACHE_DIR,
-)
-prune_orphan_source_statuses(DATABASE_PATH)
-prune_orphan_source_data(DATABASE_PATH)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    source_manager = AnalysisSourceManager()
-    app.state.source_manager = source_manager
     app.state.database_path = DATABASE_PATH
     app.state.request_log_stats = {}
     app.state.request_log_last_flush = monotonic()
-    source_manager.bootstrap()
     try:
         yield
     finally:
         if ENABLE_SERVER_REQUEST_LOG:
             _flush_request_log_summary(app, force=True)
-        source_manager.shutdown()
 
 
 app = FastAPI(title="Safety Monitor Server", lifespan=lifespan)
@@ -84,6 +60,7 @@ app.include_router(frame_detections_router)
 app.include_router(source_status_router)
 app.include_router(sources_router)
 app.include_router(source_media_router)
+app.include_router(source_previews_router)
 app.include_router(realtime_router)
 
 
@@ -188,7 +165,6 @@ if ENABLE_SERVER_REQUEST_LOG:
 
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
-    # health는 서버가 살아 있는지, 현재 SQLite 저장소가 어디인지 확인하는 간단한 점검 API입니다.
     return HealthResponse(
         status="ok",
         event_log_path=str(DATABASE_PATH),

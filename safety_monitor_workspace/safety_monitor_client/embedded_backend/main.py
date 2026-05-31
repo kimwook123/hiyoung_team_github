@@ -10,6 +10,7 @@ from app.config import ANALYSIS_DEVICE
 from app.config import MODEL_PATH
 from app.config import MODEL_TYPE
 from app.config import PREFER_TENSORRT_ENGINE
+from pathlib import Path
 from app.dashboard_page import build_dashboard_html
 from app.config import DATABASE_PATH
 from app.config import ENABLE_SERVER_REQUEST_LOG
@@ -190,6 +191,9 @@ def dashboard():
 @app.get("/api/client/config")
 def client_config() -> dict[str, object]:
     engine_path = MODEL_PATH.with_suffix(".engine")
+    ultralytics_config_dir = (
+        Path(__file__).resolve().parent / "data" / "ultralytics"
+    ).resolve()
     return {
         "remote_server_base_url": remote_server_reporter.base_url,
         "analysis_device": ANALYSIS_DEVICE,
@@ -199,5 +203,6 @@ def client_config() -> dict[str, object]:
         "model_exists": MODEL_PATH.exists(),
         "engine_path": str(engine_path),
         "engine_exists": engine_path.exists(),
+        "yolo_config_dir": str(ultralytics_config_dir),
         "database_path": str(DATABASE_PATH),
     }

@@ -41,7 +41,8 @@ class EventLogBox extends StatelessWidget {
                 ? const Center(child: Text('표시할 로그가 없습니다.'))
                 : ListView.separated(
                     itemCount: eventFeed.logItems.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    separatorBuilder: (context, index) =>
+                        const Divider(height: 1),
                     itemBuilder: (context, index) {
                       final item = eventFeed.logItems[index];
                       return _LogTile(

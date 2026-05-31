@@ -58,6 +58,8 @@ class EmbeddedBackendService extends ChangeNotifier {
 
       final backendDir = Directory(_join(projectRoot.path, 'embedded_backend'));
       final backendEntry = File(_join(backendDir.path, 'main.py'));
+      final yoloConfigDir = _join(backendDir.path, 'data', 'ultralytics');
+      Directory(yoloConfigDir).createSync(recursive: true);
       if (!backendEntry.existsSync()) {
         _setError('Embedded backend entry file was not found.');
         return;
@@ -99,6 +101,7 @@ class EmbeddedBackendService extends ChangeNotifier {
           ...Platform.environment,
           if (remoteServerUrl.isNotEmpty)
             'SAFETY_MONITOR_SERVER_URL': remoteServerUrl,
+          'YOLO_CONFIG_DIR': yoloConfigDir,
         },
       );
       _backendProcess = process;

@@ -90,6 +90,27 @@ class RemoteServerReporter:
             log_line("WARN", message="remote source delete failed", source=source_key, error=error)
             return False
 
+    def reset_source_data(self, *, source_key: str, source_slug: str) -> bool:
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/admin/reset-data",
+                json={
+                    "source_key": source_key,
+                    "source_slug": source_slug,
+                },
+                timeout=HTTP_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+            return True
+        except Exception as error:
+            log_line(
+                "WARN",
+                message="remote source reset failed",
+                source=source_key,
+                error=error,
+            )
+            return False
+
     def post_status(self, status_record: dict[str, Any]) -> bool:
         return self._post_json("/api/source-status", status_record)
 

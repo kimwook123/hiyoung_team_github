@@ -97,13 +97,13 @@ class AnalysisSourceManager:
                 source_slug=source_slug,
                 server_clip_dir=CLIENT_CLIP_DIR,
             )
+            self._reset_remote_source_data(source_record)
 
         if start_immediately:
             self.start_source(source_key)
         else:
             previous_status = get_source_status(DATABASE_PATH, source_key) or {}
-            upsert_source_status(
-                DATABASE_PATH,
+            self._upsert_status_and_sync(
                 {
                     "source_key": source_key,
                     "source_type": source_record["source_type"],
@@ -118,7 +118,7 @@ class AnalysisSourceManager:
                         previous_status.get("last_source_time_seconds", 0.0) or 0.0
                     ),
                     "error_message": "",
-                },
+                }
             )
             latest = get_source(DATABASE_PATH, source_key) or source_record
             self._sync_source_to_server(latest)
@@ -157,6 +157,7 @@ class AnalysisSourceManager:
                 source_slug=str(source_record.get("source_slug", "")).strip(),
                 server_clip_dir=CLIENT_CLIP_DIR,
             )
+            self._reset_remote_source_data(source_record)
             self.start_source(normalized_source_key)
             return get_source(DATABASE_PATH, normalized_source_key) or source_record
 
@@ -211,8 +212,7 @@ class AnalysisSourceManager:
                 type=source_record["source_type"],
                 client=source_record["client_id"] or "-",
             )
-            upsert_source_status(
-                DATABASE_PATH,
+            self._upsert_status_and_sync(
                 {
                     "source_key": normalized_source_key,
                     "source_type": source_record["source_type"],
@@ -227,7 +227,7 @@ class AnalysisSourceManager:
                         previous_status.get("last_source_time_seconds", 0.0) or 0.0
                     ),
                     "error_message": "",
-                },
+                }
             )
             thread.start()
         return get_source(DATABASE_PATH, normalized_source_key) or source_record
@@ -259,8 +259,7 @@ class AnalysisSourceManager:
         source_record = get_source(DATABASE_PATH, normalized_source_key)
         if source_record is not None:
             previous_status = get_source_status(DATABASE_PATH, normalized_source_key) or {}
-            upsert_source_status(
-                DATABASE_PATH,
+            self._upsert_status_and_sync(
                 {
                     "source_key": normalized_source_key,
                     "source_type": source_record["source_type"],
@@ -275,7 +274,7 @@ class AnalysisSourceManager:
                         previous_status.get("last_source_time_seconds", 0.0) or 0.0
                     ),
                     "error_message": "",
-                },
+                }
             )
         return source_record
 
@@ -391,8 +390,7 @@ class AnalysisSourceManager:
                         next_state = "reconnecting"
                         if not next_error_message:
                             next_error_message = "입력 연결이 끊겨 재시도 중입니다."
-                    upsert_source_status(
-                        DATABASE_PATH,
+                    self._upsert_status_and_sync(
                         {
                             "source_key": source_key,
                             "source_type": source_state["source_type"],
@@ -412,7 +410,7 @@ class AnalysisSourceManager:
                                 or 0.0
                             ),
                             "error_message": next_error_message,
-                        },
+                        }
                     )
 
                 if not self._should_retry_source(
@@ -501,3 +499,14 @@ class AnalysisSourceManager:
                     payload["preview_url"] = str(item.get("preview_url", "")).strip()
                     upsert_source(DATABASE_PATH, payload)
         remote_server_reporter.upsert_source(payload)
+
+    def _upsert_status_and_sync(self, status_record: dict[str, Any]) -> dict[str, Any]:
+        saved_record = upsert_source_status(DATABASE_PATH, status_record)
+        remote_server_reporter.post_status(saved_record)
+        return saved_record
+
+    def _reset_remote_source_data(self, source_record: dict[str, Any]) -> None:
+        remote_server_reporter.reset_source_data(
+            source_key=str(source_record.get("source_key", "")).strip(),
+            source_slug=str(source_record.get("source_slug", "")).strip(),
+        )

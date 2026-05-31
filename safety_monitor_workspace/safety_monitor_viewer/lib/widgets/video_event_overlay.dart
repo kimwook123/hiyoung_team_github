@@ -29,10 +29,7 @@ class VideoEventOverlay extends StatelessWidget {
     return IgnorePointer(
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final bounds = Size(
-            constraints.maxWidth,
-            constraints.maxHeight,
-          );
+          final bounds = Size(constraints.maxWidth, constraints.maxHeight);
           final videoRect = _resolveVideoRect(bounds);
           final canShowEventCards =
               constraints.maxWidth >= 220 && constraints.maxHeight >= 110;
@@ -41,11 +38,7 @@ class VideoEventOverlay extends StatelessWidget {
             children: [
               if (videoRect != null)
                 ...detections.map((detection) {
-                  return _buildDetectionBox(
-                    context,
-                    detection,
-                    videoRect,
-                  );
+                  return _buildDetectionBox(context, detection, videoRect);
                 }),
               if (items.isNotEmpty && canShowEventCards)
                 Align(
@@ -62,7 +55,7 @@ class VideoEventOverlay extends StatelessWidget {
                             margin: const EdgeInsets.only(bottom: 8),
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: Colors.red.withOpacity(0.75),
+                              color: Colors.red.withValues(alpha: 0.75),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
@@ -133,10 +126,7 @@ class VideoEventOverlay extends StatelessWidget {
       height: boxHeight,
       child: Container(
         decoration: BoxDecoration(
-          border: Border.all(
-            color: detection.color,
-            width: 2,
-          ),
+          border: Border.all(color: detection.color, width: 2),
           borderRadius: BorderRadius.circular(4),
         ),
         child: Align(
@@ -144,7 +134,7 @@ class VideoEventOverlay extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
-              color: detection.color.withOpacity(0.9),
+              color: detection.color.withValues(alpha: 0.9),
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(2),
                 bottomRight: Radius.circular(4),
@@ -155,9 +145,9 @@ class VideoEventOverlay extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                  ),
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ),

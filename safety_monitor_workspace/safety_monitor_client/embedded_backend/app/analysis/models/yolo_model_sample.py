@@ -5,7 +5,6 @@ import numpy as np
 import torch
 
 from core.detection_model import Box, Detection, DetectionModel, DetectionResult
-from core.path_helper import to_project_path
 from models.yolo_runtime_helper import build_yolo_runtime
 
 # 이 파일은 Ultralytics YOLO 결과를 DetectionResult 공통 형식으로 바꾸는 어댑터입니다.
@@ -35,7 +34,10 @@ class YoloModelSample(DetectionModel):
 
     def load(self) -> None:
         # Keep Ultralytics writable even in restricted Windows environments.
-        os.environ.setdefault("YOLO_CONFIG_DIR", to_project_path("Ultralytics"))
+        os.environ.setdefault(
+            "YOLO_CONFIG_DIR",
+            str(Path(__file__).resolve().parents[3] / "data" / "ultralytics"),
+        )
 
         try:
             from ultralytics import YOLO

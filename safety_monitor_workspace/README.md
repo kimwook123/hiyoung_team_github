@@ -1,27 +1,59 @@
 # Safety Monitor Workspace
 
-This workspace is organized as a `client -> server -> viewer` system.
+이 저장소는 `클라이언트 -> 서버 -> 뷰어` 구조로 동작하는 안전모니터링 시스템입니다.
 
-## Projects
+## 한눈에 보는 구조
 
-- `safety_monitor_client/`
-  - Single Flutter Windows client application.
-  - Embeds the local Python analysis backend in `embedded_backend/`.
-  - Owns local video sources, YOLO weights, TensorRT engines, and GPU inference.
-  - Runs multi-threaded local analysis.
-  - Uploads frame detections, events, and event clips to the server.
+### 1. 클라이언트
 
-- `safety_monitor_server/`
-  - Does not run inference.
-  - Stores source metadata, source status, frame detections, events, event clips, uploaded source media, and preview images.
-  - Exposes read/write APIs for clients and read APIs for viewers.
+`safety_monitor_client/`
 
-- `safety_monitor_viewer/`
-  - Flutter Windows viewer.
-  - Reads server data and visualizes source status, detections, events, and clips.
-  - Treated as read-only for source registration, analysis control, and rule changes.
+- 실제 영상 소스를 소유합니다.
+- 로컬 영상 파일, 카메라, 스트림을 엽니다.
+- 객체 탐지를 로컬에서 수행합니다.
+- 소스별 룰 옵션을 설정합니다.
+- 서버로 소스 정보, 상태, 프리뷰 프레임, 프레임 탐지 결과, 이벤트 클립을 전송합니다.
+- 클라이언트가 꺼지면 해당 소스는 서버와 뷰어에서 오프라인으로 보입니다.
 
-## Launch
+### 2. 서버
+
+`safety_monitor_server/`
+
+- 중앙 저장소와 중계 허브 역할을 합니다.
+- 클라이언트가 보낸 소스 메타데이터, 상태, 프리뷰, 프레임 탐지 결과, 이벤트 클립을 저장합니다.
+- 저장된 `rule_config`를 기준으로 서버에서 이벤트를 판정하고 DB에 기록합니다.
+- 뷰어가 볼 수 있도록 소스별 최신 프리뷰 스트림과 이벤트/상태 조회 API를 제공합니다.
+
+### 3. 뷰어
+
+`safety_monitor_viewer/`
+
+- 서버 데이터만 읽는 조회 전용 앱입니다.
+- 서버가 제공하는 프리뷰 스트림, 상태, 이벤트, 클립을 보여줍니다.
+- 소스를 등록하거나 삭제하지 않습니다.
+- 분석 시작/중지, 룰 변경, 가중치 관리, TensorRT 관리도 하지 않습니다.
+
+## 현재 데이터 흐름
+
+1. 클라이언트가 영상 파일, 카메라, 스트림을 소스로 등록합니다.
+2. 클라이언트가 로컬에서 객체 탐지를 수행합니다.
+3. 클라이언트가 서버로 아래 데이터를 보냅니다.
+   - 소스 메타데이터
+   - 소스 상태 heartbeat
+   - 프리뷰 프레임
+   - 프레임 탐지 결과
+   - 이벤트 클립
+4. 서버가 저장된 소스별 룰 설정을 기준으로 이벤트를 판정하고 DB에 저장합니다.
+5. 뷰어는 서버에서 프리뷰 스트림, 상태, 이벤트, 클립을 조회합니다.
+
+## 역할 분리 원칙
+
+- 원본 영상 소스의 소유자: 클라이언트
+- 객체 탐지 수행 주체: 클라이언트
+- 이벤트 판정 및 저장 주체: 서버
+- 모니터링 및 조회 주체: 뷰어
+
+## 실행
 
 ```powershell
 run_server.bat
@@ -29,11 +61,8 @@ run_client.bat
 run_viewer.bat
 ```
 
-## Notes
+## 문서
 
-- The client is expected to run on the machine that owns the local video files and GPU.
-- The client app auto-starts its embedded backend on `http://127.0.0.1:8100`.
-- The server stores event clips in `safety_monitor_server/data/clips/`.
-- The server stores uploaded source media in `safety_monitor_server/data/uploaded_sources/`.
-- The server stores latest source previews in `safety_monitor_server/data/source_cache/` and `/api/source-previews`.
-- The viewer can inspect server data and replay uploaded event clips without owning the weights.
+- 실행 방법: [RUN_GUIDE.md](./RUN_GUIDE.md)
+- 서버 DB 구조: [DB_SCHEMA.md](./DB_SCHEMA.md)
+- 문서 인덱스: [docs/README.md](./docs/README.md)

@@ -61,6 +61,15 @@ class EventApiService {
     return uri.toString();
   }
 
+  String buildSourceStreamUrl(String sourceKey) {
+    final normalized = sourceKey.trim();
+    if (normalized.isEmpty) {
+      return '';
+    }
+    final uri = _buildUri('/api/source-streams/$normalized', const {});
+    return uri.toString();
+  }
+
   Future<List<ApiEventItem>> fetchEvents({
     bool latestOnly = false,
     int? limit,

@@ -77,11 +77,22 @@ class RemoteServerReporter:
             )
             return None
 
-    def delete_source(self, source_key: str, *, clear_data: bool) -> bool:
+    def delete_source(
+        self,
+        source_key: str,
+        *,
+        clear_data: bool,
+        client_id: str = "",
+        session_id: str = "",
+    ) -> bool:
         try:
             response = requests.delete(
                 f"{self.base_url}/api/sources/{requests.utils.quote(source_key, safe='')}",
-                params={"clear_data": "true" if clear_data else "false"},
+                params={
+                    "clear_data": "true" if clear_data else "false",
+                    "client_id": client_id.strip(),
+                    "session_id": session_id.strip(),
+                },
                 timeout=HTTP_TIMEOUT_SECONDS,
             )
             response.raise_for_status()

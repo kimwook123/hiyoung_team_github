@@ -22,6 +22,7 @@ from app.routers.frame_detections import router as frame_detections_router
 from app.routers.realtime import router as realtime_router
 from app.routers.source_media import router as source_media_router
 from app.routers.source_previews import router as source_previews_router
+from app.routers.source_streams import router as source_streams_router
 from app.routers.sources import router as sources_router
 from app.routers.source_status import router as source_status_router
 from app.schemas import HealthResponse
@@ -61,6 +62,7 @@ app.include_router(source_status_router)
 app.include_router(sources_router)
 app.include_router(source_media_router)
 app.include_router(source_previews_router)
+app.include_router(source_streams_router)
 app.include_router(realtime_router)
 
 

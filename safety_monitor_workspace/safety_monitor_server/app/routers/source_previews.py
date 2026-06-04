@@ -9,7 +9,7 @@ from app.config import SERVER_SOURCE_PREVIEW_DIR
 router = APIRouter(prefix="/api/source-previews", tags=["source-previews"])
 
 
-def _preview_path(source_key: str) -> Path:
+def preview_path_for_source_key(source_key: str) -> Path:
     normalized = source_key.strip()
     digest = hashlib.sha1(normalized.encode("utf-8")).hexdigest()
     return (SERVER_SOURCE_PREVIEW_DIR / f"{digest}.jpg").resolve()
@@ -24,7 +24,7 @@ async def upload_source_preview(
     if not normalized_source_key:
         raise HTTPException(status_code=400, detail="source_key is required")
 
-    preview_path = _preview_path(normalized_source_key)
+    preview_path = preview_path_for_source_key(normalized_source_key)
     try:
         with preview_path.open("wb") as output:
             while True:
@@ -52,7 +52,7 @@ def get_latest_source_preview(source_key: str) -> FileResponse:
     if not normalized_source_key:
         raise HTTPException(status_code=400, detail="source_key is required")
 
-    preview_path = _preview_path(normalized_source_key)
+    preview_path = preview_path_for_source_key(normalized_source_key)
     if not preview_path.exists() or not preview_path.is_file():
         raise HTTPException(status_code=404, detail="source preview not found")
 

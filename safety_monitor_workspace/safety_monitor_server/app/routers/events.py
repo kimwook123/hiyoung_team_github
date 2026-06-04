@@ -10,6 +10,7 @@ from app.database import (
     list_events as list_events_from_db,
     list_latest_events as list_latest_events_from_db,
     list_source_summaries,
+    merge_latest_event,
 )
 from app.event_normalizer import normalize_event_record
 from app.realtime_hub import realtime_update_hub
@@ -60,7 +61,14 @@ def create_event(
     normalized_record = normalize_event_record(normalized_record)
 
     try:
-        saved_record = insert_event(DATABASE_PATH, normalized_record)
+        saved_record = None
+        if (
+            normalized_record.get("clip_available") is True
+            and str(normalized_record.get("status", "")).strip().upper() == "END"
+        ):
+            saved_record = merge_latest_event(DATABASE_PATH, normalized_record)
+        if saved_record is None:
+            saved_record = insert_event(DATABASE_PATH, normalized_record)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     except Exception as error:

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Body, HTTPException, Query
 from app.config import DATABASE_PATH
 from app.database import list_source_statuses, upsert_source_status
 from app.realtime_hub import realtime_update_hub
+from app.server_event_processor import server_event_processor
 from app.schemas import (
     SourceStatusItem,
     SourceStatusListResponse,
@@ -32,6 +33,12 @@ def upsert_status(
         state=str(saved_record.get("state", "")).strip(),
         is_running=bool(saved_record.get("is_running", False)),
     )
+    if not bool(saved_record.get("is_running", False)):
+        state = str(saved_record.get("state", "")).strip().lower()
+        if state in {"completed", "stopped", "disconnected", "error", "source_changed"}:
+            server_event_processor.close_source(
+                str(saved_record.get("source_key", "")).strip()
+            )
     return SourceStatusUpsertResponse(ok=True, item=saved_record)
 
 

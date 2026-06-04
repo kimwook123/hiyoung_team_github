@@ -9,9 +9,12 @@ class ApiEventFeedSource extends EventFeedSource {
   }
 
   final ApiEventController controller;
+  String _sourceKeyFilter = '';
 
   @override
-  List<EventLogItem> get logItems => controller.logItems;
+  List<EventLogItem> get logItems => _sourceKeyFilter.isEmpty
+      ? controller.logItems
+      : controller.getLogItemsForSource(_sourceKeyFilter);
 
   @override
   Set<String> get selectedKeys => controller.selectedKeys;
@@ -38,6 +41,15 @@ class ApiEventFeedSource extends EventFeedSource {
   @override
   void clearSelection() {
     controller.clearSelection();
+  }
+
+  void setSourceKeyFilter(String sourceKey) {
+    final normalized = sourceKey.trim();
+    if (_sourceKeyFilter == normalized) {
+      return;
+    }
+    _sourceKeyFilter = normalized;
+    notifyListeners();
   }
 
   @override

@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
 
 import '../models/event_log_item.dart';
@@ -62,14 +62,14 @@ class EventLogService {
       }
 
       final item = EventLogItem.fromLine(trimmedLine);
-      final eventKey = item.eventKeyText;
-      if (eventKey.isEmpty || eventKey == '-') {
+      final selectionKey = item.selectionKey;
+      if (selectionKey.isEmpty || selectionKey == '-') {
         continue;
       }
 
       // 같은 이벤트는 가장 마지막 줄만 사용한다
-      latestMap.remove(eventKey);
-      latestMap[eventKey] = item;
+      latestMap.remove(selectionKey);
+      latestMap[selectionKey] = item;
     }
 
     return latestMap.values.toList().reversed.toList();

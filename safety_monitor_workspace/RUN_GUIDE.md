@@ -1,44 +1,66 @@
-# Run Guide
+# 실행 가이드
 
-## 1. Start the server
+## 1. 서버 실행
 
 ```powershell
 run_server.bat
 ```
 
-- Starts the storage API on `http://0.0.0.0:8000`.
-- Keeps SQLite and uploaded event clips on the server machine.
+서버 역할:
 
-## 2. Start the client
+- 클라이언트가 보낸 소스 정보, 상태, 프리뷰, 프레임 탐지 결과, 이벤트 클립 저장
+- 소스별 룰 설정을 읽어서 서버에서 이벤트 판정
+- 뷰어용 조회 API와 프리뷰 스트림 제공
+
+기본 주소:
+
+- `http://127.0.0.1:8000`
+
+## 2. 클라이언트 실행
 
 ```powershell
 run_client.bat
 ```
 
-- Starts the local analysis client on `http://0.0.0.0:8100`.
-- Starts the Flutter client application.
-- The app automatically starts its embedded backend on `http://127.0.0.1:8100`.
-- Uses local GPU inference, local weights, and local TensorRT engines.
-- Reports source metadata, source status, frame detections, events, and clips to the server.
-- Prompts for the remote storage server URL and saves it to `safety_monitor_client/client_settings.json`.
+클라이언트 역할:
 
-## 3. Start the viewer
+- 로컬 영상 파일, 카메라, 스트림 열기
+- 로컬에서 객체 탐지 수행
+- 소스별 룰 옵션 설정
+- 서버로 상태/프리뷰/탐지 결과/이벤트 클립 전송
+
+추가 설명:
+
+- Flutter 클라이언트 앱과 내장 Python 백엔드가 함께 실행됩니다.
+- 내장 백엔드는 기본적으로 `http://127.0.0.1:8100`에서 동작합니다.
+- 원본 영상은 클라이언트가 소유합니다.
+
+## 3. 뷰어 실행
 
 ```powershell
 run_viewer.bat
 ```
 
-- Starts the Flutter Windows viewer.
-- Reads data from the server only.
-- Does not register sources or run inference.
+뷰어 역할:
 
-## 4. Build the client
+- 서버의 프리뷰 스트림 조회
+- 서버의 이벤트 로그/상세/클립 조회
+- 서버의 소스 상태 확인
+
+추가 설명:
+
+- 뷰어는 읽기 전용입니다.
+- 소스 등록, 삭제, 분석 제어, 룰 변경은 하지 않습니다.
+
+## 4. 빌드
+
+클라이언트:
 
 ```powershell
 build_client.bat
 ```
 
-## 5. Build the viewer
+뷰어:
 
 ```powershell
 build_viewer.bat

@@ -10,7 +10,7 @@ class EmbeddedBackendService extends ChangeNotifier {
   static final EmbeddedBackendService instance = EmbeddedBackendService._();
 
   static const String localBaseUrl = 'http://127.0.0.1:8100';
-  static const Duration _healthTimeout = Duration(seconds: 8);
+  static const Duration _healthTimeout = Duration(seconds: 20);
   static const Duration _pollInterval = Duration(milliseconds: 500);
 
   Process? _backendProcess;

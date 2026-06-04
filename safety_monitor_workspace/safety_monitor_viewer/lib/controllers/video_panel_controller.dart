@@ -10,7 +10,7 @@ import '../services/video_service.dart';
 // 파일 영상, 스트림, replay clip 재생을 모두 이 controller가 다룹니다.
 class VideoPanelController extends ChangeNotifier {
   VideoPanelController({VideoService? service})
-      : _service = service ?? VideoService() {
+    : _service = service ?? VideoService() {
     _listenVideoState();
   }
 
@@ -120,11 +120,7 @@ class VideoPanelController extends ChangeNotifier {
       replayReturnFrameRate = frameRate;
     }
 
-    await openVideo(
-      path,
-      nextSourceType: 'video',
-      preserveReplayContext: true,
-    );
+    await openVideo(path, nextSourceType: 'video', preserveReplayContext: true);
     if (_isDisposed) {
       return;
     }
@@ -158,6 +154,26 @@ class VideoPanelController extends ChangeNotifier {
       await _service.seek(returnPosition);
     }
 
+    _notifyIfActive();
+  }
+
+  Future<void> closeReplay() async {
+    if (!isReplayMode) {
+      return;
+    }
+    if (canReturnFromReplay) {
+      await returnToLive();
+      return;
+    }
+
+    replayReturnPath = '';
+    replayReturnSourceType = '';
+    replayReturnPosition = Duration.zero;
+    replayReturnFrameRate = frameRate;
+    replayBaseSourceSeconds = 0.0;
+    replaySourceKey = '';
+    isReplayMode = false;
+    clearCurrentSource();
     _notifyIfActive();
   }
 
@@ -308,7 +324,8 @@ class VideoPanelController extends ChangeNotifier {
   bool _isNetworkVideoPath(String path) {
     // clip_url처럼 HTTP 주소가 들어오면 로컬 파일 존재 검사를 건너뛰기 위해 사용합니다.
     final normalized = path.trim().toLowerCase();
-    return normalized.startsWith('http://') || normalized.startsWith('https://');
+    return normalized.startsWith('http://') ||
+        normalized.startsWith('https://');
   }
 
   void _notifyIfActive() {

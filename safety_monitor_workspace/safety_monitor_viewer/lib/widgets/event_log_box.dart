@@ -48,7 +48,7 @@ class EventLogBox extends StatelessWidget {
                       return _LogTile(
                         item: item,
                         isSelected: eventFeed.selectedKeys.contains(
-                          item.eventKeyText,
+                          item.selectionKey,
                         ),
                         onTap: () => onTapItem(item),
                       );

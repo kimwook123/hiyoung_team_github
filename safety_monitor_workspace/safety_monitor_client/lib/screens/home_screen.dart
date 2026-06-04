@@ -62,6 +62,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? apiAutoRefreshTimer;
   Timer? frameDetectionRefreshTimer;
   Timer? sourceStatusSyncTimer;
+  Timer? previewRefreshTimer;
   Timer? realtimeReconnectTimer;
   Timer? queuedRealtimeRefreshTimer;
   StreamSubscription? realtimeSocketSubscription;
@@ -86,6 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool isSavingRuleConfig = false;
   bool isEditingDangerZone = false;
   int _ruleConfigSaveTicket = 0;
+  int previewRefreshCacheBust = 0;
 
   @override
   void initState() {
@@ -99,6 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _startApiAutoRefresh();
     _startFrameDetectionRefresh();
     _startSourceStatusSync();
+    _startPreviewRefresh();
   }
 
   @override
@@ -106,6 +109,7 @@ class _HomeScreenState extends State<HomeScreen> {
     apiAutoRefreshTimer?.cancel();
     frameDetectionRefreshTimer?.cancel();
     sourceStatusSyncTimer?.cancel();
+    previewRefreshTimer?.cancel();
     realtimeReconnectTimer?.cancel();
     queuedRealtimeRefreshTimer?.cancel();
     realtimeSocketSubscription?.cancel();
@@ -194,6 +198,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: Column(
                           children: [
+                            _buildClientRoleBanner(),
+                            const SizedBox(height: 12),
                             AnimatedBuilder(
                               animation: videoController,
                               builder: (context, _) {
@@ -224,8 +230,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                 );
                               },
                             ),
-                            const SizedBox(height: 12),
-                            _buildClientRoleBanner(),
                             const SizedBox(height: 12),
                             _buildClientApiControls(),
                             const SizedBox(height: 12),
@@ -611,27 +615,6 @@ class _HomeScreenState extends State<HomeScreen> {
           onDangerZoneChanged: isSelected ? _handleDangerZoneChanged : null,
           footer: Column(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      slot.sourceType == 'stream' || slot.sourceType == 'camera'
-                          ? 'LIVE'
-                          : '${_formatDuration(slot.controller.currentPosition)} / ${_formatDuration(slot.controller.totalDuration)}',
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(color: Colors.white70),
-                    ),
-                  ),
-                  if (slot.controller.canReturnFromReplay)
-                    TextButton(
-                      onPressed: () =>
-                          unawaited(slot.controller.returnToLive()),
-                      child: const Text('클립 닫기'),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 6),
               VideoControlBar(controller: slot.controller, compact: true),
             ],
           ),
@@ -671,10 +654,23 @@ class _HomeScreenState extends State<HomeScreen> {
     final status = source == null
         ? null
         : sourceStatusesByKey[source.sourceKey];
+    final replayController = _activeSlot?.controller ?? videoController;
     return _buildPanelCard(
       title: '선택된 소스',
       child: source == null
-          ? const Text('소스를 선택하면 상태, 진행도, 이벤트, 룰 설정을 여기에서 확인할 수 있습니다.')
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('소스를 선택하면 상태, 진행도, 이벤트, 룰 설정을 여기에서 확인할 수 있습니다.'),
+                if (replayController.isReplayMode) ...[
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: () => unawaited(replayController.closeReplay()),
+                    child: const Text('클립 닫기'),
+                  ),
+                ],
+              ],
+            )
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -692,6 +688,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   _buildSourceProgressText(source, status),
                 ),
                 _buildDetailLine('sourceKey', source.sourceKey),
+                if (replayController.isReplayMode) ...[
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: () => unawaited(replayController.closeReplay()),
+                    child: const Text('클립 닫기'),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 Wrap(
                   spacing: 8,
@@ -1768,10 +1771,11 @@ class _HomeScreenState extends State<HomeScreen> {
   String _buildPreviewImageUrlForSlot(_SourcePanelSlot slot) {
     final source = registeredSourcesByKey[slot.sourceKey.trim()];
     final previewUrl = source?.previewUrl.trim() ?? '';
-    final cacheBust =
+    final statusCacheBust =
         lastFrameDetectionStatusUpdatedAtBySourceKey[slot.sourceKey.trim()] ??
         sourceStatusesByKey[slot.sourceKey.trim()]?.updatedAt ??
         '';
+    final cacheBust = '${previewRefreshCacheBust}_$statusCacheBust';
     if (previewUrl.isNotEmpty) {
       return previewUrl.startsWith('http')
           ? previewUrl
@@ -1808,6 +1812,7 @@ class _HomeScreenState extends State<HomeScreen> {
     apiEventFeed.selectLogItem(item);
 
     final eventKey = item.eventKeyText.trim();
+    final sourceKey = item.sourceKeyText.trim();
     ApiEventItem? detail;
     if (eventKey.isNotEmpty && eventKey != '-') {
       setState(() {
@@ -1817,7 +1822,10 @@ class _HomeScreenState extends State<HomeScreen> {
       });
 
       try {
-        detail = await apiEventController.loadEventDetail(eventKey);
+        detail = await apiEventController.loadEventDetail(
+          eventKey,
+          sourceKey: sourceKey.isEmpty || sourceKey == '-' ? null : sourceKey,
+        );
         setState(() {
           selectedApiEventDetail = detail;
           if (detail == null) {
@@ -1832,7 +1840,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final sourceItem =
-        apiEventController.findItemByEventKey(item.eventKeyText) ?? detail;
+        detail ??
+        (sourceKey.isEmpty || sourceKey == '-'
+            ? apiEventController.findItemByEventKey(item.eventKeyText)
+            : apiEventController.findItemByEventKeyForSource(
+                item.eventKeyText,
+                sourceKey: sourceKey,
+              ));
     if (sourceItem == null) {
       return;
     }
@@ -2140,6 +2154,18 @@ class _HomeScreenState extends State<HomeScreen> {
       unawaited(_refreshSourceStatuses());
       unawaited(_refreshRegisteredSources());
       unawaited(_syncActiveSlotFrameRateIfNeeded());
+    });
+  }
+
+  void _startPreviewRefresh() {
+    previewRefreshTimer?.cancel();
+    previewRefreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || _sourceSlots.isEmpty) {
+        return;
+      }
+      setState(() {
+        previewRefreshCacheBust = DateTime.now().millisecondsSinceEpoch;
+      });
     });
   }
 
@@ -2505,6 +2531,9 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     await _syncSlotAudioFocus();
+    apiEventFeed.setSourceKeyFilter(
+      _sourceSlots.isEmpty ? '' : (_activeSlot?.sourceKey.trim() ?? ''),
+    );
     apiEventFeed.clearSelection();
     await _refreshRegisteredSources();
     await _refreshSourceStatuses();
@@ -2565,6 +2594,9 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     await _syncSlotAudioFocus();
+    apiEventFeed.setSourceKeyFilter(
+      _sourceSlots.isEmpty ? '' : (_activeSlot?.sourceKey.trim() ?? ''),
+    );
     apiEventFeed.clearSelection();
     if (_sourceSlots.isNotEmpty) {
       await _syncActiveSlotFrameRateIfNeeded();
@@ -2597,6 +2629,7 @@ class _HomeScreenState extends State<HomeScreen> {
       frameDetectionSourceKey = nextSourceKey;
       isEditingDangerZone = false;
     });
+    apiEventFeed.setSourceKeyFilter(nextSourceKey);
     await _syncSlotAudioFocus();
     apiEventFeed.clearSelection();
     unawaited(_refreshApiEventsIfNeeded());
@@ -2693,9 +2726,6 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       unawaited(_refreshApiEventsIfNeeded());
       unawaited(_refreshFrameDetectionsIfNeeded());
-      if (mounted) {
-        _showInfoSnack('삭제된 서버 소스 화면을 자동으로 닫았습니다.');
-      }
     }
   }
 
@@ -3293,6 +3323,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _clearSelectedSource() async {
     apiEventFeed.clearSelection();
+    apiEventFeed.setSourceKeyFilter('');
     if (_activeSlotId.isNotEmpty) {
       setState(() {
         _activeSlotId = '';

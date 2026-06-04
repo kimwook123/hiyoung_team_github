@@ -1,25 +1,34 @@
 # Safety Monitor Viewer
 
-The viewer is a Flutter Windows application that reads server data.
+뷰어는 서버에 저장된 데이터를 보는 조회 전용 앱입니다.
 
-## Responsibilities
+## 뷰어가 담당하는 일
 
-- Show source status from the server.
-- Show event logs and event details.
-- Show frame detection overlays from server snapshots.
-- Replay uploaded event clips from the server.
-- Open and inspect any server-known source, including in-progress sources from multiple clients.
+- 서버 프리뷰 스트림 표시
+- 소스별 상태 표시
+- 서버 이벤트 로그와 상세 정보 표시
+- 서버에 저장된 이벤트 클립 재생
+- 여러 클라이언트가 등록한 소스를 한 화면에서 모니터링
 
-## Behavior
+## 뷰어가 하지 않는 일
 
-- Treated as read-only.
-- Does not register sources.
-- Does not start, stop, or restart analysis.
-- Does not modify per-source rules.
-- Does not own weights or TensorRT engines.
-- Does not run inference.
+- 소스 등록
+- 소스 삭제
+- 분석 시작/중지/재시작
+- 소스별 룰 변경
+- 로컬 가중치 관리
+- TensorRT 엔진 관리
+- 객체 탐지 실행
 
-## Run
+## 정리
+
+뷰어는 CCTV 플레이어라기보다, 서버 기준의 모니터링 콘솔입니다.
+
+- 영상 원본 소유자: 클라이언트
+- 이벤트 저장 주체: 서버
+- 조회 주체: 뷰어
+
+## 실행
 
 ```powershell
 cd safety_monitor_viewer

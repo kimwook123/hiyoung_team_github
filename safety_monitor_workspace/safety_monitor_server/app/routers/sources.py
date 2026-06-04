@@ -26,6 +26,7 @@ from app.database import (
     upsert_source,
 )
 from app.realtime_hub import realtime_update_hub
+from app.server_event_processor import server_event_processor
 from app.schemas import SourceActionResponse
 from app.schemas import SourceItem
 from app.schemas import SourceListResponse
@@ -117,24 +118,14 @@ def upsert_source_route(
     normalized["desired_running"] = bool(normalized.get("desired_running", False))
     normalized["rule_config"] = normalize_rule_config(normalized.get("rule_config"))
     normalized["preview_url"] = (
-        f"/api/source-previews/latest?source_key={source_key}"
+        f"/api/source-streams/{source_key}?single=true"
         if source_key
         else ""
     )
-    if str(normalized.get("server_media_path", "")).strip():
-        normalized["server_media_path"] = str(
-            normalized.get("server_media_path", "")
-        ).strip()
-    if str(normalized.get("media_url", "")).strip():
-        normalized["media_url"] = str(normalized.get("media_url", "")).strip()
+    normalized["server_media_path"] = ""
+    normalized["media_url"] = ""
     normalized_source_type = source_type.strip().lower()
-    if normalized_source_type == "stream" and source_value.startswith(
-        ("rtsp://", "http://", "https://")
-    ):
-        normalized["media_url"] = source_value
-    elif normalized_source_type == "video" and not str(
-        normalized.get("media_url", "")
-    ).strip():
+    if normalized_source_type == "video":
         try:
             media_path = Path(normalized_source_value).resolve()
             if str(media_path).startswith(str(SERVER_UPLOAD_SOURCE_DIR.resolve())):
@@ -218,10 +209,26 @@ async def upload_source_media(
 def delete_source_route(
     source_key: str,
     clear_data: bool = Query(default=False),
+    client_id: str = Query(default=""),
+    session_id: str = Query(default=""),
 ) -> SourceActionResponse:
     record = get_source(DATABASE_PATH, source_key)
     if record is None:
         raise HTTPException(status_code=404, detail="source not found")
+
+    owner_client_id = str(record.get("client_id", "")).strip()
+    owner_session_id = str(record.get("session_id", "")).strip()
+    requested_client_id = client_id.strip()
+    requested_session_id = session_id.strip()
+    if owner_client_id or owner_session_id:
+        if (
+            requested_client_id != owner_client_id
+            or requested_session_id != owner_session_id
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="only the owning client can delete this source",
+            )
 
     if clear_data:
         reset_source_data(
@@ -230,10 +237,12 @@ def delete_source_route(
             source_slug=str(record.get("source_slug", "")).strip(),
             server_clip_dir=SERVER_CLIP_DIR,
         )
+        server_event_processor.clear_source(source_key)
 
     ok = delete_source(DATABASE_PATH, source_key)
     delete_source_status(DATABASE_PATH, source_key)
     prune_orphan_source_data(DATABASE_PATH)
+    server_event_processor.clear_source(source_key)
     if not ok:
         raise HTTPException(status_code=404, detail="source not found")
     realtime_update_hub.publish(
@@ -260,7 +269,7 @@ def _decorate_source_record(record: dict[str, Any]) -> dict[str, Any]:
     source_key = str(next_record.get("source_key", "")).strip()
     if source_key and not next_record["preview_url"]:
         next_record["preview_url"] = (
-            f"/api/source-previews/latest?source_key={source_key}"
+            f"/api/source-streams/{source_key}?single=true"
         )
 
     source_type = str(next_record.get("source_type", "")).strip().lower()

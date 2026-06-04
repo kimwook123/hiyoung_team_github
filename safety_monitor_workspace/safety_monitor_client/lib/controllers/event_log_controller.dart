@@ -1,4 +1,4 @@
-﻿import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/event_log_item.dart';
 import '../services/event_log_service.dart';
@@ -6,7 +6,7 @@ import '../services/event_log_service.dart';
 // 기존 txt 로그 파일을 읽고, 화면에서 바로 쓸 이벤트 목록으로 유지하는 controller입니다.
 class EventLogController extends ChangeNotifier {
   EventLogController({EventLogService? service})
-      : _service = service ?? EventLogService();
+    : _service = service ?? EventLogService();
 
   final EventLogService _service;
 
@@ -63,13 +63,13 @@ class EventLogController extends ChangeNotifier {
       if (!item.matchesFrame(frameValue)) {
         continue;
       }
-      selectedMap[item.eventKeyText] = item;
+      selectedMap[item.selectionKey] = item;
     }
     return selectedMap.values.toList();
   }
 
   void selectItem(EventLogItem item) {
-    selectedKeys = {item.eventKeyText};
+    selectedKeys = {item.selectionKey};
     notifyListeners();
   }
 

@@ -4,6 +4,7 @@ class EventLogItem {
     required this.timeText,
     required this.frameText,
     required this.eventKeyText,
+    required this.sourceKeyText,
     required this.statusText,
     required this.typeText,
     required this.personIdText,
@@ -21,6 +22,7 @@ class EventLogItem {
   final String timeText;
   final String frameText;
   final String eventKeyText;
+  final String sourceKeyText;
   final String statusText;
   final String typeText;
   final String personIdText;
@@ -33,6 +35,15 @@ class EventLogItem {
   final String clipPathText;
   final String messageText;
   final String rawText;
+
+  String get selectionKey {
+    final normalizedSourceKey = sourceKeyText.trim();
+    final normalizedEventKey = eventKeyText.trim();
+    if (normalizedSourceKey.isEmpty || normalizedSourceKey == '-') {
+      return normalizedEventKey;
+    }
+    return '$normalizedSourceKey|$normalizedEventKey';
+  }
 
   int? get frameValue => _toInt(frameText);
   int? get startFrameValue => _toInt(startFrameText);
@@ -85,6 +96,7 @@ class EventLogItem {
       timeText: timeText,
       frameText: values['frame'] ?? '-',
       eventKeyText: values['event_key'] ?? '-',
+      sourceKeyText: values['source_key'] ?? '-',
       statusText: values['status'] ?? '-',
       typeText: values['type'] ?? '-',
       personIdText: values['person_id'] ?? '-',

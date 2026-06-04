@@ -6,6 +6,7 @@ from app.config import (
     ensure_server_dirs,
 )
 from app.database import reset_source_data
+from app.server_event_processor import server_event_processor
 from app.schemas import ResetDataResponse
 
 # 이 파일은 source_key 기준으로 서버 저장소를 초기화하는 관리용 API를 제공합니다.
@@ -30,6 +31,7 @@ def reset_data(
         source_slug=source_slug,
         server_clip_dir=SERVER_CLIP_DIR,
     )
+    server_event_processor.clear_source(source_key)
 
     return ResetDataResponse(
         ok=True,

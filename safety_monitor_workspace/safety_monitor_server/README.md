@@ -1,30 +1,34 @@
 # Safety Monitor Server
 
-The server is the storage and query layer.
+서버는 중앙 저장소이자 이벤트 판정 서버입니다.
 
-## Responsibilities
+## 서버가 담당하는 일
 
-- Store source metadata in SQLite.
-- Store source runtime status updates from clients.
-- Store frame detections and events reported by clients.
-- Store uploaded event clips.
-- Store uploaded original media and source preview images reported by clients.
-- Serve read APIs and realtime notifications for the viewer.
+- 등록 소스 메타데이터 저장
+- 소스별 최신 상태 저장
+- 프리뷰 이미지와 프리뷰 스트림 제공
+- 프레임 탐지 결과 저장
+- 소스별 `rule_config`를 읽어 이벤트 판정
+- 이벤트 DB 저장
+- 이벤트 클립 저장
+- 뷰어/클라이언트용 조회 API와 실시간 업데이트 제공
 
-## Not Responsible For
+## 서버가 하지 않는 일
 
-- Running YOLO inference.
-- Owning `best.pt` or `best.engine`.
-- Reading local client video files.
-- Opening local cameras or RTSP streams on behalf of clients.
+- 로컬 영상 파일 직접 열기
+- 로컬 카메라 직접 열기
+- RTSP/스트림 원본 직접 소유
+- YOLO 가중치 소유
+- TensorRT 엔진 소유
+- 클라이언트 대신 GPU 추론 실행
 
-## Runtime Boundary
+## 현재 구조에서 중요한 점
 
-- `main.py` only mounts storage, media, preview, event, status, clip, and realtime routers.
-- The active server runtime does not bootstrap any analysis worker.
-- If older analysis-related files remain under `app/`, treat them as legacy code paths, not active server behavior.
+- 객체 탐지 자체는 클라이언트가 수행합니다.
+- 이벤트 판정과 중앙 저장은 서버가 수행합니다.
+- 뷰어는 서버만 바라봅니다.
 
-## Run
+## 실행
 
 ```powershell
 cd safety_monitor_server

@@ -1,0 +1,52 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="MgOJOpqd0Eb-_PaIgM61" name="역할 정리">
+    <mxGraphModel dx="1594" dy="1986" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="09wRK7Cv7sNQ-6NyP0p5-1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=22;fontStyle=1;align=center;" value="서버-클라이언트-뷰어 역할 정리" vertex="1">
+          <mxGeometry height="80" width="1480" x="397" y="335" as="geometry" />
+        </mxCell>
+        <mxCell id="09wRK7Cv7sNQ-6NyP0p5-2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="630" width="420" x="417" y="465" as="geometry" />
+        </mxCell>
+        <mxCell id="09wRK7Cv7sNQ-6NyP0p5-3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=22;fontStyle=1;align=center;" value="클라이언트&lt;br&gt;safety_monitor_client" vertex="1">
+          <mxGeometry height="90" width="370" x="442" y="490" as="geometry" />
+        </mxCell>
+        <mxCell id="09wRK7Cv7sNQ-6NyP0p5-4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=15;fontStyle=1;align=center;" value="실제 영상 소스를 소유하는 운영 앱" vertex="1">
+          <mxGeometry height="60" width="370" x="442" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="09wRK7Cv7sNQ-6NyP0p5-5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;fontSize=15;align=left;spacingLeft=12;spacingRight=12;spacingTop=10;" value="&lt;div style=&quot;line-height: 180%;&quot;&gt;&lt;font style=&quot;font-size: 17px;&quot;&gt;• 로컬 영상 파일 / 카메라 / 스트림 등록&lt;br&gt;• 원본 영상 접근 권한 보유&lt;br&gt;• 로컬 YOLO 가중치와 TensorRT 엔진 관리&lt;br&gt;• GPU 기반 객체 탐지 수행&lt;br&gt;• 소스별 룰 옵션 설정&lt;br&gt;• 서버로 소스 정보, 상태, 프리뷰, 탐지 결과,&amp;nbsp;&lt;/font&gt;&lt;/div&gt;&lt;div style=&quot;line-height: 180%;&quot;&gt;&lt;font style=&quot;font-size: 17px;&quot;&gt;&amp;nbsp; 클립 전송&lt;br&gt;• 클라이언트가 꺼지면 해당 소스는&amp;nbsp;&lt;/font&gt;&lt;/div&gt;&lt;div style=&quot;line-height: 180%;&quot;&gt;&lt;font style=&quot;font-size: 17px;&quot;&gt;&amp;nbsp; 오프라인으로 표시&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="380" width="370" x="442" y="685" as="geometry" />
+        </mxCell>
+        <mxCell id="09wRK7Cv7sNQ-6NyP0p5-6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="630" width="420" x="897" y="465" as="geometry" />
+        </mxCell>
+        <mxCell id="09wRK7Cv7sNQ-6NyP0p5-7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=22;fontStyle=1;align=center;" value="서버&lt;br&gt;safety_monitor_server" vertex="1">
+          <mxGeometry height="90" width="370" x="922" y="490" as="geometry" />
+        </mxCell>
+        <mxCell id="09wRK7Cv7sNQ-6NyP0p5-8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=15;fontStyle=1;align=center;" value="중앙 저장소 + 이벤트 판정 + 중계 허브" vertex="1">
+          <mxGeometry height="60" width="370" x="922" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="09wRK7Cv7sNQ-6NyP0p5-9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;fontSize=15;align=left;spacingLeft=12;spacingRight=12;spacingTop=10;" value="&lt;font style=&quot;font-size: 17px; line-height: 180%;&quot;&gt;• 등록 소스 메타데이터 저장&lt;br&gt;• 소스별 최신 상태 저장&lt;br&gt;• 프리뷰 이미지 저장 및 프리뷰 스트림 제공&lt;br&gt;• 프레임 탐지 결과 저장&lt;br&gt;• 소스별 rule_config 기준 이벤트 판정&lt;br&gt;• 이벤트 DB 저장&lt;br&gt;• 이벤트 클립 저장 및 제공&lt;br&gt;• 뷰어/클라이언트용 조회 API와&amp;nbsp;&lt;/font&gt;&lt;div&gt;&lt;font style=&quot;font-size: 17px; line-height: 180%;&quot;&gt;&amp;nbsp; 실시간 업데이트 제공&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="380" width="370" x="922" y="685" as="geometry" />
+        </mxCell>
+        <mxCell id="09wRK7Cv7sNQ-6NyP0p5-10" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="630" width="420" x="1377" y="465" as="geometry" />
+        </mxCell>
+        <mxCell id="09wRK7Cv7sNQ-6NyP0p5-11" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=22;fontStyle=1;align=center;" value="뷰어&lt;br&gt;safety_monitor_viewer" vertex="1">
+          <mxGeometry height="90" width="370" x="1402" y="490" as="geometry" />
+        </mxCell>
+        <mxCell id="09wRK7Cv7sNQ-6NyP0p5-12" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=15;fontStyle=1;align=center;" value="서버 데이터만 보는 조회 전용 앱" vertex="1">
+          <mxGeometry height="60" width="370" x="1402" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="09wRK7Cv7sNQ-6NyP0p5-13" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;fontSize=15;align=left;spacingLeft=12;spacingRight=12;spacingTop=10;" value="&lt;div style=&quot;line-height: 180%;&quot;&gt;&lt;font style=&quot;font-size: 17px; line-height: 180%;&quot;&gt;• 서버 프리뷰 스트림 표시&lt;br&gt;• 소스별 상태 표시&lt;br&gt;• 서버 이벤트 로그와 상세 정보 표시&lt;br&gt;• 서버에 저장된 이벤트 클립 재생&lt;br&gt;• 여러 클라이언트가 등록한 소스를&amp;nbsp;&lt;/font&gt;&lt;div&gt;&lt;font style=&quot;font-size: 17px; line-height: 180%;&quot;&gt;&amp;nbsp; 한 화면에서&amp;nbsp;&lt;/font&gt;&lt;span style=&quot;font-size: 17px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); line-height: 180%;&quot;&gt;모니터링&lt;/span&gt;&lt;div&gt;&lt;font style=&quot;font-size: 17px; line-height: 180%;&quot;&gt;• 소스 등록/삭제 안 함&lt;br&gt;• 분석 시작/중지, 룰 변경,&amp;nbsp;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 17px; line-height: 180%;&quot;&gt;&amp;nbsp; 가중치/TensorRT 관리 안 함&lt;br&gt;• 객체 탐지 실행 안 함&lt;/font&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="380" width="370" x="1402" y="685" as="geometry" />
+        </mxCell>
+        <mxCell id="09wRK7Cv7sNQ-6NyP0p5-14" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=18;fontStyle=1;align=center;" value="흐름 요약:  클라이언트가 탐지 결과를 서버에 보냄  →  서버가 저장하고 이벤트를 판정함  →  뷰어가 서버 데이터를 조회함" vertex="1">
+          <mxGeometry height="70" width="1280" x="497" y="1145" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

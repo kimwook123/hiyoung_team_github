@@ -8,6 +8,8 @@ set "BACKEND_DIR=%CLIENT_DIR%\embedded_backend"
 set "SETTINGS_PATH=%CLIENT_DIR%\client_settings.json"
 set "CLIENT_BUILD_DIR=%CLIENT_DIR%\build\windows\x64\runner\Release"
 set "CLIENT_EXE=%CLIENT_BUILD_DIR%\safety_monitor_client.exe"
+set "MODEL_PATH=%BACKEND_DIR%\app\analysis\models\weights\best.pt"
+set "ENGINE_PATH=%BACKEND_DIR%\app\analysis\models\weights\best.engine"
 set "FLUTTER_CMD=flutter"
 set "LOCAL_FLUTTER_CMD=%ROOT_DIR%\flutter\bin\flutter.bat"
 set "PYTHON_CMD=py -3.12"
@@ -59,11 +61,22 @@ set "YOLO_CONFIG_DIR=%BACKEND_DIR%\data\ultralytics"
 if not exist "%YOLO_CONFIG_DIR%" mkdir "%YOLO_CONFIG_DIR%"
 
 echo Checking TensorRT runtime engine...
-call %PYTHON_CMD% "%BACKEND_DIR%\ensure_runtime_engine.py"
-if errorlevel 1 (
-  echo Failed to prepare a CUDA TensorRT runtime engine for the client backend.
-  pause
-  exit /b 1
+if exist "%ENGINE_PATH%" (
+  echo Found prebuilt TensorRT engine.
+) else (
+  if /I "%SAFETY_MONITOR_PREPARE_TENSORRT%"=="1" (
+    echo No prebuilt TensorRT engine found. Preparing it before launch because SAFETY_MONITOR_PREPARE_TENSORRT=1.
+    call %PYTHON_CMD% "%BACKEND_DIR%\ensure_runtime_engine.py"
+    if errorlevel 1 (
+      echo Failed to prepare a CUDA TensorRT runtime engine for the client backend.
+      pause
+      exit /b 1
+    )
+  ) else (
+    echo No prebuilt TensorRT engine found.
+    echo Skipping blocking TensorRT preflight and starting the client immediately.
+    echo Set SAFETY_MONITOR_PREPARE_TENSORRT=1 if you want to force engine preparation before launch.
+  )
 )
 
 if exist "%LOCAL_FLUTTER_CMD%" (

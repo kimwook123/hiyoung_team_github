@@ -25,7 +25,18 @@ class ApiEventController extends ChangeNotifier {
 
   // 화면 위젯은 기존 EventLogItem을 기대하므로 API 응답을 어댑터로 변환해서 노출합니다.
   List<EventLogItem> get logItems =>
-      apiEventsToLogItems(_latestItemsByEventKey(items));
+      apiEventsToLogItems(_latestItemsBySourceAndEventKey(items));
+
+  List<EventLogItem> getLogItemsForSource(String sourceKey) {
+    final normalizedSourceKey = sourceKey.trim();
+    if (normalizedSourceKey.isEmpty) {
+      return logItems;
+    }
+    final filteredItems = items
+        .where((item) => item.sourceKey.trim() == normalizedSourceKey)
+        .toList(growable: false);
+    return apiEventsToLogItems(_latestItemsBySourceAndEventKey(filteredItems));
+  }
 
   Future<void> loadLatestEvents({
     int? limit,
@@ -190,10 +201,11 @@ class ApiEventController extends ChangeNotifier {
           item.sourceTimeSeconds > secondsValue) {
         continue;
       }
-      if (selectedMap.containsKey(item.eventKey)) {
-        selectedMap.remove(item.eventKey);
+      final compositeKey = _sourceEventKey(item.sourceKey, item.eventKey);
+      if (selectedMap.containsKey(compositeKey)) {
+        selectedMap.remove(compositeKey);
       }
-      selectedMap[item.eventKey] = item;
+      selectedMap[compositeKey] = item;
     }
     selectedMap.removeWhere((_, item) => !_isVisibleAtTime(item, secondsValue));
     return selectedMap.values.toList(growable: false);
@@ -214,8 +226,28 @@ class ApiEventController extends ChangeNotifier {
     return null;
   }
 
+  ApiEventItem? findItemByEventKeyForSource(
+    String eventKey, {
+    required String sourceKey,
+  }) {
+    final normalizedEventKey = eventKey.trim();
+    final normalizedSourceKey = sourceKey.trim();
+    if (normalizedEventKey.isEmpty || normalizedSourceKey.isEmpty) {
+      return null;
+    }
+
+    final orderedItems = [...items]..sort(_compareByTimeline);
+    for (final item in orderedItems.reversed) {
+      if (item.eventKey == normalizedEventKey &&
+          item.sourceKey.trim() == normalizedSourceKey) {
+        return item;
+      }
+    }
+    return null;
+  }
+
   void selectLogItem(EventLogItem item) {
-    selectedKeys = {item.eventKeyText};
+    selectedKeys = {item.selectionKey};
     notifyListeners();
   }
 
@@ -232,16 +264,28 @@ class ApiEventController extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<ApiEventItem> _latestItemsByEventKey(List<ApiEventItem> sourceItems) {
+  List<ApiEventItem> _latestItemsBySourceAndEventKey(
+    List<ApiEventItem> sourceItems,
+  ) {
     final selectedMap = <String, ApiEventItem>{};
     final orderedItems = [...sourceItems]..sort(_compareByTimeline);
     for (final item in orderedItems) {
-      if (selectedMap.containsKey(item.eventKey)) {
-        selectedMap.remove(item.eventKey);
+      final compositeKey = _sourceEventKey(item.sourceKey, item.eventKey);
+      if (selectedMap.containsKey(compositeKey)) {
+        selectedMap.remove(compositeKey);
       }
-      selectedMap[item.eventKey] = item;
+      selectedMap[compositeKey] = item;
     }
     return selectedMap.values.toList(growable: false);
+  }
+
+  String _sourceEventKey(String sourceKey, String eventKey) {
+    final normalizedSourceKey = sourceKey.trim();
+    final normalizedEventKey = eventKey.trim();
+    if (normalizedSourceKey.isEmpty) {
+      return normalizedEventKey;
+    }
+    return '$normalizedSourceKey|$normalizedEventKey';
   }
 
   int _compareByTimeline(ApiEventItem left, ApiEventItem right) {

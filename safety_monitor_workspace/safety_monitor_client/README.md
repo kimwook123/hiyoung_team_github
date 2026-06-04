@@ -1,23 +1,32 @@
 # Safety Monitor Client
 
-The client is a Flutter Windows application with an embedded local analysis backend.
+클라이언트는 실제 영상 소스를 다루는 운영 앱입니다.
 
-## Responsibilities
+## 클라이언트가 담당하는 일
 
-- Register local video files and stream sources.
-- Analyze only the operator's own local sources with per-source rules.
-- Show source runtime status and recent events from the embedded backend.
-- Show detection overlays, event logs, and clip replay while reviewing local analysis results.
-- Send analyzed data to the central server.
-- Display local runtime ownership such as weights, TensorRT engine, and device.
+- 로컬 영상 파일, 카메라, 스트림 등록
+- 선택한 소스에 대한 객체 탐지 실행
+- 소스별 룰 옵션 설정
+- 선택한 소스의 상태, 프리뷰, 탐지 결과, 로컬 이벤트 확인
+- 서버로 소스 정보, 상태, 프리뷰 프레임, 프레임 탐지 결과, 이벤트 클립 전송
 
-## Behavior
+## 클라이언트가 소유하는 것
 
-- Owns local weights and optional TensorRT engine files.
-- Starts the embedded backend automatically on `http://127.0.0.1:8100`.
-- Sends analyzed data to the central server through the embedded backend.
+- 원본 영상 접근 권한
+- 로컬 YOLO 가중치
+- TensorRT 엔진
+- GPU 추론 실행
+- 소스 등록/삭제 권한
 
-## Run
+## 클라이언트가 하지 않는 일
+
+- 중앙 이벤트 DB 저장 판단
+- 여러 클라이언트 전체 이벤트 통합 관리
+- 뷰어용 중앙 스트림 허브 역할
+
+위 작업은 서버가 담당합니다.
+
+## 실행
 
 ```powershell
 cd safety_monitor_client

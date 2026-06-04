@@ -249,7 +249,8 @@ class ClientEventHandler(EventHandler):
             status=str(saved_record.get("status", "")).strip(),
             event_type=str(saved_record.get("event_type", "")).strip(),
         )
-        remote_server_reporter.post_event(saved_record)
+        if bool(saved_record.get("clip_available", False)):
+            remote_server_reporter.post_event(saved_record)
 
     def _attach_remote_clip_fields(self, payload: dict[str, Any]) -> None:
         payload.setdefault("clip_upload_ok", False)
@@ -483,7 +484,7 @@ class ClientSourceStatusPublisher:
 
 
 class ClientSourcePreviewPublisher:
-    def __init__(self, *, max_preview_fps: float = 2.0) -> None:
+    def __init__(self, *, max_preview_fps: float = 10.0) -> None:
         self.max_preview_fps = max(0.1, max_preview_fps)
         self.last_posted_at = 0.0
         self.worker = AsyncLatestWorker[dict[str, Any]](
@@ -498,27 +499,7 @@ class ClientSourcePreviewPublisher:
             return
         self.last_posted_at = now_ts
 
-        overlay_frame = frame.copy()
-        for detection in result.detections:
-            x1 = detection.box.x1
-            y1 = detection.box.y1
-            x2 = detection.box.x2
-            y2 = detection.box.y2
-            cv2.rectangle(overlay_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            label = f"{detection.name} {detection.score:.2f}"
-            if detection.track_id is not None:
-                label += f" id={detection.track_id}"
-            cv2.putText(
-                overlay_frame,
-                label,
-                (x1, max(20, y1 - 8)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                (0, 255, 0),
-                2,
-            )
-
-        ok, encoded = cv2.imencode(".jpg", overlay_frame)
+        ok, encoded = cv2.imencode(".jpg", frame)
         if not ok:
             return
         self.worker.submit(

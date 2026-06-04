@@ -8,7 +8,8 @@ from core.event_types import EventLevel, EventType
 
 
 class NoHelmetRule(EventRule):
-    # 사람 박스의 상단 일부를 머리 영역으로 보고, 그 안에 helmet이 있는지 확인합니다.
+    # 최신 모델이 NO_Helmet/YES_Helmet 머리 탐지를 직접 내놓으면 그것을 우선 사용합니다.
+    # 예전 person/head/helmet 조합 모델은 fallback으로 계속 지원합니다.
     def __init__(
         self,
         head_ratio: float = 0.3,
@@ -16,6 +17,7 @@ class NoHelmetRule(EventRule):
         person_labels: set[str] | None = None,
         helmet_labels: set[str] | None = None,
         head_labels: set[str] | None = None,
+        no_helmet_labels: set[str] | None = None,
     ) -> None:
         self.head_ratio = min(max(head_ratio, 0.1), 0.5)
         self.overlap_ratio = min(max(overlap_ratio, 0.0), 1.0)
@@ -34,9 +36,37 @@ class NoHelmetRule(EventRule):
             for label in (head_labels or {"head"})
             if label.strip()
         }
+        self.no_helmet_labels = {
+            label.strip().lower()
+            for label in (
+                no_helmet_labels
+                or {"no_helmet", "nohelmet", "without_helmet", "no helmet"}
+            )
+            if label.strip()
+        }
 
     def check(self, result: DetectionResult) -> list[Event]:
-        # DetectionResult에서 person과 helmet만 골라 Event 목록으로 바꾸는 단계입니다.
+        direct_no_helmet_detections = [
+            detection
+            for detection in result.detections
+            if detection.name.strip().lower() in self.no_helmet_labels
+        ]
+        if direct_no_helmet_detections:
+            return [
+                Event(
+                    event_type=EventType.NO_HELMET,
+                    message="안전모 미착용 의심 이벤트 발생",
+                    frame_id=result.frame_id,
+                    created_at=result.event_created_at or datetime.now(),
+                    level=EventLevel.WARNING,
+                    related_detections=[detection],
+                    source_time_seconds=result.source_time_seconds,
+                    source_time_text=result.source_time_text,
+                )
+                for detection in direct_no_helmet_detections
+            ]
+
+        # Fallback: DetectionResult에서 person과 helmet만 골라 Event 목록으로 바꾸는 단계입니다.
         persons = [
             detection
             for detection in result.detections

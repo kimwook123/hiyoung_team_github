@@ -133,6 +133,64 @@ def insert_event(db_path: Path, event_record: dict) -> dict:
     return saved_record
 
 
+def merge_latest_event(db_path: Path, event_record: dict) -> dict | None:
+    incoming_record = dict(event_record)
+    incoming_record["received_at"] = str(
+        incoming_record.get("received_at", "")
+    ).strip() or datetime.now().isoformat()
+    event_key = str(incoming_record.get("event_key", "")).strip()
+    source_key = str(incoming_record.get("source_key", "")).strip()
+    status = str(incoming_record.get("status", "")).strip()
+    if not event_key or not source_key or not status:
+        return None
+
+    with _connect(db_path) as connection:
+        row = connection.execute(
+            """
+            SELECT id, payload_json
+            FROM events
+            WHERE event_key = ? AND source_key = ? AND status = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (event_key, source_key, status),
+        ).fetchone()
+        if row is None:
+            return None
+
+        merged_record = _decode_payload(row["payload_json"])
+        merged_record.update(incoming_record)
+        payload_json = json.dumps(merged_record, ensure_ascii=False)
+        connection.execute(
+            """
+            UPDATE events
+            SET event_type = ?,
+                status = ?,
+                source_type = ?,
+                source_value = ?,
+                client_id = ?,
+                session_id = ?,
+                source_time_seconds = ?,
+                received_at = ?,
+                payload_json = ?
+            WHERE id = ?
+            """,
+            (
+                str(merged_record.get("event_type", "")).strip(),
+                str(merged_record.get("status", "")).strip(),
+                str(merged_record.get("source_type", "")).strip(),
+                str(merged_record.get("source_value", "")).strip(),
+                str(merged_record.get("client_id", "")).strip(),
+                str(merged_record.get("session_id", "")).strip(),
+                _to_float(merged_record.get("source_time_seconds")),
+                str(merged_record.get("received_at", "")).strip(),
+                payload_json,
+                int(row["id"]),
+            ),
+        )
+    return merged_record
+
+
 def list_events(
     db_path: Path,
     *,

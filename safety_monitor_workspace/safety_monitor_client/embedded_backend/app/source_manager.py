@@ -19,6 +19,7 @@ from app.database import (
     delete_source,
     get_source_status,
     get_source,
+    list_source_statuses,
     list_sources,
     prune_orphan_source_data,
     reset_source_data,
@@ -39,22 +40,40 @@ class _ManagedWorker:
 
 
 class AnalysisSourceManager:
+    _server_presence_interval_seconds = 5.0
+
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._workers: dict[str, _ManagedWorker] = {}
+        self._server_presence_stop = threading.Event()
+        self._server_presence_thread: threading.Thread | None = None
 
     def bootstrap(self) -> None:
         for source_record in list_sources(DATABASE_PATH):
+            source_key = str(source_record.get("source_key", "")).strip()
+            if not source_key:
+                continue
+            latest_source = get_source(DATABASE_PATH, source_key) or source_record
+            self._sync_source_to_server(latest_source)
+            latest_status = get_source_status(DATABASE_PATH, source_key)
+            if latest_status is not None:
+                synced_status = dict(latest_status)
+                synced_status["updated_at"] = datetime.now().isoformat()
+                self._upsert_status_and_sync(synced_status)
             if not bool(source_record.get("desired_running", False)):
                 continue
             log_line(
                 "SRC",
                 action="bootstrap-start",
-                source=source_record.get("source_key", ""),
+                source=source_key,
             )
-            self.start_source(str(source_record.get("source_key", "")).strip())
+            self.start_source(source_key)
+        self._start_server_presence_loop()
 
     def shutdown(self) -> None:
+        self._server_presence_stop.set()
+        if self._server_presence_thread is not None:
+            self._server_presence_thread.join(timeout=2.0)
         with self._lock:
             worker_keys = list(self._workers.keys())
         for source_key in worker_keys:
@@ -298,7 +317,12 @@ class AnalysisSourceManager:
         deleted = delete_source(DATABASE_PATH, source_key)
         delete_source_status(DATABASE_PATH, source_key)
         prune_orphan_source_data(DATABASE_PATH)
-        remote_server_reporter.delete_source(source_key, clear_data=clear_data)
+        remote_server_reporter.delete_source(
+            source_key,
+            clear_data=clear_data,
+            client_id=str(source_record.get("client_id", "")).strip(),
+            session_id=str(source_record.get("session_id", "")).strip(),
+        )
         return deleted
 
     def _delete_managed_source_file(self, source_record: dict[str, Any]) -> None:
@@ -465,39 +489,10 @@ class AnalysisSourceManager:
         payload["source_duration_seconds"] = float(
             payload.get("source_duration_seconds", 0.0) or 0.0
         )
-        source_type = str(payload.get("source_type", "")).strip().lower()
-        source_value = str(payload.get("source_value", "")).strip()
-        if (
-            source_type == "video"
-            and source_value
-            and not str(payload.get("server_media_path", "")).strip()
-        ):
-            uploaded = remote_server_reporter.upload_source_media(
-                file_path=source_value,
-                source_key=str(payload.get("source_key", "")).strip(),
-                source_slug=str(payload.get("source_slug", "")).strip(),
-                source_type=str(payload.get("source_type", "")).strip(),
-                source_value=source_value,
-                original_source_type=str(
-                    payload.get("original_source_type", payload.get("source_type", ""))
-                ).strip(),
-                original_source_value=str(
-                    payload.get("original_source_value", source_value)
-                ).strip(),
-                client_id=str(payload.get("client_id", "")).strip(),
-                session_id=str(payload.get("session_id", "")).strip(),
-                reset_existing=False,
-                start_immediately=bool(payload.get("desired_running", False)),
-            )
-            if uploaded:
-                item = uploaded.get("item")
-                if isinstance(item, dict):
-                    payload["server_media_path"] = str(
-                        item.get("server_media_path", "")
-                    ).strip()
-                    payload["media_url"] = str(item.get("media_url", "")).strip()
-                    payload["preview_url"] = str(item.get("preview_url", "")).strip()
-                    upsert_source(DATABASE_PATH, payload)
+        # Original media stays on the client for every source type.
+        payload["server_media_path"] = ""
+        payload["media_url"] = ""
+        payload["preview_url"] = ""
         remote_server_reporter.upsert_source(payload)
 
     def _upsert_status_and_sync(self, status_record: dict[str, Any]) -> dict[str, Any]:
@@ -510,3 +505,39 @@ class AnalysisSourceManager:
             source_key=str(source_record.get("source_key", "")).strip(),
             source_slug=str(source_record.get("source_slug", "")).strip(),
         )
+
+    def _start_server_presence_loop(self) -> None:
+        if self._server_presence_thread is not None and self._server_presence_thread.is_alive():
+            return
+        self._server_presence_stop.clear()
+        self._server_presence_thread = threading.Thread(
+            target=self._run_server_presence_loop,
+            name="server-presence-loop",
+            daemon=True,
+        )
+        self._server_presence_thread.start()
+
+    def _run_server_presence_loop(self) -> None:
+        while not self._server_presence_stop.wait(self._server_presence_interval_seconds):
+            try:
+                self._sync_server_presence()
+            except Exception as error:
+                log_line("WARN", message="server presence sync failed", error=error)
+
+    def _sync_server_presence(self) -> None:
+        for source_record in list_sources(DATABASE_PATH):
+            source_key = str(source_record.get("source_key", "")).strip()
+            if not source_key:
+                continue
+            self._sync_source_to_server(source_record)
+
+        for status_record in list_source_statuses(DATABASE_PATH):
+            source_key = str(status_record.get("source_key", "")).strip()
+            if not source_key:
+                continue
+            latest_source = get_source(DATABASE_PATH, source_key)
+            if latest_source is None:
+                continue
+            heartbeat_status = dict(status_record)
+            heartbeat_status["updated_at"] = datetime.now().isoformat()
+            self._upsert_status_and_sync(heartbeat_status)

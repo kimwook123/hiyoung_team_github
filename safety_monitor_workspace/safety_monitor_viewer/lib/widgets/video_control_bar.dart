@@ -23,7 +23,7 @@ class VideoControlBar extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: compact ? 8 : 10,
-        vertical: compact ? 6 : 8,
+        vertical: compact ? 4 : 6,
       ),
       decoration: BoxDecoration(
         color: const Color(0xFF171A20),
@@ -32,13 +32,22 @@ class VideoControlBar extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Slider(
-            value: sliderValue.clamp(0.0, 1.0),
-            onChanged: controller.hasVideo
-                ? (value) => controller.moveToRatio(value)
-                : null,
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: compact ? 2 : 3,
+              thumbShape: RoundSliderThumbShape(
+                enabledThumbRadius: compact ? 7 : 8,
+              ),
+              overlayShape: SliderComponentShape.noOverlay,
+            ),
+            child: Slider(
+              value: sliderValue.clamp(0.0, 1.0),
+              onChanged: controller.hasVideo
+                  ? (value) => controller.moveToRatio(value)
+                  : null,
+            ),
           ),
-          SizedBox(height: compact ? 2 : 4),
+          SizedBox(height: compact ? 0 : 2),
           Row(
             children: [
               IconButton(
@@ -46,22 +55,22 @@ class VideoControlBar extends StatelessWidget {
                     ? controller.movePrevFrame
                     : null,
                 tooltip: '이전 프레임',
-                iconSize: compact ? 18 : 20,
-                padding: EdgeInsets.all(compact ? 4 : 5),
+                iconSize: compact ? 16 : 18,
+                padding: EdgeInsets.all(compact ? 2 : 3),
                 constraints: BoxConstraints.tightFor(
-                  width: compact ? 28 : 32,
-                  height: compact ? 28 : 32,
+                  width: compact ? 24 : 28,
+                  height: compact ? 24 : 28,
                 ),
                 icon: const Icon(Icons.skip_previous),
               ),
               IconButton(
                 onPressed: controller.hasVideo ? controller.togglePlay : null,
                 tooltip: '재생 또는 일시정지',
-                iconSize: compact ? 18 : 20,
-                padding: EdgeInsets.all(compact ? 4 : 5),
+                iconSize: compact ? 16 : 18,
+                padding: EdgeInsets.all(compact ? 2 : 3),
                 constraints: BoxConstraints.tightFor(
-                  width: compact ? 28 : 32,
-                  height: compact ? 28 : 32,
+                  width: compact ? 24 : 28,
+                  height: compact ? 24 : 28,
                 ),
                 icon: Icon(
                   controller.isPlaying ? Icons.pause : Icons.play_arrow,
@@ -72,41 +81,43 @@ class VideoControlBar extends StatelessWidget {
                     ? controller.moveNextFrame
                     : null,
                 tooltip: '다음 프레임',
-                iconSize: compact ? 18 : 20,
-                padding: EdgeInsets.all(compact ? 4 : 5),
+                iconSize: compact ? 16 : 18,
+                padding: EdgeInsets.all(compact ? 2 : 3),
                 constraints: BoxConstraints.tightFor(
-                  width: compact ? 28 : 32,
-                  height: compact ? 28 : 32,
+                  width: compact ? 24 : 28,
+                  height: compact ? 24 : 28,
                 ),
                 icon: const Icon(Icons.skip_next),
               ),
-              SizedBox(width: compact ? 8 : 10),
+              SizedBox(width: compact ? 6 : 8),
               Expanded(
                 child: Text(
                   '${_formatTime(controller.currentPosition)} / '
                   '${_formatTime(controller.totalDuration)}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: (compact
-                          ? Theme.of(context).textTheme.bodySmall
-                          : Theme.of(context).textTheme.bodyMedium)
-                      ?.copyWith(fontSize: compact ? 11 : 13),
+                  style:
+                      (compact
+                              ? Theme.of(context).textTheme.bodySmall
+                              : Theme.of(context).textTheme.bodyMedium)
+                          ?.copyWith(fontSize: compact ? 11 : 13),
                 ),
               ),
               SizedBox(
-                width: compact ? 62 : 78,
+                width: compact ? 58 : 72,
                 child: TextFormField(
                   initialValue: controller.frameRate.toStringAsFixed(1),
-                  style: (compact
-                          ? Theme.of(context).textTheme.bodySmall
-                          : Theme.of(context).textTheme.bodyMedium)
-                      ?.copyWith(fontSize: compact ? 11 : 13),
+                  style:
+                      (compact
+                              ? Theme.of(context).textTheme.bodySmall
+                              : Theme.of(context).textTheme.bodyMedium)
+                          ?.copyWith(fontSize: compact ? 11 : 13),
                   decoration: InputDecoration(
                     labelText: 'FPS',
                     isDense: true,
                     contentPadding: EdgeInsets.symmetric(
-                      horizontal: compact ? 8 : 10,
-                      vertical: compact ? 6 : 7,
+                      horizontal: compact ? 6 : 8,
+                      vertical: compact ? 4 : 5,
                     ),
                     border: const OutlineInputBorder(),
                   ),

@@ -8,6 +8,7 @@ from app.database import (
     get_latest_frame_detection,
     insert_frame_detection,
 )
+from app.server_event_processor import server_event_processor
 from app.schemas import FrameDetectionCreateResponse, FrameDetectionSnapshotResponse
 
 router = APIRouter(prefix="/api/frame-detections", tags=["frame-detections"])
@@ -28,6 +29,7 @@ def create_frame_detection(
         raise HTTPException(status_code=400, detail="frame_id is required")
 
     saved_record = insert_frame_detection(DATABASE_PATH, frame_record)
+    server_event_processor.process_frame(saved_record)
     return FrameDetectionCreateResponse(ok=True, item=saved_record)
 
 

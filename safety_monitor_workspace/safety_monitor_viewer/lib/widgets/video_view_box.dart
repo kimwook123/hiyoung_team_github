@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
@@ -182,14 +186,47 @@ class VideoViewBox extends StatelessWidget {
   }
 }
 
-class _PreviewFallback extends StatelessWidget {
+class _PreviewFallback extends StatefulWidget {
   const _PreviewFallback({required this.previewImageUrl});
 
   final String previewImageUrl;
 
   @override
+  State<_PreviewFallback> createState() => _PreviewFallbackState();
+}
+
+class _PreviewFallbackState extends State<_PreviewFallback> {
+  HttpClient? _client;
+  HttpClientResponse? _response;
+  StreamSubscription<List<int>>? _subscription;
+  Uint8List? _latestImageBytes;
+  bool _isLoading = false;
+  String _lastConnectedUrl = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _connect();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PreviewFallback oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.previewImageUrl != widget.previewImageUrl) {
+      _connect();
+    }
+  }
+
+  @override
+  void dispose() {
+    unawaited(_disconnect());
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (previewImageUrl.trim().isEmpty) {
+    final previewImageUrl = widget.previewImageUrl.trim();
+    if (previewImageUrl.isEmpty) {
       return const Center(
         child: Text(
           'Preview will appear here.',
@@ -198,8 +235,22 @@ class _PreviewFallback extends StatelessWidget {
       );
     }
 
-    return Image.network(
-      previewImageUrl,
+    final latestImageBytes = _latestImageBytes;
+    if (latestImageBytes == null) {
+      if (_isLoading) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      return const Center(
+        child: Text(
+          'Waiting for live preview.',
+          style: TextStyle(color: Colors.white70),
+        ),
+      );
+    }
+
+    return Image.memory(
+      latestImageBytes,
+      gaplessPlayback: true,
       fit: BoxFit.cover,
       errorBuilder: (context, error, stackTrace) {
         return const Center(
@@ -209,13 +260,155 @@ class _PreviewFallback extends StatelessWidget {
           ),
         );
       },
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) {
-          return child;
-        }
-        return const Center(child: CircularProgressIndicator());
-      },
     );
+  }
+
+  Future<void> _connect() async {
+    final nextUrl = widget.previewImageUrl.trim();
+    if (nextUrl.isEmpty) {
+      return;
+    }
+    await _disconnect();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+      _lastConnectedUrl = nextUrl;
+    });
+
+    final client = HttpClient();
+    _client = client;
+    try {
+      final request = await client.getUrl(Uri.parse(nextUrl));
+      final response = await request.close();
+      _response = response;
+      final mimeType =
+          response.headers.contentType?.mimeType.toLowerCase() ?? '';
+      if (mimeType == 'image/jpeg') {
+        final bytes = await _readAllBytes(response);
+        if (!mounted || _lastConnectedUrl != nextUrl) {
+          return;
+        }
+        setState(() {
+          _latestImageBytes = Uint8List.fromList(bytes);
+          _isLoading = false;
+        });
+        return;
+      }
+
+      final boundaryToken =
+          response.headers.contentType?.parameters['boundary'] ?? 'frame';
+      final boundaryBytes = Uint8List.fromList('--$boundaryToken'.codeUnits);
+      final buffer = <int>[];
+
+      _subscription = response.listen(
+        (chunk) {
+          buffer.addAll(chunk);
+          while (true) {
+            final boundaryIndex = _indexOfBytes(buffer, boundaryBytes);
+            if (boundaryIndex < 0) {
+              break;
+            }
+            if (boundaryIndex > 0) {
+              final frameBytes = Uint8List.fromList(
+                buffer.sublist(0, boundaryIndex),
+              );
+              _trySetFrame(_extractJpegBytes(frameBytes), nextUrl);
+            }
+            buffer.removeRange(0, boundaryIndex + boundaryBytes.length);
+          }
+        },
+        onDone: () {
+          if (!mounted || _lastConnectedUrl != nextUrl) {
+            return;
+          }
+          setState(() {
+            _isLoading = false;
+          });
+        },
+        onError: (_) {
+          if (!mounted || _lastConnectedUrl != nextUrl) {
+            return;
+          }
+          setState(() {
+            _isLoading = false;
+          });
+        },
+        cancelOnError: true,
+      );
+    } catch (_) {
+      if (!mounted || _lastConnectedUrl != nextUrl) {
+        return;
+      }
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _disconnect() async {
+    await _subscription?.cancel();
+    _subscription = null;
+    try {
+      await _response?.detachSocket().then((socket) => socket.destroy());
+    } catch (_) {
+      // ignore
+    }
+    _response = null;
+    _client?.close(force: true);
+    _client = null;
+  }
+
+  void _trySetFrame(Uint8List? jpegBytes, String expectedUrl) {
+    if (jpegBytes == null || !mounted || _lastConnectedUrl != expectedUrl) {
+      return;
+    }
+    setState(() {
+      _latestImageBytes = jpegBytes;
+      _isLoading = false;
+    });
+  }
+
+  Uint8List? _extractJpegBytes(Uint8List payload) {
+    final separator = '\r\n\r\n'.codeUnits;
+    final separatorIndex = _indexOfBytes(payload, separator);
+    if (separatorIndex < 0) {
+      return null;
+    }
+    var bytes = payload.sublist(separatorIndex + separator.length);
+    while (bytes.isNotEmpty &&
+        (bytes.last == 10 || bytes.last == 13 || bytes.last == 45)) {
+      bytes = bytes.sublist(0, bytes.length - 1);
+    }
+    return bytes.isEmpty ? null : Uint8List.fromList(bytes);
+  }
+
+  int _indexOfBytes(List<int> data, List<int> pattern) {
+    if (pattern.isEmpty || data.length < pattern.length) {
+      return -1;
+    }
+    for (var i = 0; i <= data.length - pattern.length; i++) {
+      var matched = true;
+      for (var j = 0; j < pattern.length; j++) {
+        if (data[i + j] != pattern[j]) {
+          matched = false;
+          break;
+        }
+      }
+      if (matched) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  Future<List<int>> _readAllBytes(HttpClientResponse response) async {
+    final bytes = <int>[];
+    await for (final chunk in response) {
+      bytes.addAll(chunk);
+    }
+    return bytes;
   }
 }
 

@@ -1,37 +1,46 @@
 # Embedded Client Backend
 
-The backend is embedded inside the Flutter client application.
+이 백엔드는 Flutter 클라이언트 내부에서 함께 실행되는 로컬 분석 백엔드입니다.
 
-## Responsibilities
+## 역할
 
-- Register local video files, streams, or cameras.
-- Own the local YOLO `.pt` and TensorRT `.engine` files.
-- Run multi-threaded GPU analysis locally.
-- Save local status/events for local inspection.
-- Report source metadata, source status, frame detections, events, and event clips to the server.
+- 클라이언트가 등록한 영상 파일, 카메라, 스트림 소스 관리
+- 로컬 객체 탐지 실행
+- 프리뷰 프레임 생성
+- 프레임 탐지 결과 생성
+- 소스 상태 heartbeat 생성
+- 이벤트 클립 생성 및 서버 업로드
+- 서버와 소스 메타데이터/상태 동기화
 
-## API
+## 이 백엔드가 하지 않는 일
 
-The client starts a local FastAPI service on port `8100`.
+- 중앙 이벤트 최종 판정
+- 여러 클라이언트 데이터 통합 저장
+- 뷰어용 중앙 조회 API 제공
 
-- `GET /`
+이 역할은 서버가 담당합니다.
+
+## 로컬 API
+
+기본 포트:
+
+- `8100`
+
+주요 엔드포인트:
+
 - `GET /health`
-- `GET /api/client/config`
 - `GET /api/sources`
 - `POST /api/sources`
-- `POST /api/sources/upload`
 - `POST /api/sources/{source_key}/start`
 - `POST /api/sources/{source_key}/stop`
 - `POST /api/sources/{source_key}/restart`
 - `PATCH /api/sources/{source_key}/config`
 - `DELETE /api/sources/{source_key}`
 
-## Run
+## 실행
 
-Use the Flutter client app as the normal entrypoint:
+일반 사용자는 이 백엔드를 단독으로 실행하지 않습니다.
 
 ```powershell
 run_client.bat
 ```
-
-The backend is started automatically by the client app and is no longer intended to be used as a standalone operator dashboard.

@@ -1,0 +1,10 @@
+train: /content/fine_tuning_dataset_v2/images/train
+val: /content/fine_tuning_dataset_v2/images/val
+
+# 클래스 개수
+nc: 2
+
+# 클래스 이름 (0번: YES_Helmet, 1번: NO_Helmet)
+names:
+  0: YES_Helmet
+  1: NO_Helmet

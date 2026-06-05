@@ -31,11 +31,7 @@ safety_ai_monitor/logs/*
 *.mkv
 !README.md
 
-# Model weights and large binary assets
-*.pt
-*.pth
-*.onnx
-*.engine
+
 *.bin
 !safety_ai_monitor/models/weights/.gitkeep
 

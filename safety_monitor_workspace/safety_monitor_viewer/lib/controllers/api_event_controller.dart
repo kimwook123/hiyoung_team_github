@@ -25,7 +25,7 @@ class ApiEventController extends ChangeNotifier {
 
   // 화면 위젯은 기존 EventLogItem을 기대하므로 API 응답을 어댑터로 변환해서 노출합니다.
   List<EventLogItem> get logItems =>
-      apiEventsToLogItems(_latestItemsBySourceAndEventKey(items));
+      apiEventsToLogItems(_visibleLogItems(items));
 
   List<EventLogItem> getLogItemsForSource(String sourceKey) {
     final normalizedSourceKey = sourceKey.trim();
@@ -35,7 +35,7 @@ class ApiEventController extends ChangeNotifier {
     final filteredItems = items
         .where((item) => item.sourceKey.trim() == normalizedSourceKey)
         .toList(growable: false);
-    return apiEventsToLogItems(_latestItemsBySourceAndEventKey(filteredItems));
+    return apiEventsToLogItems(_visibleLogItems(filteredItems));
   }
 
   Future<void> loadLatestEvents({
@@ -246,6 +246,23 @@ class ApiEventController extends ChangeNotifier {
     return null;
   }
 
+  ApiEventItem? findExactItemForLogItem(EventLogItem logItem) {
+    final normalizedRawText = logItem.rawText.trim();
+    final normalizedSelectionKey = logItem.selectionKey.trim();
+    final orderedItems = [...items]..sort(_compareByTimeline);
+    for (final item in orderedItems.reversed) {
+      final candidateLogItem = apiEventToLogItem(item);
+      if (normalizedRawText.isNotEmpty &&
+          candidateLogItem.rawText.trim() == normalizedRawText) {
+        return item;
+      }
+      if (candidateLogItem.selectionKey.trim() == normalizedSelectionKey) {
+        return item;
+      }
+    }
+    return null;
+  }
+
   void selectLogItem(EventLogItem item) {
     selectedKeys = {item.selectionKey};
     notifyListeners();
@@ -277,6 +294,18 @@ class ApiEventController extends ChangeNotifier {
       selectedMap[compositeKey] = item;
     }
     return selectedMap.values.toList(growable: false);
+  }
+
+  List<ApiEventItem> _visibleLogItems(List<ApiEventItem> sourceItems) {
+    return sourceItems
+        .where((item) {
+          final normalizedStatus = item.status.trim().toUpperCase();
+          if (normalizedStatus == 'END' && !item.hasClip) {
+            return false;
+          }
+          return true;
+        })
+        .toList(growable: false);
   }
 
   String _sourceEventKey(String sourceKey, String eventKey) {

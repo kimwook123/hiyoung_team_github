@@ -5,6 +5,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterator
 
+from app.event_normalizer import normalize_event_record
+
 from app.source_identity import extract_clip_name
 
 
@@ -160,6 +162,7 @@ def merge_latest_event(db_path: Path, event_record: dict) -> dict | None:
 
         merged_record = _decode_payload(row["payload_json"])
         merged_record.update(incoming_record)
+        merged_record = normalize_event_record(merged_record)
         payload_json = json.dumps(merged_record, ensure_ascii=False)
         connection.execute(
             """
@@ -246,9 +249,11 @@ def list_latest_events(
     latest_by_key: dict[str, dict] = {}
     for item in ordered_items:
         event_key = str(item.get("event_key", "")).strip()
-        if event_key in latest_by_key:
-            latest_by_key.pop(event_key)
-        latest_by_key[event_key] = item
+        source_key = str(item.get("source_key", "")).strip()
+        composite_key = f"{source_key}|{event_key}" if source_key else event_key
+        if composite_key in latest_by_key:
+            latest_by_key.pop(composite_key)
+        latest_by_key[composite_key] = item
     return list(latest_by_key.values())
 
 

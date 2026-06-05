@@ -63,7 +63,7 @@ class EventLogController extends ChangeNotifier {
       if (!item.matchesFrame(frameValue)) {
         continue;
       }
-      selectedMap[item.selectionKey] = item;
+      selectedMap[item.eventGroupKey] = item;
     }
     return selectedMap.values.toList();
   }

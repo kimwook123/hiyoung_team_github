@@ -4,6 +4,8 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from app.config import SERVER_CLIP_DIR
+from app.config import DATABASE_PATH
+from app.database import merge_latest_event
 from app.schemas import ClipItem, ClipListResponse, ClipUploadResponse
 
 # 이 파일은 서버 소유 mp4 클립 업로드/조회 API를 담당합니다.
@@ -49,6 +51,24 @@ async def upload_clip(
         raise HTTPException(status_code=500, detail="failed to save clip") from error
     finally:
         await file.close()
+
+    normalized_event_key = event_key.strip() if event_key else ""
+    normalized_source_key = source_key.strip() if source_key else ""
+    if normalized_event_key and normalized_source_key:
+        merge_latest_event(
+            DATABASE_PATH,
+            {
+                "event_key": normalized_event_key,
+                "source_key": normalized_source_key,
+                "status": "END",
+                "clip_path": "",
+                "clip_url": f"/api/clips/{clip_path.name}",
+                "server_clip_path": f"clips/{clip_path.name}",
+                "server_clip_name": clip_path.name,
+                "clip_available": True,
+                "preferred_clip_source": "server",
+            },
+        )
 
     return ClipUploadResponse(
         ok=True,

@@ -62,14 +62,14 @@ class EventLogService {
       }
 
       final item = EventLogItem.fromLine(trimmedLine);
-      final selectionKey = item.selectionKey;
-      if (selectionKey.isEmpty || selectionKey == '-') {
+      final eventGroupKey = item.eventGroupKey;
+      if (eventGroupKey.isEmpty || eventGroupKey == '-') {
         continue;
       }
 
       // 같은 이벤트는 가장 마지막 줄만 사용한다
-      latestMap.remove(selectionKey);
-      latestMap[selectionKey] = item;
+      latestMap.remove(eventGroupKey);
+      latestMap[eventGroupKey] = item;
     }
 
     return latestMap.values.toList().reversed.toList();

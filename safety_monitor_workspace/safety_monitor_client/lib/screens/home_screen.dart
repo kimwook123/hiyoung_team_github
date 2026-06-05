@@ -44,6 +44,7 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Duration _apiAutoRefreshInterval = Duration(seconds: 30);
   late final VideoPanelController _emptyVideoController;
   late final EventApiService eventApiService;
+  late final EventApiService remoteEventApiService;
   late final ApiEventController apiEventController;
   late final ApiEventFeedSource apiEventFeed;
   final ScrollController appScrollController = ScrollController();
@@ -94,7 +95,10 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _emptyVideoController = VideoPanelController();
     eventApiService = EventApiService(baseUrl: _defaultApiServerBaseUrl);
-    apiEventController = ApiEventController(service: eventApiService);
+    remoteEventApiService = EventApiService(
+      baseUrl: _defaultRemoteServerBaseUrl,
+    );
+    apiEventController = ApiEventController(service: remoteEventApiService);
     apiEventFeed = ApiEventFeedSource(apiEventController);
     clientId = 'client_gui_${DateTime.now().microsecondsSinceEpoch}';
     unawaited(_initializeServerConnection());
@@ -119,6 +123,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     _emptyVideoController.disposeController();
     eventApiService.dispose();
+    remoteEventApiService.dispose();
     apiEventFeed.dispose();
     appScrollController.dispose();
     streamTextController.dispose();
@@ -605,7 +610,7 @@ class _HomeScreenState extends State<HomeScreen> {
           isSelected: isSelected,
           onTap: () => unawaited(_setActiveSlot(slot.slotId)),
           overlayItems: _getOverlayItemsForSlot(slot),
-          overlayDetections: _getOverlayDetectionsForSlot(slot),
+          overlayDetections: const [],
           overlaySourceWidth: _getOverlaySourceWidthForSlot(slot),
           overlaySourceHeight: _getOverlaySourceHeightForSlot(slot),
           overlayStatusText: _buildTileStatusText(slot),
@@ -1817,8 +1822,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final eventKey = item.eventKeyText.trim();
     final sourceKey = item.sourceKeyText.trim();
+    final exactItem = apiEventController.findExactItemForLogItem(item);
     ApiEventItem? detail;
-    if (eventKey.isNotEmpty && eventKey != '-') {
+    if (exactItem != null) {
+      setState(() {
+        apiDetailErrorMessage = null;
+        selectedApiEventDetail = exactItem;
+      });
+    } else if (eventKey.isNotEmpty && eventKey != '-') {
       setState(() {
         isLoadingApiDetail = true;
         apiDetailErrorMessage = null;
@@ -1844,6 +1855,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final sourceItem =
+        exactItem ??
         detail ??
         (sourceKey.isEmpty || sourceKey == '-'
             ? apiEventController.findItemByEventKey(item.eventKeyText)
@@ -1985,13 +1997,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _refreshClientRuntimeConfig() async {
     final runtime = await eventApiService.fetchClientRuntimeConfig();
+    final nextRemoteServerUrl = runtime?.remoteServerBaseUrl.trim() ?? '';
+    if (nextRemoteServerUrl.isNotEmpty) {
+      remoteEventApiService.updateBaseUrl(nextRemoteServerUrl);
+    }
     if (!mounted) {
       clientRuntimeConfig = runtime;
       return;
     }
     setState(() {
       clientRuntimeConfig = runtime;
-      final nextRemoteServerUrl = runtime?.remoteServerBaseUrl.trim() ?? '';
       if (nextRemoteServerUrl.isNotEmpty &&
           serverBaseUrlTextController.text.trim() != nextRemoteServerUrl) {
         serverBaseUrlTextController.text = nextRemoteServerUrl;
@@ -2028,6 +2043,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     await _refreshClientRuntimeConfig();
+    remoteEventApiService.updateBaseUrl(nextBaseUrl);
     await _refreshRegisteredSources();
     await _refreshSourceStatuses();
     await _refreshApiEventsIfNeeded();
@@ -2357,9 +2373,9 @@ class _HomeScreenState extends State<HomeScreen> {
       return trimmed;
     }
     if (trimmed.startsWith('/')) {
-      return '${eventApiService.baseUrl}$trimmed';
+      return '${remoteEventApiService.baseUrl}$trimmed';
     }
-    return '${eventApiService.baseUrl}/$trimmed';
+    return '${remoteEventApiService.baseUrl}/$trimmed';
   }
 
   Future<_SourcePanelSlot> _addOrActivateSourceSlot({
@@ -3370,8 +3386,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _initializeServerConnection() async {
     await EmbeddedBackendService.instance.ensureStarted();
     unawaited(_connectRealtimeUpdates());
-    await apiEventController.checkHealth();
     await _refreshClientRuntimeConfig();
+    await apiEventController.checkHealth();
     await _refreshApiEventsIfNeeded();
     await _refreshSourceStatuses();
     await _refreshRegisteredSources();

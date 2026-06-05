@@ -1769,11 +1769,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _buildPreviewImageUrlForSlot(_SourcePanelSlot slot) {
-    final source = registeredSourcesByKey[slot.sourceKey.trim()];
+    final sourceKey = slot.sourceKey.trim();
+    if (sourceKey.isNotEmpty) {
+      return eventApiService.buildSourceStreamUrl(sourceKey);
+    }
+    final source = registeredSourcesByKey[sourceKey];
     final previewUrl = source?.previewUrl.trim() ?? '';
     final statusCacheBust =
-        lastFrameDetectionStatusUpdatedAtBySourceKey[slot.sourceKey.trim()] ??
-        sourceStatusesByKey[slot.sourceKey.trim()]?.updatedAt ??
+        lastFrameDetectionStatusUpdatedAtBySourceKey[sourceKey] ??
+        sourceStatusesByKey[sourceKey]?.updatedAt ??
         '';
     final cacheBust = '${previewRefreshCacheBust}_$statusCacheBust';
     if (previewUrl.isNotEmpty) {
@@ -1782,7 +1786,7 @@ class _HomeScreenState extends State<HomeScreen> {
           : '${eventApiService.baseUrl}$previewUrl${previewUrl.contains('?') ? '&' : '?'}t=$cacheBust';
     }
     return eventApiService.buildSourcePreviewUrl(
-      slot.sourceKey,
+      sourceKey,
       cacheBust: cacheBust,
     );
   }

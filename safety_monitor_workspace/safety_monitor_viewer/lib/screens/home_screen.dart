@@ -734,7 +734,7 @@ class _HomeScreenState extends State<HomeScreen> {
           isSelected: isSelected,
           onTap: () => unawaited(_setActiveSlot(slot.slotId)),
           overlayItems: const [],
-          overlayDetections: _getOverlayDetectionsForSlot(slot),
+          overlayDetections: const [],
           overlaySourceWidth: _getOverlaySourceWidthForSlot(slot),
           overlaySourceHeight: _getOverlaySourceHeightForSlot(slot),
           overlayStatusText: _buildTileStatusText(slot),
@@ -1658,8 +1658,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final eventKey = item.eventKeyText.trim();
     final sourceKey = item.sourceKeyText.trim();
+    final exactItem = apiEventController.findExactItemForLogItem(item);
     ApiEventItem? detail;
-    if (eventKey.isNotEmpty && eventKey != '-') {
+    if (exactItem != null) {
+      setState(() {
+        apiDetailErrorMessage = null;
+        selectedApiEventDetail = exactItem;
+      });
+    } else if (eventKey.isNotEmpty && eventKey != '-') {
       setState(() {
         isLoadingApiDetail = true;
         apiDetailErrorMessage = null;
@@ -1685,6 +1691,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final sourceItem =
+        exactItem ??
         detail ??
         (sourceKey.isEmpty || sourceKey == '-'
             ? apiEventController.findItemByEventKey(item.eventKeyText)

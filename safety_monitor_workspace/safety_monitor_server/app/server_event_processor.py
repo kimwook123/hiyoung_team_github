@@ -56,11 +56,11 @@ class ServerEventProcessor:
             active_map = self._active_by_source_key.setdefault(source_key, {})
             seen_keys = set(candidates.keys())
 
-            for event_key, candidate in candidates.items():
-                active_state = active_map.get(event_key)
+            for match_key, candidate in candidates.items():
+                active_state = active_map.get(match_key)
                 if active_state is None:
                     state = _ActiveEventState(
-                        event_key=event_key,
+                        event_key=str(candidate.get("event_key", "")).strip(),
                         event_type=str(candidate["event_type"]),
                         message=str(candidate["message"]),
                         level=str(candidate["level"]),
@@ -84,7 +84,7 @@ class ServerEventProcessor:
                             candidate.get("related_detections")
                         ),
                     )
-                    active_map[event_key] = state
+                    active_map[match_key] = state
                     saved_events.append(self._save_event(self._build_start_event(candidate)))
                     continue
 
@@ -98,16 +98,16 @@ class ServerEventProcessor:
                 active_state.missed_frames = 0
 
             ended_keys: list[str] = []
-            for event_key, active_state in active_map.items():
-                if event_key in seen_keys:
+            for match_key, active_state in active_map.items():
+                if match_key in seen_keys:
                     continue
                 active_state.missed_frames += 1
                 if active_state.missed_frames >= self.end_missing_frames:
                     saved_events.append(self._save_event(self._build_end_event(active_state)))
-                    ended_keys.append(event_key)
+                    ended_keys.append(match_key)
 
-            for event_key in ended_keys:
-                active_map.pop(event_key, None)
+            for match_key in ended_keys:
+                active_map.pop(match_key, None)
 
             if not active_map:
                 self._active_by_source_key.pop(source_key, None)
@@ -165,7 +165,7 @@ class ServerEventProcessor:
                 source_time_seconds=source_time_seconds,
                 source_time_text=source_time_text,
             ):
-                candidates[str(event["event_key"])] = event
+                candidates[str(event["match_key"])] = event
 
         danger_zone_roi = to_roi_tuple(rule_config.get("danger_zone_roi"))
         if bool(rule_config.get("use_danger_zone_rule", False)) and danger_zone_roi is not None:
@@ -182,12 +182,13 @@ class ServerEventProcessor:
                 source_time_seconds=source_time_seconds,
                 source_time_text=source_time_text,
             ):
-                candidates[str(event["event_key"])] = event
+                candidates[str(event["match_key"])] = event
 
         return candidates
 
     def _build_start_event(self, candidate: dict[str, Any]) -> dict[str, Any]:
         payload = dict(candidate)
+        payload.pop("match_key", None)
         payload["status"] = "START"
         payload["started_at"] = payload.get("created_at")
         payload["ended_at"] = None
@@ -389,10 +390,12 @@ def _build_candidate_event(
 ) -> dict[str, Any]:
     person_id = _read_int_or_none(detection.get("track_id"))
     if person_id is None:
-        event_key = event_type
+        match_key = event_type
     else:
-        event_key = f"{event_type}:person:{person_id}"
+        match_key = f"{event_type}:person:{person_id}"
+    event_key = f"{match_key}:start:{frame_id}"
     return {
+        "match_key": match_key,
         "event_key": event_key,
         "event_type": event_type,
         "status": "ACTIVE",
@@ -546,4 +549,5 @@ def _read_int_or_none(value: object) -> int | None:
     return None
 
 
-server_event_processor = ServerEventProcessor()
+# 라이브 소스의 END 판정 타이밍을 클라이언트 쪽 clip 종료 기준과 비슷하게 맞춥니다.
+server_event_processor = ServerEventProcessor(end_missing_frames=30)

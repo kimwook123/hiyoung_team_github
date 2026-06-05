@@ -36,13 +36,27 @@ class EventLogItem {
   final String messageText;
   final String rawText;
 
-  String get selectionKey {
+  String get eventGroupKey {
     final normalizedSourceKey = sourceKeyText.trim();
     final normalizedEventKey = eventKeyText.trim();
     if (normalizedSourceKey.isEmpty || normalizedSourceKey == '-') {
       return normalizedEventKey;
     }
     return '$normalizedSourceKey|$normalizedEventKey';
+  }
+
+  String get selectionKey {
+    final normalizedRawText = rawText.trim();
+    if (normalizedRawText.isNotEmpty) {
+      return normalizedRawText;
+    }
+    return [
+      eventGroupKey,
+      statusText.trim(),
+      timeText.trim(),
+      frameText.trim(),
+      clipPathText.trim(),
+    ].join('|');
   }
 
   int? get frameValue => _toInt(frameText);

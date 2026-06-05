@@ -1,6 +1,6 @@
 <mxfile host="app.diagrams.net" agent="ChatGPT">
   <diagram id="safety-monitor-flow" name="간략 플로우차트">
-    <mxGraphModel dx="1192" dy="936" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+    <mxGraphModel dx="797" dy="1137" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -23,7 +23,7 @@
           <mxGeometry height="100" width="300" x="815" y="570" as="geometry" />
         </mxCell>
         <mxCell id="note" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#F5F5F5;strokeColor=#666666;fontSize=14;align=left;verticalAlign=top;spacing=12" value="상태 예시: 클라이언트가 종료되면&amp;nbsp;&lt;div&gt;해당 소스는 서버에서 오프라인으로 표시&lt;/div&gt;" vertex="1">
-          <mxGeometry height="95" width="300" x="390" y="520" as="geometry" />
+          <mxGeometry height="95" width="300" x="190" y="570" as="geometry" />
         </mxCell>
         <mxCell id="summary" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=10;strokeWidth=2;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=20;fontStyle=1;align=center;verticalAlign=middle" value="흐름 요약: 영상 입력 → 클라이언트 객체 탐지 → 서버 저장/이벤트 판정 → 뷰어 조회" vertex="1">
           <mxGeometry height="70" width="1120" x="240" y="760" as="geometry" />
@@ -50,13 +50,26 @@
           </mxGeometry>
         </mxCell>
         <mxCell id="edge5" edge="1" parent="1" source="storage" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;endFill=1;fontSize=13;labelBackgroundColor=#FFFFFF;strokeColor=#B85450" target="viewer" value="로그·클립 조회">
-          <mxGeometry relative="1" x="-0.0444" y="20" as="geometry">
-            <mxPoint as="offset" />
+          <mxGeometry relative="1" x="-0.0444" y="-20" as="geometry">
+            <mxPoint x="-1" as="offset" />
             <mxPoint x="1380" y="620" as="targetPoint" />
           </mxGeometry>
         </mxCell>
         <mxCell id="edge6" edge="1" parent="1" source="client" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;dashed=1;endArrow=block;endFill=1;fontSize=13;labelBackgroundColor=#FFFFFF;strokeColor=#999999" target="note" value="오프라인 표시">
-          <mxGeometry relative="1" as="geometry" />
+          <mxGeometry relative="1" x="-0.0036" y="-12" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="480" y="502" />
+              <mxPoint x="340" y="502" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="847BMK754qd1uP38sfq6-1" edge="1" parent="1" source="storage" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;endArrow=block;endFill=1;fontSize=13;labelBackgroundColor=#FFFFFF;strokeColor=#B85450;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.75;entryY=1;entryDx=0;entryDy=0;" target="client" value="자신이 소유한 카메라의 로그·클립 조회">
+          <mxGeometry relative="1" x="-0.0444" y="20" as="geometry">
+            <mxPoint as="offset" />
+            <mxPoint x="1380" y="845" as="sourcePoint" />
+            <mxPoint x="1645" y="660" as="targetPoint" />
+          </mxGeometry>
         </mxCell>
       </root>
     </mxGraphModel>

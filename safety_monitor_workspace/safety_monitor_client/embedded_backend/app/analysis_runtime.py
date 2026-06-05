@@ -499,7 +499,8 @@ class ClientSourcePreviewPublisher:
             return
         self.last_posted_at = now_ts
 
-        ok, encoded = cv2.imencode(".jpg", frame)
+        preview_frame = self._make_preview_frame(frame=frame, result=result)
+        ok, encoded = cv2.imencode(".jpg", preview_frame)
         if not ok:
             return
         self.worker.submit(
@@ -525,6 +526,32 @@ class ClientSourcePreviewPublisher:
 
     def close(self) -> None:
         self.worker.close(timeout_seconds=15.0)
+
+    def _make_preview_frame(self, *, frame, result):
+        preview_frame = frame.copy()
+        for detection in getattr(result, "detections", []):
+            box = getattr(detection, "box", None)
+            if box is None:
+                continue
+            x1 = int(getattr(box, "x1", 0))
+            y1 = int(getattr(box, "y1", 0))
+            x2 = int(getattr(box, "x2", 0))
+            y2 = int(getattr(box, "y2", 0))
+            cv2.rectangle(preview_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            label = f"{getattr(detection, 'name', '')} {float(getattr(detection, 'score', 0.0)):.2f}"
+            track_id = getattr(detection, "track_id", None)
+            if track_id is not None:
+                label += f" id={track_id}"
+            cv2.putText(
+                preview_frame,
+                label,
+                (x1, max(20, y1 - 8)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (0, 255, 0),
+                2,
+            )
+        return preview_frame
 
 
 def _build_model():

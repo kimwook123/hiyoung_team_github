@@ -5,9 +5,7 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response, StreamingResponse
 
-from app.database import get_source
-from app.config import DATABASE_PATH
-from app.routers.source_previews import preview_path_for_source_key
+from app.routers.source_previews import source_preview_path
 
 router = APIRouter(prefix="/api/source-streams", tags=["source-streams"])
 
@@ -20,8 +18,6 @@ async def stream_source(
     normalized_source_key = source_key.strip()
     if not normalized_source_key:
         raise HTTPException(status_code=400, detail="source_key is required")
-    if get_source(DATABASE_PATH, normalized_source_key) is None:
-        raise HTTPException(status_code=404, detail="source not found")
 
     if single:
         jpeg_bytes = _read_preview_bytes(normalized_source_key)
@@ -54,7 +50,7 @@ async def stream_source(
 
 
 def _read_preview_bytes(source_key: str) -> bytes | None:
-    preview_path = preview_path_for_source_key(source_key)
+    preview_path = source_preview_path(source_key)
     if not preview_path.exists() or not preview_path.is_file():
         return None
     try:

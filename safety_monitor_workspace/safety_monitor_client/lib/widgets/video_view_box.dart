@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
@@ -182,14 +186,47 @@ class VideoViewBox extends StatelessWidget {
   }
 }
 
-class _PreviewFallback extends StatelessWidget {
+class _PreviewFallback extends StatefulWidget {
   const _PreviewFallback({required this.previewImageUrl});
 
   final String previewImageUrl;
 
   @override
+  State<_PreviewFallback> createState() => _PreviewFallbackState();
+}
+
+class _PreviewFallbackState extends State<_PreviewFallback> {
+  HttpClient? _client;
+  HttpClientResponse? _response;
+  StreamSubscription<List<int>>? _subscription;
+  Uint8List? _latestImageBytes;
+  bool _isLoading = false;
+  String _lastConnectedUrl = '';
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_connect());
+  }
+
+  @override
+  void didUpdateWidget(covariant _PreviewFallback oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.previewImageUrl != widget.previewImageUrl) {
+      unawaited(_connect());
+    }
+  }
+
+  @override
+  void dispose() {
+    unawaited(_disconnect());
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (previewImageUrl.trim().isEmpty) {
+    final previewImageUrl = widget.previewImageUrl.trim();
+    if (previewImageUrl.isEmpty) {
       return const Center(
         child: Text(
           'Preview will appear here.',
@@ -198,9 +235,23 @@ class _PreviewFallback extends StatelessWidget {
       );
     }
 
-    return Image.network(
-      previewImageUrl,
+    final latestImageBytes = _latestImageBytes;
+    if (latestImageBytes == null) {
+      if (_isLoading) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      return const Center(
+        child: Text(
+          'Waiting for live preview.',
+          style: TextStyle(color: Colors.white70),
+        ),
+      );
+    }
+
+    return Image.memory(
+      latestImageBytes,
       fit: BoxFit.cover,
+      gaplessPlayback: true,
       errorBuilder: (context, error, stackTrace) {
         return const Center(
           child: Text(
@@ -209,13 +260,157 @@ class _PreviewFallback extends StatelessWidget {
           ),
         );
       },
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) {
-          return child;
-        }
-        return const Center(child: CircularProgressIndicator());
-      },
     );
+  }
+
+  Future<void> _connect() async {
+    final nextUrl = widget.previewImageUrl.trim();
+    if (nextUrl.isEmpty) {
+      return;
+    }
+    await _disconnect();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _latestImageBytes = null;
+      _lastConnectedUrl = nextUrl;
+    });
+
+    final client = HttpClient();
+    _client = client;
+    try {
+      final request = await client.getUrl(Uri.parse(nextUrl));
+      final response = await request.close();
+      _response = response;
+      final mimeType =
+          response.headers.contentType?.mimeType.toLowerCase() ?? '';
+      if (!mimeType.startsWith('multipart/x-mixed-replace')) {
+        final bytes = await _readAllBytes(response);
+        _trySetFrame(Uint8List.fromList(bytes), nextUrl);
+        return;
+      }
+
+      final boundaryToken =
+          response.headers.contentType?.parameters['boundary'] ?? 'frame';
+      final boundaryBytes = Uint8List.fromList('--$boundaryToken'.codeUnits);
+      final buffer = <int>[];
+
+      _subscription = response.listen(
+        (chunk) {
+          buffer.addAll(chunk);
+          while (true) {
+            final boundaryIndex = _indexOfPattern(buffer, boundaryBytes);
+            if (boundaryIndex < 0) {
+              break;
+            }
+            if (boundaryIndex > 0) {
+              final frameBytes = Uint8List.fromList(
+                buffer.sublist(0, boundaryIndex),
+              );
+              _trySetFrame(_extractJpegBytes(frameBytes), nextUrl);
+            }
+            buffer.removeRange(0, boundaryIndex + boundaryBytes.length);
+          }
+        },
+        onDone: () {
+          if (!mounted || _lastConnectedUrl != nextUrl) {
+            return;
+          }
+          setState(() {
+            _isLoading = false;
+          });
+        },
+        onError: (_) {
+          if (!mounted || _lastConnectedUrl != nextUrl) {
+            return;
+          }
+          setState(() {
+            _isLoading = false;
+          });
+        },
+        cancelOnError: true,
+      );
+    } catch (_) {
+      if (!mounted || _lastConnectedUrl != nextUrl) {
+        return;
+      }
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _disconnect() async {
+    await _subscription?.cancel();
+    _subscription = null;
+    await _response
+        ?.detachSocket()
+        .then((socket) => socket.destroy())
+        .catchError((_) {
+          return null;
+        });
+    _response = null;
+    _client?.close(force: true);
+    _client = null;
+  }
+
+  void _trySetFrame(Uint8List? jpegBytes, String expectedUrl) {
+    if (jpegBytes == null || !mounted || _lastConnectedUrl != expectedUrl) {
+      return;
+    }
+    setState(() {
+      _latestImageBytes = jpegBytes;
+      _isLoading = false;
+    });
+  }
+
+  Future<List<int>> _readAllBytes(HttpClientResponse response) async {
+    final bytes = <int>[];
+    await for (final chunk in response) {
+      bytes.addAll(chunk);
+    }
+    return bytes;
+  }
+
+  int _indexOfPattern(List<int> source, List<int> pattern) {
+    if (pattern.isEmpty || source.length < pattern.length) {
+      return -1;
+    }
+    for (var index = 0; index <= source.length - pattern.length; index++) {
+      var matches = true;
+      for (var offset = 0; offset < pattern.length; offset++) {
+        if (source[index + offset] != pattern[offset]) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) {
+        return index;
+      }
+    }
+    return -1;
+  }
+
+  Uint8List? _extractJpegBytes(Uint8List rawBytes) {
+    const jpegStart = [0xFF, 0xD8];
+    const jpegEnd = [0xFF, 0xD9];
+
+    final startIndex = _indexOfPattern(rawBytes, jpegStart);
+    if (startIndex < 0) {
+      return null;
+    }
+
+    final endSearch = rawBytes.sublist(startIndex);
+    final endRelativeIndex = _indexOfPattern(endSearch, jpegEnd);
+    if (endRelativeIndex < 0) {
+      return null;
+    }
+
+    final endIndex = startIndex + endRelativeIndex + jpegEnd.length;
+    return Uint8List.sublistView(rawBytes, startIndex, endIndex);
   }
 }
 

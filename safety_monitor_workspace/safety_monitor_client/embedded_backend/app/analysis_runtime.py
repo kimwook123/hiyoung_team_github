@@ -484,7 +484,7 @@ class ClientSourceStatusPublisher:
 
 
 class ClientSourcePreviewPublisher:
-    def __init__(self, *, max_preview_fps: float = 10.0) -> None:
+    def __init__(self, *, max_preview_fps: float = 15.0) -> None:
         self.max_preview_fps = max(0.1, max_preview_fps)
         self.last_posted_at = 0.0
         self.worker = AsyncLatestWorker[dict[str, Any]](

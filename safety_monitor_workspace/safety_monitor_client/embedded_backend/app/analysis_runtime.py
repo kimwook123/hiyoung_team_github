@@ -362,6 +362,7 @@ class ClientSourceStatusPublisher:
         source_duration_seconds: float = 0.0,
         last_frame_id: int = -1,
         last_source_time_seconds: float = 0.0,
+        avg_object_detection_ms: float = 0.0,
         error_message: str = "",
         force: bool = False,
     ) -> None:
@@ -387,6 +388,7 @@ class ClientSourceStatusPublisher:
             "source_duration_seconds": source_duration_seconds,
             "last_frame_id": last_frame_id,
             "last_source_time_seconds": last_source_time_seconds,
+            "avg_object_detection_ms": avg_object_detection_ms,
             "error_message": error_message,
             "updated_at": datetime.now().isoformat(),
         }

@@ -11,6 +11,7 @@ class SourceRuntimeStatus {
     required this.sourceDurationSeconds,
     required this.lastFrameId,
     required this.lastSourceTimeSeconds,
+    required this.avgObjectDetectionMs,
     required this.errorMessage,
     required this.updatedAt,
   });
@@ -26,6 +27,7 @@ class SourceRuntimeStatus {
   final double sourceDurationSeconds;
   final int lastFrameId;
   final double lastSourceTimeSeconds;
+  final double avgObjectDetectionMs;
   final String errorMessage;
   final String updatedAt;
 
@@ -42,6 +44,7 @@ class SourceRuntimeStatus {
       sourceDurationSeconds: _toDouble(json['source_duration_seconds']),
       lastFrameId: _toInt(json['last_frame_id']),
       lastSourceTimeSeconds: _toDouble(json['last_source_time_seconds']),
+      avgObjectDetectionMs: _toDouble(json['avg_object_detection_ms']),
       errorMessage: json['error_message']?.toString() ?? '',
       updatedAt: json['updated_at']?.toString() ?? '',
     );

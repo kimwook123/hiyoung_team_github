@@ -53,6 +53,9 @@ def list_source_status() -> SourceStatusListResponse:
             last_source_time_seconds=_read_float(
                 record.get("last_source_time_seconds")
             ),
+            avg_object_detection_ms=_read_float(
+                record.get("avg_object_detection_ms")
+            ),
             error_message=str(record.get("error_message", "")).strip(),
             updated_at=str(record.get("updated_at", "")).strip(),
         )

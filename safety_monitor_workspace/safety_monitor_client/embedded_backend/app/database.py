@@ -393,6 +393,29 @@ def upsert_source_status(db_path: Path, status_record: dict) -> dict:
     )
     source_key = str(saved_record.get("source_key", "")).strip()
     with _connect(db_path) as connection:
+        state = str(saved_record.get("state", "")).strip().lower()
+        should_preserve_average = state in {
+            "completed",
+            "stopped",
+            "disconnected",
+            "error",
+        }
+        if (
+            should_preserve_average
+            and _to_float(saved_record.get("avg_object_detection_ms")) <= 0.0
+        ):
+            previous_row = connection.execute(
+                "SELECT payload_json FROM source_status WHERE source_key = ?",
+                (source_key,),
+            ).fetchone()
+            if previous_row is not None:
+                previous_record = _decode_payload(previous_row["payload_json"])
+                previous_average_ms = _to_float(
+                    previous_record.get("avg_object_detection_ms")
+                )
+                if previous_average_ms > 0.0:
+                    saved_record["avg_object_detection_ms"] = previous_average_ms
+
         connection.execute(
             """
             INSERT INTO source_status (

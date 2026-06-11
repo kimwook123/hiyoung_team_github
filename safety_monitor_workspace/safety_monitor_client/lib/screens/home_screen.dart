@@ -692,6 +692,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   'progress',
                   _buildSourceProgressText(source, status),
                 ),
+                _buildDetailLine(
+                  'engine inference 평균',
+                  _buildAverageDetectionTimeText(source, status),
+                ),
                 _buildDetailLine('sourceKey', source.sourceKey),
                 if (replayController.isReplayMode) ...[
                   const SizedBox(height: 12),
@@ -992,6 +996,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     Text(
                       'progress: ${_buildSourceProgressText(source, sourceStatusesByKey[source.sourceKey])}',
+                    ),
+                    Text(
+                      'engine inference 평균: ${_buildAverageDetectionTimeText(source, sourceStatusesByKey[source.sourceKey])}',
                     ),
                     Text(
                       'client: ${source.clientId.isEmpty ? '-' : source.clientId}',
@@ -3268,6 +3275,20 @@ class _HomeScreenState extends State<HomeScreen> {
     final clampedSeconds = lastSeconds.clamp(0.0, durationSeconds);
     final percent = (clampedSeconds / durationSeconds) * 100.0;
     return '${clampedSeconds.toStringAsFixed(1)} / ${durationSeconds.toStringAsFixed(1)}s (${percent.toStringAsFixed(1)}%)';
+  }
+
+  String _buildAverageDetectionTimeText(
+    SourceItem? source,
+    SourceRuntimeStatus? status,
+  ) {
+    final averageMs = status?.avgObjectDetectionMs ?? 0.0;
+    if (averageMs <= 0) {
+      return '-';
+    }
+    final suffix = source?.sourceType.trim().toLowerCase() == 'video'
+        ? ' (첫 50회 제외)'
+        : '';
+    return '${averageMs.toStringAsFixed(1)} ms/frame$suffix';
   }
 
   String _describeSlotStatus(_SourcePanelSlot slot) {

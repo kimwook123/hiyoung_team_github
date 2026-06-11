@@ -78,6 +78,9 @@ class VideoPipeline:
         self.model_input_max_width = max(0, model_input_max_width)
         self.last_processed_frame_id = -1
         self.last_processed_source_time_seconds = 0.0
+        self.object_detection_total_seconds = 0.0
+        self.object_detection_frame_count = 0
+        self.object_detection_seen_frame_count = 0
         self.analysis_frame_stride = 1
         self.profiler = PipelineProfiler(
             enabled=enable_perf_log,
@@ -164,7 +167,10 @@ class VideoPipeline:
 
                 result = self.profiler.measure(
                     "model_predict",
-                    lambda: self.model.predict(inference_frame, frame_id),
+                    lambda: self._predict_and_record_detection_time(
+                        inference_frame,
+                        frame_id,
+                    ),
                 )
                 if scale_back_x != 1.0 or scale_back_y != 1.0:
                     result = self.profiler.measure(
@@ -488,6 +494,37 @@ class VideoPipeline:
             source_duration_seconds=self.source_duration_seconds,
             last_frame_id=last_frame_id,
             last_source_time_seconds=last_source_time_seconds,
+            avg_object_detection_ms=self._average_object_detection_ms(),
             error_message=error_message,
             force=force,
         )
+
+    def _predict_and_record_detection_time(
+        self,
+        inference_frame: object,
+        frame_id: int,
+    ) -> DetectionResult:
+        result = self.model.predict(inference_frame, frame_id)
+        inference_ms = self.model.get_last_inference_ms()
+        self.object_detection_seen_frame_count += 1
+        if inference_ms <= 0.0:
+            return result
+        if self._should_skip_detection_metric_frame():
+            return result
+
+        self.object_detection_total_seconds += inference_ms / 1000.0
+        self.object_detection_frame_count += 1
+        return result
+
+    def _average_object_detection_ms(self) -> float:
+        if self.object_detection_frame_count <= 0:
+            return 0.0
+        return (
+            self.object_detection_total_seconds
+            / self.object_detection_frame_count
+        ) * 1000.0
+
+    def _should_skip_detection_metric_frame(self) -> bool:
+        if self.source_time_mode != "video":
+            return False
+        return self.object_detection_seen_frame_count <= 50

@@ -19,6 +19,10 @@ from app.config import (  # noqa: E402
     ANALYSIS_REQUIRE_CUDA,
     MODEL_PATH,
     PREFER_TENSORRT_ENGINE,
+    TENSORRT_EXPORT_BATCH,
+    TENSORRT_EXPORT_DYNAMIC,
+    TENSORRT_EXPORT_HALF,
+    TENSORRT_EXPORT_IMGSZ,
 )
 from app.analysis.models.device_helper import resolve_torch_device  # noqa: E402
 from app.analysis.models.yolo_runtime_helper import resolve_runtime_model_path  # noqa: E402
@@ -51,6 +55,10 @@ def main() -> int:
     print(f"engine_path={engine_path}")
     print(f"cuda_available={torch.cuda.is_available()}")
     print(f"analysis_device={device}")
+    print(f"tensorrt_export_imgsz={TENSORRT_EXPORT_IMGSZ}")
+    print(f"tensorrt_export_half={TENSORRT_EXPORT_HALF}")
+    print(f"tensorrt_export_dynamic={TENSORRT_EXPORT_DYNAMIC}")
+    print(f"tensorrt_export_batch={TENSORRT_EXPORT_BATCH}")
     print(f"tensorrt_available={_has_module('tensorrt')}")
     print(f"onnx_available={_has_module('onnx')}")
     print(f"onnxslim_available={_has_module('onnxslim')}")

@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
+from app.config import (
+    TENSORRT_EXPORT_BATCH,
+    TENSORRT_EXPORT_DYNAMIC,
+    TENSORRT_EXPORT_HALF,
+    TENSORRT_EXPORT_IMGSZ,
+)
 from models.device_helper import resolve_torch_device
 
 
@@ -58,6 +65,8 @@ def resolve_runtime_model_path(
 ) -> str:
     resolved_path = Path(model_path)
     if not prefer_tensorrt_engine:
+        if not resolved_path.exists():
+            raise RuntimeError(f"YOLO 가중치 파일을 찾을 수 없습니다: {resolved_path}")
         return str(resolved_path)
     if resolved_path.suffix.lower() == ".engine":
         if not _is_tensorrt_available():
@@ -67,7 +76,29 @@ def resolve_runtime_model_path(
         return str(resolved_path)
 
     engine_path = resolved_path.with_suffix(".engine")
-    if engine_path.exists() and _is_tensorrt_available():
+    if not resolved_path.exists():
+        if engine_path.exists() and _is_tensorrt_available():
+            if _engine_matches_export_config(
+                engine_path=engine_path,
+                source_model_path=resolved_path,
+                device=device,
+            ):
+                return str(engine_path)
+            raise RuntimeError(
+                "기존 TensorRT engine의 export 설정을 검증할 수 없고 "
+                f"원본 YOLO 가중치 파일도 없습니다: {resolved_path}"
+            )
+        raise RuntimeError(f"YOLO 가중치 파일을 찾을 수 없습니다: {resolved_path}")
+
+    if (
+        engine_path.exists()
+        and _is_tensorrt_available()
+        and _engine_matches_export_config(
+            engine_path=engine_path,
+            source_model_path=resolved_path,
+            device=device,
+        )
+    ):
         return str(engine_path)
 
     if _can_export_tensorrt_engine(model_path=resolved_path, device=device):
@@ -87,8 +118,12 @@ def resolve_runtime_model_path(
 def build_predict_kwargs(*, runtime_model_path: str, device: str) -> dict[str, Any]:
     runtime_suffix = Path(runtime_model_path).suffix.lower()
     if runtime_suffix == ".engine":
-        return {}
-    return {"device": device}
+        return {"imgsz": TENSORRT_EXPORT_IMGSZ}
+    return {
+        "device": device,
+        "imgsz": TENSORRT_EXPORT_IMGSZ,
+        "half": TENSORRT_EXPORT_HALF and device.lower().startswith("cuda"),
+    }
 
 
 def _can_export_tensorrt_engine(*, model_path: Path, device: str) -> bool:
@@ -104,13 +139,79 @@ def _export_tensorrt_engine(*, yolo_cls, model_path: Path, device: str) -> str:
     exported_path = export_model.export(
         format="engine",
         device=device,
+        imgsz=TENSORRT_EXPORT_IMGSZ,
+        half=TENSORRT_EXPORT_HALF,
+        dynamic=TENSORRT_EXPORT_DYNAMIC,
+        batch=TENSORRT_EXPORT_BATCH,
         verbose=False,
     )
-    return str(Path(exported_path).resolve())
+    resolved_exported_path = Path(exported_path).resolve()
+    _write_engine_export_meta(
+        engine_path=resolved_exported_path,
+        source_model_path=model_path,
+        device=device,
+    )
+    return str(resolved_exported_path)
 
 
 def load_yolo_model(*, yolo_cls, model_path: str):
     return yolo_cls(model_path, task="detect")
+
+
+def _engine_export_config(*, source_model_path: Path, device: str) -> dict[str, Any]:
+    source_stat = source_model_path.stat() if source_model_path.exists() else None
+    return {
+        "format": "engine",
+        "device": device,
+        "imgsz": TENSORRT_EXPORT_IMGSZ,
+        "half": TENSORRT_EXPORT_HALF,
+        "dynamic": TENSORRT_EXPORT_DYNAMIC,
+        "batch": TENSORRT_EXPORT_BATCH,
+        "source_model_path": str(source_model_path.resolve()),
+        "source_model_size": int(source_stat.st_size) if source_stat is not None else 0,
+        "source_model_mtime_ns": int(source_stat.st_mtime_ns) if source_stat is not None else 0,
+    }
+
+
+def _engine_meta_path(engine_path: Path) -> Path:
+    return engine_path.with_suffix(f"{engine_path.suffix}.meta.json")
+
+
+def _engine_matches_export_config(
+    *,
+    engine_path: Path,
+    source_model_path: Path,
+    device: str,
+) -> bool:
+    meta_path = _engine_meta_path(engine_path)
+    if not meta_path.exists():
+        return False
+    try:
+        saved_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return saved_meta == _engine_export_config(
+        source_model_path=source_model_path,
+        device=device,
+    )
+
+
+def _write_engine_export_meta(
+    *,
+    engine_path: Path,
+    source_model_path: Path,
+    device: str,
+) -> None:
+    meta_path = _engine_meta_path(engine_path)
+    meta_path.write_text(
+        json.dumps(
+            _engine_export_config(source_model_path=source_model_path, device=device),
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
 
 
 def _patch_tensorrt_for_ultralytics_export() -> None:

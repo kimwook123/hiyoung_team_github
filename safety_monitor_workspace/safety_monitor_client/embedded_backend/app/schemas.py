@@ -83,6 +83,7 @@ class SourceStatusItem(BaseModel):
     source_duration_seconds: float = 0.0
     last_frame_id: int = -1
     last_source_time_seconds: float = 0.0
+    avg_object_detection_ms: float = 0.0
     error_message: str = ""
     updated_at: str
 

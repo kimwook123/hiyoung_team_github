@@ -46,6 +46,7 @@ class EnsembleYoloModel(DetectionModel):
             "helmet": "helmet",
             "hardhat": "helmet",
         }
+        self.last_inference_ms = 0.0
 
     def load(self) -> None:
         os.environ.setdefault(
@@ -109,6 +110,7 @@ class EnsembleYoloModel(DetectionModel):
             raise RuntimeError("EnsembleYoloModel.load()를 먼저 호출해야 합니다.")
 
         detections = []
+        self.last_inference_ms = 0.0
         detections.extend(
             self._predict_with_model(
                 model=self.person_model,
@@ -130,6 +132,9 @@ class EnsembleYoloModel(DetectionModel):
     def get_name(self) -> str:
         return "EnsembleYoloModel"
 
+    def get_last_inference_ms(self) -> float:
+        return self.last_inference_ms
+
     def _predict_with_model(
         self,
         model,
@@ -146,6 +151,7 @@ class EnsembleYoloModel(DetectionModel):
         detections: list[Detection] = []
 
         for result in results:
+            self.last_inference_ms += self._read_inference_ms(result)
             names = result.names
             for box_data in result.boxes:
                 score = float(box_data.conf[0])
@@ -173,3 +179,12 @@ class EnsembleYoloModel(DetectionModel):
                 )
 
         return detections
+
+    def _read_inference_ms(self, result) -> float:
+        speed = getattr(result, "speed", None)
+        if not isinstance(speed, dict):
+            return 0.0
+        value = speed.get("inference", 0.0)
+        if isinstance(value, (int, float)):
+            return float(value)
+        return 0.0

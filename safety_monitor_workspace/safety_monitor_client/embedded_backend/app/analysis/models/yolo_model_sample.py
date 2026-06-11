@@ -31,6 +31,7 @@ class YoloModelSample(DetectionModel):
         self.safety_confidence = 0.6
         self.runtime_model_path = model_path
         self.predict_kwargs: dict[str, object] = {}
+        self.last_inference_ms = 0.0
 
     def load(self) -> None:
         # Keep Ultralytics writable even in restricted Windows environments.
@@ -70,6 +71,7 @@ class YoloModelSample(DetectionModel):
 
         # 이 어댑터는 비디오 경로가 아니라 "프레임 1장"을 받으므로 stream=True 제너레이터보다
         # 단일 결과 리스트로 즉시 받아오는 편이 파이프라인과 더 잘 맞습니다.
+        self.last_inference_ms = 0.0
         person_results = self.model.predict(
             source=frame,
             conf=self.person_confidence,
@@ -78,6 +80,7 @@ class YoloModelSample(DetectionModel):
             verbose=False,
             **self.predict_kwargs,
         )
+        self.last_inference_ms += self._sum_inference_ms(person_results)
         safety_results = self.model.predict(
             source=frame,
             conf=self.safety_confidence,
@@ -86,6 +89,7 @@ class YoloModelSample(DetectionModel):
             verbose=False,
             **self.predict_kwargs,
         )
+        self.last_inference_ms += self._sum_inference_ms(safety_results)
 
         person_result = person_results[0] if person_results else None
         safety_result = safety_results[0] if safety_results else None
@@ -100,6 +104,9 @@ class YoloModelSample(DetectionModel):
     def get_name(self) -> str:
         return "YoloModelSample"
 
+    def get_last_inference_ms(self) -> float:
+        return self.last_inference_ms
+
     def _resolve_runtime_model_path(self) -> str:
         model_path = Path(self.model_path)
         if not self.prefer_tensorrt_engine:
@@ -112,6 +119,17 @@ class YoloModelSample(DetectionModel):
             return str(engine_path)
 
         return str(model_path)
+
+    def _sum_inference_ms(self, results) -> float:
+        total = 0.0
+        for result in results or []:
+            speed = getattr(result, "speed", None)
+            if not isinstance(speed, dict):
+                continue
+            value = speed.get("inference", 0.0)
+            if isinstance(value, (int, float)):
+                total += float(value)
+        return total
 
     def _merge_results(self, person_result, safety_result):
         if person_result is None:

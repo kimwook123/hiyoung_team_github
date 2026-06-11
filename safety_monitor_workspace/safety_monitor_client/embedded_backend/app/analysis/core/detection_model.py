@@ -61,3 +61,6 @@ class DetectionModel(ABC):
     @abstractmethod
     def get_name(self) -> str:
         pass
+
+    def get_last_inference_ms(self) -> float:
+        return 0.0

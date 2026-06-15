@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 import time
 import socket
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -11,6 +12,7 @@ from typing import Any
 from app.analysis_runtime import build_pipeline_for_source, build_source_record, resolve_source
 from app.config import (
     CLIENT_CLIP_DIR,
+    CLIENT_SETTINGS_PATH,
     CLIENT_SOURCE_CACHE_DIR,
     CLIENT_UPLOAD_SOURCE_DIR,
     DATABASE_PATH,
@@ -50,6 +52,7 @@ class AnalysisSourceManager:
         self._server_presence_thread: threading.Thread | None = None
 
     def bootstrap(self) -> None:
+        self._remove_stale_local_camera_sources()
         for source_record in list_sources(DATABASE_PATH):
             source_key = str(source_record.get("source_key", "")).strip()
             if not source_key:
@@ -140,6 +143,7 @@ class AnalysisSourceManager:
         )
         source_key = str(source_record.get("source_key", "")).strip()
         source_slug = str(source_record.get("source_slug", "")).strip()
+        self._remove_stale_local_camera_sources(keep_source_key=source_key)
         existing_source = get_source(DATABASE_PATH, source_key)
         if existing_source is not None:
             source_record["rule_config"] = normalize_rule_config(
@@ -397,6 +401,39 @@ class AnalysisSourceManager:
         if file_path.exists() and file_path.is_file():
             file_path.unlink(missing_ok=True)
 
+    def _remove_stale_local_camera_sources(self, *, keep_source_key: str = "") -> None:
+        current_client_id = _read_configured_client_id() or _build_default_client_id()
+        keep_source_key = keep_source_key.strip()
+        for source_record in list_sources(DATABASE_PATH):
+            source_key = str(source_record.get("source_key", "")).strip()
+            if not source_key or source_key == keep_source_key:
+                continue
+            source_type = str(source_record.get("source_type", "")).strip().lower()
+            source_value = str(source_record.get("source_value", "")).strip()
+            client_id = str(source_record.get("client_id", "")).strip()
+            if (
+                source_type != "camera"
+                or source_value != "0"
+                or client_id == current_client_id
+            ):
+                continue
+
+            self.stop_source(source_key, update_desired_running=False)
+            delete_source(DATABASE_PATH, source_key)
+            delete_source_status(DATABASE_PATH, source_key)
+            remote_server_reporter.delete_source(
+                source_key,
+                clear_data=False,
+                client_id=client_id,
+                session_id=str(source_record.get("session_id", "")).strip(),
+            )
+            log_line(
+                "SRC",
+                action="remove-stale-camera",
+                source=source_key,
+                client=client_id or "-",
+            )
+
     def _run_worker(
         self,
         source_key: str,
@@ -593,3 +630,13 @@ def _build_default_client_id() -> str:
     normalized = "".join(char if char.isalnum() else "_" for char in hostname)
     normalized = "_".join(part for part in normalized.split("_") if part)
     return f"client_{normalized}" if normalized else "client_local"
+
+
+def _read_configured_client_id() -> str:
+    try:
+        decoded = json.loads(CLIENT_SETTINGS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(decoded, dict):
+        return ""
+    return str(decoded.get("client_id", "")).strip()

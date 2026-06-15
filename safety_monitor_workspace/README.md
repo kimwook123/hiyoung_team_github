@@ -179,10 +179,19 @@ build_viewer.bat
 
 빌드 배치파일은 실행 전 `flutter clean`으로 이전 PC 경로가 남은 CMake 캐시를 정리합니다. 또한 `windows/flutter/CMakeLists.txt` 같은 Windows Flutter 생성 파일이 누락된 경우 `flutter create --platforms=windows .`로 자동 복구한 뒤 빌드합니다.
 
-Windows에서 `media_kit_libs_windows_video` 빌드 중 `MSB3491` 또는 `.tlog` 경로 오류가 나지 않도록, 빌드 배치파일은 기본적으로 워크스페이스를 `S:\` 짧은 가상 드라이브에 임시 매핑한 뒤 빌드합니다. `S:`가 이미 사용 중이면 다른 드라이브 문자를 지정할 수 있습니다.
+Windows에서 `media_kit_libs_windows_video` 빌드 중 `MSB3491` 또는 `.tlog` 경로 오류가 나지 않도록, 빌드 배치파일은 워크스페이스를 짧은 경로로 임시 매핑한 뒤 빌드합니다. 기본적으로 `S:`, `R:`, `Q:`, `P:`, `T:`, `Y:`, `Z:` 순서로 빈 드라이브를 찾고, `subst`가 실패하면 `%TEMP%\smw_build` junction 경로를 사용합니다.
+
+원하는 드라이브 문자를 우선 시도하게 지정할 수 있습니다.
 
 ```powershell
 set SAFETY_MONITOR_BUILD_DRIVE=R:
+build_client.bat
+```
+
+junction 위치도 직접 지정할 수 있습니다.
+
+```powershell
+set SAFETY_MONITOR_BUILD_LINK=C:\smw_build
 build_client.bat
 ```
 

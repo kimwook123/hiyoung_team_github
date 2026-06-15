@@ -1,8 +1,9 @@
 from typing import Any
 
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query, Request
 
 from app.config import DATABASE_PATH
+from app.connection_audit import log_frame_receive, request_host
 from app.database import (
     find_current_frame_detection,
     get_latest_frame_detection,
@@ -16,6 +17,7 @@ router = APIRouter(prefix="/api/frame-detections", tags=["frame-detections"])
 
 @router.post("", response_model=FrameDetectionCreateResponse)
 def create_frame_detection(
+    request: Request,
     frame_record: dict[str, Any] = Body(...),
 ) -> FrameDetectionCreateResponse:
     if not frame_record:
@@ -29,6 +31,7 @@ def create_frame_detection(
         raise HTTPException(status_code=400, detail="frame_id is required")
 
     saved_record = insert_frame_detection(DATABASE_PATH, frame_record)
+    log_frame_receive(frame_record=saved_record, remote_host=request_host(request))
     server_event_processor.process_frame(saved_record)
     return FrameDetectionCreateResponse(ok=True, item=saved_record)
 

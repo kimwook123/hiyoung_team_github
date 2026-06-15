@@ -1,8 +1,9 @@
 from typing import Any
 
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query, Request
 
 from app.config import DATABASE_PATH
+from app.connection_audit import log_status_receive, request_host
 from app.database import list_source_statuses, upsert_source_status
 from app.realtime_hub import realtime_update_hub
 from app.server_event_processor import server_event_processor
@@ -17,6 +18,7 @@ router = APIRouter(prefix="/api/source-status", tags=["source-status"])
 
 @router.post("", response_model=SourceStatusUpsertResponse)
 def upsert_status(
+    request: Request,
     status_record: dict[str, Any] = Body(...),
 ) -> SourceStatusUpsertResponse:
     if not status_record:
@@ -27,6 +29,7 @@ def upsert_status(
         raise HTTPException(status_code=400, detail="source_key is required")
 
     saved_record = upsert_source_status(DATABASE_PATH, status_record)
+    log_status_receive(status_record=saved_record, remote_host=request_host(request))
     realtime_update_hub.publish(
         "source_status_changed",
         source_key=str(saved_record.get("source_key", "")).strip(),

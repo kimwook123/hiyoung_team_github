@@ -24,6 +24,12 @@ echo Python interpreter:
 "%PYTHON_CMD%" -c "import sys; print(sys.executable)"
 
 echo Starting Safety Monitor Server on http://0.0.0.0:8000
+echo.
+echo Server URLs to use from other PCs:
+powershell -NoProfile -Command "Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.PrefixOrigin -ne 'WellKnown' } | Sort-Object InterfaceAlias | ForEach-Object { Write-Host ('  http://' + $_.IPAddress + ':8000') }"
+echo.
+echo If other PCs cannot open http://SERVER_IP:8000/health, run setup_server_firewall.bat as Administrator on this server PC.
+echo.
 pushd "%SERVER_DIR%"
 "%PYTHON_CMD%" -m uvicorn main:app --host 0.0.0.0 --port 8000 --no-access-log
 popd

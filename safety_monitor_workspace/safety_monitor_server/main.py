@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import (
     DATABASE_PATH,
     ENABLE_SERVER_REQUEST_LOG,
+    SERVER_REQUEST_LOG_IMMEDIATE_MIN_STATUS,
     SERVER_REQUEST_LOG_SUMMARY_INTERVAL_SECONDS,
     SERVER_REQUEST_LOG_SUMMARY_PATHS,
     ensure_server_dirs,
@@ -73,11 +74,12 @@ if ENABLE_SERVER_REQUEST_LOG:
         *,
         client_host: str,
         path: str,
+        method: str,
         elapsed_ms: float,
         status_code: int,
     ) -> None:
         stats = app.state.request_log_stats
-        key = (client_host, path)
+        key = (client_host, method, path)
         entry = stats.get(key)
         if entry is None:
             entry = {
@@ -85,12 +87,16 @@ if ENABLE_SERVER_REQUEST_LOG:
                 "total_ms": 0.0,
                 "max_ms": 0.0,
                 "last_status": status_code,
+                "status_counts": {},
             }
             stats[key] = entry
         entry["count"] += 1
         entry["total_ms"] += elapsed_ms
         entry["max_ms"] = max(entry["max_ms"], elapsed_ms)
         entry["last_status"] = status_code
+        status_counts = entry["status_counts"]
+        status_key = str(status_code)
+        status_counts[status_key] = int(status_counts.get(status_key, 0)) + 1
 
     def _flush_request_log_summary(app: FastAPI, force: bool = False) -> None:
         stats = app.state.request_log_stats
@@ -100,25 +106,51 @@ if ENABLE_SERVER_REQUEST_LOG:
         elapsed = now - app.state.request_log_last_flush
         if not force and elapsed < SERVER_REQUEST_LOG_SUMMARY_INTERVAL_SECONDS:
             return
-        for (client_host, path), entry in list(stats.items()):
+        for (client_host, method, path), entry in list(stats.items()):
             count = int(entry["count"])
             if count <= 0:
                 continue
             average_ms = float(entry["total_ms"]) / count
             max_ms = float(entry["max_ms"])
             last_status = int(entry["last_status"])
+            status_counts = {
+                str(status): int(status_count)
+                for status, status_count in dict(entry.get("status_counts", {})).items()
+            }
+            non_ok_statuses = {
+                status: status_count
+                for status, status_count in status_counts.items()
+                if status != "200"
+            }
             log_line(
                 "REQ-SUM",
                 client=client_host,
                 path=path,
+                method=method,
                 count=count,
                 avg=f"{average_ms:.1f}ms",
                 max=f"{max_ms:.1f}ms",
                 last_status=last_status,
+                statuses=(
+                    ",".join(
+                        f"{status}:{status_count}"
+                        for status, status_count in sorted(non_ok_statuses.items())
+                    )
+                    or None
+                ),
                 window=f"{elapsed:.1f}s",
             )
         stats.clear()
         app.state.request_log_last_flush = now
+
+    def _summarized_request_path(request: Request, raw_path: str) -> str:
+        route = request.scope.get("route")
+        route_path = str(getattr(route, "path", "") or "").strip()
+        if route_path in SERVER_REQUEST_LOG_SUMMARY_PATHS:
+            return route_path
+        if raw_path in SERVER_REQUEST_LOG_SUMMARY_PATHS:
+            return raw_path
+        return ""
 
     @app.middleware("http")
     async def log_requests(request: Request, call_next):
@@ -144,15 +176,28 @@ if ENABLE_SERVER_REQUEST_LOG:
             raise
 
         elapsed_ms = (perf_counter() - started_at) * 1000.0
-        if path in SERVER_REQUEST_LOG_SUMMARY_PATHS:
+        summary_path = _summarized_request_path(request, path)
+        if summary_path:
             _record_request_summary(
                 app,
                 client_host=client_host,
-                path=path,
+                path=summary_path,
+                method=method,
                 elapsed_ms=elapsed_ms,
                 status_code=response.status_code,
             )
             _flush_request_log_summary(app)
+            if response.status_code < SERVER_REQUEST_LOG_IMMEDIATE_MIN_STATUS:
+                return response
+
+            log_line(
+                "REQ",
+                client=client_host,
+                method=method,
+                path=display_path,
+                status=response.status_code,
+                duration=f"{elapsed_ms:.1f}ms",
+            )
         else:
             log_line(
                 "REQ",

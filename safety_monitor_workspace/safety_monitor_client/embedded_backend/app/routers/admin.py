@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, HTTPException, Request
+import json
 
 from app.config import (
     CLIENT_CLIP_DIR,
@@ -12,7 +13,6 @@ from app.schemas import (
     RemoteServerConfigResponse,
     ResetDataResponse,
 )
-import json
 
 # 이 파일은 source_key 기준으로 서버 저장소를 초기화하는 관리용 API를 제공합니다.
 
@@ -48,6 +48,7 @@ def reset_data(
 
 @router.put("/remote-server", response_model=RemoteServerConfigResponse)
 def update_remote_server(
+    request: Request,
     payload: dict = Body(...),
 ) -> RemoteServerConfigResponse:
     next_base_url = str(payload.get("remote_server_base_url", "")).strip().rstrip("/")
@@ -58,14 +59,28 @@ def update_remote_server(
         )
 
     remote_server_reporter.set_base_url(next_base_url)
+    settings_payload: dict[str, object] = {}
+    if CLIENT_SETTINGS_PATH.exists():
+        try:
+            decoded = json.loads(CLIENT_SETTINGS_PATH.read_text(encoding="utf-8"))
+            if isinstance(decoded, dict):
+                settings_payload.update(decoded)
+        except json.JSONDecodeError:
+            settings_payload = {}
+    settings_payload["remote_server_base_url"] = next_base_url
     CLIENT_SETTINGS_PATH.write_text(
         json.dumps(
-            {"remote_server_base_url": next_base_url},
+            settings_payload,
             ensure_ascii=True,
             indent=2,
         ),
         encoding="utf-8",
     )
+
+    manager = getattr(request.app.state, "source_manager", None)
+    if manager is not None:
+        manager.sync_all_to_server()
+
     return RemoteServerConfigResponse(
         ok=True,
         remote_server_base_url=next_base_url,

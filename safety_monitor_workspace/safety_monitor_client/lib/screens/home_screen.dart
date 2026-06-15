@@ -63,6 +63,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? frameDetectionRefreshTimer;
   Timer? sourceStatusSyncTimer;
   Timer? previewRefreshTimer;
+  Timer? cameraEnsureTimer;
   Timer? realtimeReconnectTimer;
   Timer? queuedRealtimeRefreshTimer;
   StreamSubscription? realtimeSocketSubscription;
@@ -87,6 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool isSavingRuleConfig = false;
   bool isEditingDangerZone = false;
   bool _didAutoRegisterCamera = false;
+  bool _isEnsuringCameraSource = false;
   int _ruleConfigSaveTicket = 0;
   int previewRefreshCacheBust = 0;
 
@@ -105,6 +107,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _startFrameDetectionRefresh();
     _startSourceStatusSync();
     _startPreviewRefresh();
+    _startCameraAutoEnsure();
   }
 
   @override
@@ -113,6 +116,7 @@ class _HomeScreenState extends State<HomeScreen> {
     frameDetectionRefreshTimer?.cancel();
     sourceStatusSyncTimer?.cancel();
     previewRefreshTimer?.cancel();
+    cameraEnsureTimer?.cancel();
     realtimeReconnectTimer?.cancel();
     queuedRealtimeRefreshTimer?.cancel();
     realtimeSocketSubscription?.cancel();
@@ -1634,11 +1638,14 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_refreshApiEventsIfNeeded());
   }
 
-  Future<void> _openCamera() async {
+  // ignore: unused_element
+  Future<void> _openCamera({bool silent = false}) async {
     if (_isViewerReadOnly) {
-      _showInfoSnack(
-        'Viewer is read-only. Register local sources from the client app.',
-      );
+      if (!silent) {
+        _showInfoSnack(
+          'Viewer is read-only. Register local sources from the client app.',
+        );
+      }
       return;
     }
     const cameraIndex = 0;
@@ -1655,6 +1662,10 @@ class _HomeScreenState extends State<HomeScreen> {
         sourceValue: existingSlot.sourceValue,
         controller: existingSlot.controller,
       );
+      final source = registeredSourcesByKey[existingSlot.sourceKey.trim()];
+      if (source != null) {
+        await _ensureRegisteredSourceRunning(source);
+      }
       return;
     }
 
@@ -2021,12 +2032,23 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     await _refreshClientRuntimeConfig();
-    remoteEventApiService.updateBaseUrl(nextBaseUrl);
+    final appliedRemoteUrl =
+        clientRuntimeConfig?.remoteServerBaseUrl.trim().isNotEmpty == true
+        ? clientRuntimeConfig!.remoteServerBaseUrl
+        : nextBaseUrl;
+    remoteEventApiService.updateBaseUrl(appliedRemoteUrl);
+    await apiEventController.checkHealth();
     await _refreshRegisteredSources();
     await _refreshSourceStatuses();
+    await _ensureSingleCameraSource(force: true, silent: true);
     await _refreshApiEventsIfNeeded();
     if (mounted) {
-      _showInfoSnack('Remote server updated to $nextBaseUrl.');
+      final healthText = apiEventController.serverHealth == null
+          ? ' 원격 서버 health 확인은 실패했습니다.'
+          : '';
+      _showInfoSnack(
+        'Remote server updated to ${remoteEventApiService.baseUrl}.$healthText',
+      );
     }
   }
 
@@ -2152,6 +2174,13 @@ class _HomeScreenState extends State<HomeScreen> {
       unawaited(_refreshSourceStatuses());
       unawaited(_refreshRegisteredSources());
       unawaited(_syncActiveSlotFrameRateIfNeeded());
+    });
+  }
+
+  void _startCameraAutoEnsure() {
+    cameraEnsureTimer?.cancel();
+    cameraEnsureTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      unawaited(_ensureSingleCameraSource(force: true, silent: true));
     });
   }
 
@@ -3403,12 +3432,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<String> _resolveClientIdentity() async {
     final configPath = _resolveLegacyClientSettingsFile();
+    final currentMachineId = _buildCurrentMachineId();
     try {
       if (await configPath.exists()) {
         final decoded = jsonDecode(await configPath.readAsString());
         if (decoded is Map<String, dynamic>) {
           final configured = decoded['client_id']?.toString().trim() ?? '';
-          if (configured.isNotEmpty) {
+          final configuredMachineId =
+              decoded['machine_id']?.toString().trim() ?? '';
+          if (configured.isNotEmpty &&
+              configuredMachineId.isNotEmpty &&
+              configuredMachineId == currentMachineId) {
             return configured;
           }
         }
@@ -3417,19 +3451,32 @@ class _HomeScreenState extends State<HomeScreen> {
       // 설정 파일이 깨져 있어도 아래 기본 식별자로 복구합니다.
     }
 
+    final generated = _buildDefaultClientId();
+    await _saveClientIdentityConfig(generated, machineId: currentMachineId);
+    return generated;
+  }
+
+  String _buildCurrentMachineId() {
+    return 'host_${_buildNormalizedHostToken()}';
+  }
+
+  String _buildDefaultClientId() {
+    return 'client_${_buildNormalizedHostToken()}';
+  }
+
+  String _buildNormalizedHostToken() {
     final host = Platform.localHostname.trim().toLowerCase();
     final normalizedHost = host
         .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
         .replaceAll(RegExp(r'_+'), '_')
         .replaceAll(RegExp(r'^_|_$'), '');
-    final generated = normalizedHost.isEmpty
-        ? 'client_local'
-        : 'client_$normalizedHost';
-    await _saveClientIdentityConfig(generated);
-    return generated;
+    return normalizedHost.isEmpty ? 'local' : normalizedHost;
   }
 
-  Future<void> _saveClientIdentityConfig(String nextClientId) async {
+  Future<void> _saveClientIdentityConfig(
+    String nextClientId, {
+    required String machineId,
+  }) async {
     try {
       final configPath = _resolveLegacyClientSettingsFile();
       final payload = <String, dynamic>{};
@@ -3440,6 +3487,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
       payload['client_id'] = nextClientId.trim();
+      payload['machine_id'] = machineId.trim();
       payload['remote_server_base_url'] =
           payload['remote_server_base_url']?.toString().trim().isNotEmpty ==
               true
@@ -3453,13 +3501,77 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _ensureSingleCameraSource() async {
-    if (_didAutoRegisterCamera) {
+  Future<void> _ensureSingleCameraSource({
+    bool force = false,
+    bool silent = true,
+  }) async {
+    if (_isViewerReadOnly || _isEnsuringCameraSource) {
       return;
     }
-    _didAutoRegisterCamera = true;
-    cameraTextController.text = '0';
-    await _openCamera();
+    if (_didAutoRegisterCamera && !force) {
+      return;
+    }
+
+    _isEnsuringCameraSource = true;
+    try {
+      _didAutoRegisterCamera = true;
+      cameraTextController.text = '0';
+      await _refreshRegisteredSources();
+      await _refreshSourceStatuses();
+
+      var source = _findRegisteredCameraZeroSource();
+      source ??= await eventApiService.registerSource(
+        sourceType: 'camera',
+        sourceValue: '0',
+        clientId: clientId,
+        resetExisting: false,
+        startImmediately: true,
+      );
+      if (source == null) {
+        if (!silent && mounted) {
+          _showInfoSnack('카메라 0 소스 등록에 실패했습니다.');
+        }
+        return;
+      }
+
+      await _ensureSourceSlot(
+        sourceType: source.sourceType,
+        sourceValue: source.sourceValue,
+        openPath: '',
+        sourceKey: source.sourceKey,
+        originalSourceType: source.originalSourceType,
+        originalSourceValue: source.originalSourceValue,
+        nextSourceType: source.sourceType,
+        activate: _activeSlotId.isEmpty,
+      );
+      await _ensureRegisteredSourceRunning(source);
+      await _refreshRegisteredSources();
+      await _refreshSourceStatuses();
+    } finally {
+      _isEnsuringCameraSource = false;
+    }
+  }
+
+  SourceItem? _findRegisteredCameraZeroSource() {
+    for (final source in registeredSourcesByKey.values) {
+      if (source.sourceType.trim().toLowerCase() == 'camera' &&
+          source.sourceValue.trim() == '0') {
+        return source;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _ensureRegisteredSourceRunning(SourceItem source) async {
+    final status = sourceStatusesByKey[source.sourceKey.trim()];
+    final state = status?.state.trim().toLowerCase() ?? '';
+    if (status?.isRunning == true ||
+        state == 'starting' ||
+        state == 'running' ||
+        state == 'reconnecting') {
+      return;
+    }
+    await eventApiService.startSource(source.sourceKey);
   }
 
   Future<void> _connectRealtimeUpdates() async {

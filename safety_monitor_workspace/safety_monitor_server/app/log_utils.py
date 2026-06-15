@@ -11,6 +11,7 @@ _TAG_COLORS = {
     "REQ": "\033[96m",
     "REQ-SUM": "\033[36m",
     "PUSH": "\033[92m",
+    "PUSH-SUM": "\033[32m",
     "SRC": "\033[94m",
     "PROGRESS": "\033[92m",
     "PERF": "\033[95m",
@@ -52,8 +53,13 @@ _USE_COLOR = _enable_windows_ansi()
 _REQUEST_PATH_ALIASES = {
     "/api/frame-detections/current": "frame-now",
     "/api/frame-detections/latest": "frame-latest",
+    "/api/frame-detections": "frame-post",
+    "/api/source-previews": "preview-post",
+    "/api/source-previews/latest": "preview-latest",
+    "/api/source-streams/{source_key:path}": "source-stream",
     "/api/source-status": "source-status",
     "/api/sources": "sources",
+    "/api/sources/overview": "sources-overview",
     "/api/events": "events",
     "/api/events/latest": "events-latest",
     "/api/events/detail": "event-detail",
@@ -140,6 +146,7 @@ def _build_field_text(fields: dict[str, object]) -> str:
         "path",
         "method",
         "status",
+        "statuses",
         "duration",
         "count",
         "avg",
@@ -205,6 +212,9 @@ def _compact_field_text(tag: str, fields: dict[str, object]) -> str:
         return " ".join(parts)
 
     if tag == "REQ-SUM":
+        method_text = _text("method")
+        if method_text and method_text != "GET":
+            _push(parts, "", method_text)
         _push(parts, "", _text("path"))
         _push(parts, "x", _text("count"))
         _push(parts, "avg=", _text("avg"))
@@ -212,6 +222,9 @@ def _compact_field_text(tag: str, fields: dict[str, object]) -> str:
         last_status = _text("last_status")
         if last_status and last_status != "200":
             _push(parts, "status=", last_status)
+        statuses = _text("statuses")
+        if statuses:
+            _push(parts, "statuses=", statuses)
         return " ".join(parts)
 
     if tag == "PUSH":
@@ -226,6 +239,13 @@ def _compact_field_text(tag: str, fields: dict[str, object]) -> str:
         state_text = _text("state")
         if state_text:
             _push(parts, "", state_text)
+        return " ".join(parts)
+
+    if tag == "PUSH-SUM":
+        _push(parts, "", _text("event"))
+        _push(parts, "x", _text("count"))
+        _push(parts, "clients=", _text("clients"))
+        _push(parts, "window=", _text("window"))
         return " ".join(parts)
 
     if tag == "SRC":

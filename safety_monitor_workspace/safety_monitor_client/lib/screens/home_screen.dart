@@ -1986,7 +1986,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _refreshClientRuntimeConfig() async {
     final runtime = await eventApiService.fetchClientRuntimeConfig();
-    final nextRemoteServerUrl = runtime?.remoteServerBaseUrl.trim() ?? '';
+    final savedRemoteServerUrl = await _readSavedRemoteServerBaseUrl();
+    var nextRemoteServerUrl = runtime?.remoteServerBaseUrl.trim() ?? '';
+    if (savedRemoteServerUrl.isNotEmpty &&
+        savedRemoteServerUrl != nextRemoteServerUrl) {
+      nextRemoteServerUrl = savedRemoteServerUrl;
+      unawaited(
+        eventApiService.updateRemoteServerBaseUrl(savedRemoteServerUrl),
+      );
+    }
     if (nextRemoteServerUrl.isNotEmpty) {
       remoteEventApiService.updateBaseUrl(nextRemoteServerUrl);
     }
@@ -3420,6 +3428,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _initializeServerConnection() async {
     clientId = await _resolveClientIdentity();
+    await _loadSavedRemoteServerBaseUrl();
     await EmbeddedBackendService.instance.ensureStarted();
     unawaited(_connectRealtimeUpdates());
     await _refreshClientRuntimeConfig();
@@ -3553,13 +3562,48 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   SourceItem? _findRegisteredCameraZeroSource() {
+    SourceItem? fallback;
     for (final source in registeredSourcesByKey.values) {
       if (source.sourceType.trim().toLowerCase() == 'camera' &&
           source.sourceValue.trim() == '0') {
-        return source;
+        if (source.clientId.trim() == clientId.trim()) {
+          return source;
+        }
+        fallback ??= source;
       }
     }
-    return null;
+    return fallback;
+  }
+
+  Future<void> _loadSavedRemoteServerBaseUrl() async {
+    final savedRemoteServerUrl = await _readSavedRemoteServerBaseUrl();
+    if (savedRemoteServerUrl.isEmpty) {
+      return;
+    }
+    remoteEventApiService.updateBaseUrl(savedRemoteServerUrl);
+    if (!mounted) {
+      serverBaseUrlTextController.text = savedRemoteServerUrl;
+      return;
+    }
+    setState(() {
+      serverBaseUrlTextController.text = savedRemoteServerUrl;
+    });
+  }
+
+  Future<String> _readSavedRemoteServerBaseUrl() async {
+    try {
+      final configPath = _resolveLegacyClientSettingsFile();
+      if (!await configPath.exists()) {
+        return '';
+      }
+      final decoded = jsonDecode(await configPath.readAsString());
+      if (decoded is! Map<String, dynamic>) {
+        return '';
+      }
+      return decoded['remote_server_base_url']?.toString().trim() ?? '';
+    } catch (_) {
+      return '';
+    }
   }
 
   Future<void> _ensureRegisteredSourceRunning(SourceItem source) async {

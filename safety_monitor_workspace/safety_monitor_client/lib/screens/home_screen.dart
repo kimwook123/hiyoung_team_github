@@ -132,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
     streamTextController.dispose();
     cameraTextController.dispose();
     serverBaseUrlTextController.dispose();
-    unawaited(EmbeddedBackendService.instance.shutdown());
+    EmbeddedBackendService.instance.scheduleShutdown();
     super.dispose();
   }
 
@@ -2717,6 +2717,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final nextMap = <String, SourceRuntimeStatus>{};
     for (final entry in entries) {
+      if (!_isCurrentClientStatus(entry)) {
+        continue;
+      }
       final sourceKey = entry.sourceKey.trim();
       if (sourceKey.isEmpty) {
         continue;
@@ -2738,6 +2741,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final nextMap = <String, SourceItem>{};
     for (final item in items) {
       if (!_isPolicyCameraSource(item.sourceType, item.sourceValue)) {
+        continue;
+      }
+      if (!_isCurrentClientSource(item)) {
         continue;
       }
       final sourceKey = item.sourceKey.trim();
@@ -3563,17 +3569,30 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   SourceItem? _findRegisteredCameraZeroSource() {
-    SourceItem? fallback;
     for (final source in registeredSourcesByKey.values) {
       if (source.sourceType.trim().toLowerCase() == 'camera' &&
-          source.sourceValue.trim() == '0') {
-        if (source.clientId.trim() == clientId.trim()) {
-          return source;
-        }
-        fallback ??= source;
+          source.sourceValue.trim() == '0' &&
+          _isCurrentClientSource(source)) {
+        return source;
       }
     }
-    return fallback;
+    return null;
+  }
+
+  bool _isCurrentClientSource(SourceItem source) {
+    final currentClientId = clientId.trim();
+    if (currentClientId.isEmpty) {
+      return false;
+    }
+    return source.clientId.trim() == currentClientId;
+  }
+
+  bool _isCurrentClientStatus(SourceRuntimeStatus status) {
+    final currentClientId = clientId.trim();
+    if (currentClientId.isEmpty) {
+      return false;
+    }
+    return status.clientId.trim() == currentClientId;
   }
 
   Future<void> _loadSavedRemoteServerBaseUrl() async {

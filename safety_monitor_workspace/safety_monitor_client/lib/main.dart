@@ -7,7 +7,6 @@ import 'package:media_kit/media_kit.dart';
 import 'app.dart';
 import 'models/clip_window_arguments.dart';
 import 'screens/clip_player_window.dart';
-import 'services/embedded_backend_service.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -41,7 +40,6 @@ Future<void> main(List<String> args) async {
   }
 
   runApp(const SafetyMonitorClientApp());
-  unawaited(EmbeddedBackendService.instance.ensureStarted());
 }
 
 ClipWindowArguments? _tryResolveClipWindowArguments(List<String> args) {

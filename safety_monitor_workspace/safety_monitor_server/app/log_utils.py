@@ -4,6 +4,7 @@ from datetime import datetime
 import os
 from pathlib import Path
 import sys
+import threading
 
 
 _ANSI_RESET = "\033[0m"
@@ -18,7 +19,10 @@ _TAG_COLORS = {
     "WARN": "\033[93m",
     "ERROR": "\033[91m",
     "MODEL": "\033[90m",
+    "CONN": "\033[96m",
 }
+
+_LOG_FILE_LOCK = threading.Lock()
 
 
 def _enable_windows_ansi() -> bool:
@@ -142,6 +146,8 @@ def _build_field_text(fields: dict[str, object]) -> str:
         "state",
         "running",
         "frame",
+        "remote",
+        "session",
         "progress",
         "path",
         "method",
@@ -157,6 +163,7 @@ def _build_field_text(fields: dict[str, object]) -> str:
         "target_fps",
         "frames",
         "total",
+        "bytes",
         "top",
         "reason",
         "wait",
@@ -296,6 +303,28 @@ def _compact_field_text(tag: str, fields: dict[str, object]) -> str:
             _push(parts, "err=", error_text)
         return " ".join(parts)
 
+    if tag == "CONN":
+        _push(parts, "", _text("action"))
+        _push(parts, "", _text("source"))
+        _push(parts, "", _text("type"))
+        _push(parts, "client=", _text("client"))
+        _push(parts, "session=", _text("session"))
+        _push(parts, "remote=", _text("remote"))
+        _push(parts, "state=", _text("state"))
+        _push(parts, "run=", _text("running"))
+        _push(parts, "frame=", _text("frame"))
+        _push(parts, "fps=", _text("fps"))
+        _push(parts, "det=", _text("detections"))
+        _push(parts, "bytes=", _text("bytes"))
+        _push(parts, "single=", _text("single"))
+        _push(parts, "source_found=", _text("source_found"))
+        _push(parts, "preview_found=", _text("preview_found"))
+        _push(parts, "removed=", _text("removed"))
+        error_text = _text("error")
+        if error_text:
+            _push(parts, "err=", error_text)
+        return " ".join(parts)
+
     return _build_field_text(fields)
 
 
@@ -307,13 +336,36 @@ def log_line(tag: str, message: str = "", **fields: object) -> None:
         if color:
             prefix = f"{color}{prefix}{_ANSI_RESET}"
     field_text = _compact_field_text(tag, fields)
+    plain_prefix = f"[{timestamp}] [{tag}]"
     if message and field_text:
+        line = f"{plain_prefix} {message} {field_text}"
         print(f"{prefix} {message} {field_text}", flush=True)
+        _append_log_file(line)
         return
     if message:
+        line = f"{plain_prefix} {message}"
         print(f"{prefix} {message}", flush=True)
+        _append_log_file(line)
         return
     if field_text:
+        line = f"{plain_prefix} {field_text}"
         print(f"{prefix} {field_text}", flush=True)
+        _append_log_file(line)
         return
     print(prefix, flush=True)
+    _append_log_file(plain_prefix)
+
+
+def _append_log_file(line: str) -> None:
+    log_file = os.environ.get("SAFETY_MONITOR_LOG_FILE", "").strip()
+    if not log_file:
+        return
+    try:
+        path = Path(log_file).resolve()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with _LOG_FILE_LOCK:
+            with path.open("a", encoding="utf-8") as output:
+                output.write(line)
+                output.write("\n")
+    except OSError:
+        return

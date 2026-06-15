@@ -13,6 +13,10 @@ set "ENGINE_PATH=%BACKEND_DIR%\app\analysis\models\weights\best.engine"
 set "FLUTTER_CMD=flutter"
 set "LOCAL_FLUTTER_CMD=%ROOT_DIR%\flutter\bin\flutter.bat"
 set "PYTHON_CMD=%ROOT_DIR%\.venv\Scripts\python.exe"
+set "CLIENT_LOG_DIR=%ROOT_DIR%\logs"
+set "SAFETY_MONITOR_LOG_FILE=%CLIENT_LOG_DIR%\client.log"
+
+if not exist "%CLIENT_LOG_DIR%" mkdir "%CLIENT_LOG_DIR%"
 
 call "%ROOT_DIR%\install_dependencies.bat" client
 if errorlevel 1 (

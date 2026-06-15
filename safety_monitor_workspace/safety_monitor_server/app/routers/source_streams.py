@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
 
+from app.connection_audit import log_stream_request, request_host
 from app.database import get_source
 from app.config import DATABASE_PATH
 from app.routers.source_previews import preview_path_for_source_key
@@ -14,20 +15,44 @@ router = APIRouter(prefix="/api/source-streams", tags=["source-streams"])
 
 @router.get("/{source_key:path}")
 async def stream_source(
+    request: Request,
     source_key: str,
     single: bool = Query(default=False),
 ):
     normalized_source_key = source_key.strip()
     if not normalized_source_key:
         raise HTTPException(status_code=400, detail="source_key is required")
-    if get_source(DATABASE_PATH, normalized_source_key) is None:
+    found_source = get_source(DATABASE_PATH, normalized_source_key) is not None
+    if not found_source:
+        log_stream_request(
+            source_key=normalized_source_key,
+            remote_host=request_host(request),
+            single=single,
+            found_source=False,
+            found_preview=False,
+        )
         raise HTTPException(status_code=404, detail="source not found")
 
     if single:
         jpeg_bytes = _read_preview_bytes(normalized_source_key)
+        log_stream_request(
+            source_key=normalized_source_key,
+            remote_host=request_host(request),
+            single=True,
+            found_source=True,
+            found_preview=jpeg_bytes is not None,
+        )
         if jpeg_bytes is None:
             raise HTTPException(status_code=404, detail="source preview not found")
         return Response(content=jpeg_bytes, media_type="image/jpeg")
+
+    log_stream_request(
+        source_key=normalized_source_key,
+        remote_host=request_host(request),
+        single=False,
+        found_source=True,
+        found_preview=_read_preview_bytes(normalized_source_key) is not None,
+    )
 
     async def _frame_generator():
         last_signature = b""

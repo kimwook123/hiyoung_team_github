@@ -9,12 +9,15 @@ from fastapi import File
 from fastapi import Form
 from fastapi import HTTPException
 from fastapi import Query
+from fastapi import Request
 from fastapi import UploadFile
 
 from app.config import DATABASE_PATH
 from app.config import SERVER_CLIP_DIR
 from app.config import SERVER_SOURCE_CACHE_DIR
 from app.config import SERVER_UPLOAD_SOURCE_DIR
+from app.connection_audit import log_source_upsert
+from app.connection_audit import request_host
 from app.database import (
     delete_source,
     delete_source_status,
@@ -73,6 +76,7 @@ def list_source_overview_route(
 
 @router.post("", response_model=SourceUpsertResponse)
 def upsert_source_route(
+    request: Request,
     payload: dict[str, Any] = Body(...),
 ) -> SourceUpsertResponse:
     if not payload:
@@ -156,6 +160,16 @@ def upsert_source_route(
     )
     for removed_source_key in removed_source_keys:
         server_event_processor.clear_source(removed_source_key)
+    log_source_upsert(
+        source_key=source_key,
+        source_type=source_type,
+        source_value=normalized_source_value,
+        client_id=client_id,
+        session_id=session_id,
+        remote_host=request_host(request),
+        existed=previous is not None,
+        removed_source_keys=removed_source_keys,
+    )
     realtime_update_hub.publish(
         "source_changed",
         action="upserted",
@@ -166,6 +180,7 @@ def upsert_source_route(
 
 @router.post("/upload", response_model=SourceUpsertResponse)
 async def upload_source_media(
+    request: Request,
     file: UploadFile = File(...),
     source_key: str = Form(default=""),
     source_slug: str = Form(default=""),
@@ -201,6 +216,7 @@ async def upload_source_media(
         raise HTTPException(status_code=400, detail="uploaded file is empty")
 
     return upsert_source_route(
+        request,
         {
             "source_key": source_key,
             "source_slug": source_slug,

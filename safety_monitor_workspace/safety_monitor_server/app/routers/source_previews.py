@@ -1,10 +1,11 @@
 import hashlib
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from app.config import SERVER_SOURCE_PREVIEW_DIR
+from app.connection_audit import log_preview_receive, request_host
 from app.server_clip_recorder import server_clip_recorder
 
 router = APIRouter(prefix="/api/source-previews", tags=["source-previews"])
@@ -18,6 +19,7 @@ def preview_path_for_source_key(source_key: str) -> Path:
 
 @router.post("")
 async def upload_source_preview(
+    request: Request,
     source_key: str = Form(...),
     file: UploadFile = File(...),
 ) -> dict[str, object]:
@@ -45,6 +47,11 @@ async def upload_source_preview(
     server_clip_recorder.add_frame(
         source_key=normalized_source_key,
         jpeg_bytes=bytes(preview_bytes),
+    )
+    log_preview_receive(
+        source_key=normalized_source_key,
+        byte_count=len(preview_bytes),
+        remote_host=request_host(request),
     )
 
     return {

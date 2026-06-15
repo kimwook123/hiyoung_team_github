@@ -4,6 +4,7 @@ from datetime import datetime
 import os
 from pathlib import Path
 import sys
+import threading
 
 
 _ANSI_RESET = "\033[0m"
@@ -18,6 +19,8 @@ _TAG_COLORS = {
     "ERROR": "\033[91m",
     "MODEL": "\033[90m",
 }
+
+_LOG_FILE_LOCK = threading.Lock()
 
 
 def _enable_windows_ansi() -> bool:
@@ -287,13 +290,36 @@ def log_line(tag: str, message: str = "", **fields: object) -> None:
         if color:
             prefix = f"{color}{prefix}{_ANSI_RESET}"
     field_text = _compact_field_text(tag, fields)
+    plain_prefix = f"[{timestamp}] [{tag}]"
     if message and field_text:
+        line = f"{plain_prefix} {message} {field_text}"
         print(f"{prefix} {message} {field_text}", flush=True)
+        _append_log_file(line)
         return
     if message:
+        line = f"{plain_prefix} {message}"
         print(f"{prefix} {message}", flush=True)
+        _append_log_file(line)
         return
     if field_text:
+        line = f"{plain_prefix} {field_text}"
         print(f"{prefix} {field_text}", flush=True)
+        _append_log_file(line)
         return
     print(prefix, flush=True)
+    _append_log_file(plain_prefix)
+
+
+def _append_log_file(line: str) -> None:
+    log_file = os.environ.get("SAFETY_MONITOR_LOG_FILE", "").strip()
+    if not log_file:
+        return
+    try:
+        path = Path(log_file).resolve()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with _LOG_FILE_LOCK:
+            with path.open("a", encoding="utf-8") as output:
+                output.write(line)
+                output.write("\n")
+    except OSError:
+        return

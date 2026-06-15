@@ -21,6 +21,26 @@ if exist "%LOCAL_FLUTTER_BIN%" (
 )
 
 pushd "%VIEWER_PROJECT%"
+
+call "%FLUTTER_BIN%" clean
+if errorlevel 1 (
+  echo flutter clean failed.
+  popd
+  pause
+  exit /b 1
+)
+
+if not exist "windows\flutter\CMakeLists.txt" (
+  echo Windows Flutter build files are missing. Regenerating them...
+  call "%FLUTTER_BIN%" create --platforms=windows .
+  if errorlevel 1 (
+    echo flutter create windows files failed.
+    popd
+    pause
+    exit /b 1
+  )
+)
+
 call "%FLUTTER_BIN%" pub get
 if errorlevel 1 (
   echo flutter pub get failed.

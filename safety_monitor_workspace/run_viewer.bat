@@ -70,6 +70,23 @@ if not exist "%VIEWER_EXE%" (
 
   echo Viewer executable not found. Building Flutter Windows app now...
   pushd "%VIEWER_DIR%"
+  call "%FLUTTER_CMD%" clean
+  if errorlevel 1 (
+    echo flutter clean failed.
+    popd
+    pause
+    exit /b 1
+  )
+  if not exist "windows\flutter\CMakeLists.txt" (
+    echo Windows Flutter build files are missing. Regenerating them...
+    call "%FLUTTER_CMD%" create --platforms=windows .
+    if errorlevel 1 (
+      echo flutter create windows files failed.
+      popd
+      pause
+      exit /b 1
+    )
+  )
   call "%FLUTTER_CMD%" pub get
   if errorlevel 1 (
     echo flutter pub get failed.

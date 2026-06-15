@@ -8,6 +8,7 @@ from app.config import (
     ensure_client_dirs,
 )
 from app.database import reset_source_data
+from app.log_utils import log_line
 from app.reporting_api import remote_server_reporter
 from app.schemas import (
     RemoteServerConfigResponse,
@@ -79,7 +80,14 @@ def update_remote_server(
 
     manager = getattr(request.app.state, "source_manager", None)
     if manager is not None:
-        manager.sync_all_to_server()
+        try:
+            manager.sync_all_to_server()
+        except Exception as error:
+            log_line(
+                "WARN",
+                message="remote server changed but source sync failed",
+                error=error,
+            )
 
     return RemoteServerConfigResponse(
         ok=True,

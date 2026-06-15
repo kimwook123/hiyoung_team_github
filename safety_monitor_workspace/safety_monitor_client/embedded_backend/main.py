@@ -14,7 +14,6 @@ from pathlib import Path
 from app.dashboard_page import build_dashboard_html
 from app.config import DATABASE_PATH
 from app.config import ENABLE_SERVER_REQUEST_LOG
-from app.config import REMOTE_SERVER_BASE_URL
 from app.config import SERVER_REQUEST_LOG_SUMMARY_INTERVAL_SECONDS
 from app.config import SERVER_REQUEST_LOG_SUMMARY_PATHS
 from app.config import ensure_client_dirs
@@ -179,7 +178,7 @@ if ENABLE_SERVER_REQUEST_LOG:
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(
-        status=f"ok (server={REMOTE_SERVER_BASE_URL})",
+        status=f"ok (server={remote_server_reporter.base_url})",
         event_log_path=str(DATABASE_PATH),
         event_log_exists=DATABASE_PATH.exists(),
     )

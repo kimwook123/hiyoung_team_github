@@ -38,6 +38,7 @@ class EmbeddedBackendService extends ChangeNotifier {
 
     _logFilePath = _join(projectRoot.path, 'embedded_backend_runtime.log');
     if (await _isHealthy()) {
+      await _syncRemoteServerUrlFromSettings(projectRoot);
       _isRunning = true;
       _lastErrorMessage = '';
       notifyListeners();
@@ -131,6 +132,7 @@ class EmbeddedBackendService extends ChangeNotifier {
 
       _isRunning = true;
       _lastErrorMessage = '';
+      await _syncRemoteServerUrlFromSettings(projectRoot);
       notifyListeners();
     } catch (error) {
       _setError('Embedded backend startup failed: $error');
@@ -272,6 +274,36 @@ class EmbeddedBackendService extends ChangeNotifier {
       return response.statusCode == 200;
     } catch (_) {
       return false;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<void> _syncRemoteServerUrlFromSettings(Directory projectRoot) async {
+    final remoteServerUrl = _readRemoteServerUrl(projectRoot);
+    if (remoteServerUrl.isEmpty) {
+      return;
+    }
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
+    try {
+      final request = await client
+          .putUrl(Uri.parse('$localBaseUrl/api/admin/remote-server'))
+          .timeout(const Duration(seconds: 2));
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode({'remote_server_base_url': remoteServerUrl}));
+      final response = await request.close().timeout(
+        const Duration(seconds: 5),
+      );
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        _writeLog('synced remoteServer=$remoteServerUrl');
+      } else {
+        _writeLog(
+          'remote server sync returned HTTP ${response.statusCode}: $remoteServerUrl',
+        );
+      }
+    } catch (error) {
+      _writeLog('remote server sync failed: $error');
     } finally {
       client.close(force: true);
     }

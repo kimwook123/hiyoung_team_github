@@ -40,6 +40,7 @@ class _ManagedWorker:
     source_record: dict[str, Any]
     stop_event: threading.Event
     thread: threading.Thread
+    stop_reason: str = ""
 
 
 class AnalysisSourceManager:
@@ -116,7 +117,11 @@ class AnalysisSourceManager:
         with self._lock:
             worker_keys = list(self._workers.keys())
         for source_key in worker_keys:
-            self.stop_source(source_key, update_desired_running=False)
+            self.stop_source(
+                source_key,
+                update_desired_running=False,
+                stop_reason="shutdown",
+            )
 
     def register_source(
         self,
@@ -212,6 +217,7 @@ class AnalysisSourceManager:
             self.stop_source(
                 normalized_source_key,
                 update_desired_running=False,
+                stop_reason="config-update",
             )
             reset_source_data(
                 DATABASE_PATH,
@@ -305,6 +311,7 @@ class AnalysisSourceManager:
         source_key: str,
         *,
         update_desired_running: bool = True,
+        stop_reason: str = "api-stop",
     ) -> dict[str, Any] | None:
         normalized_source_key = source_key.strip()
         if update_desired_running:
@@ -321,6 +328,13 @@ class AnalysisSourceManager:
         with self._lock:
             worker = self._workers.pop(normalized_source_key, None)
         if worker is not None:
+            worker.stop_reason = stop_reason
+            log_line(
+                "SRC",
+                action="stop-request",
+                source=normalized_source_key,
+                reason=stop_reason,
+            )
             worker.stop_event.set()
             worker.thread.join(timeout=10.0)
 
@@ -347,14 +361,14 @@ class AnalysisSourceManager:
         return source_record
 
     def restart_source(self, source_key: str) -> dict[str, Any]:
-        self.stop_source(source_key)
+        self.stop_source(source_key, stop_reason="api-restart")
         return self.start_source(source_key)
 
     def remove_source(self, source_key: str, *, clear_data: bool = False) -> bool:
         source_record = get_source(DATABASE_PATH, source_key)
         if source_record is None:
             return False
-        self.stop_source(source_key)
+        self.stop_source(source_key, stop_reason="remove-source")
         if clear_data:
             reset_source_data(
                 DATABASE_PATH,
@@ -418,7 +432,11 @@ class AnalysisSourceManager:
             ):
                 continue
 
-            self.stop_source(source_key, update_desired_running=False)
+            self.stop_source(
+                source_key,
+                update_desired_running=False,
+                stop_reason="remove-stale-local",
+            )
             delete_source(DATABASE_PATH, source_key)
             delete_source_status(DATABASE_PATH, source_key)
             prune_orphan_source_data(DATABASE_PATH)

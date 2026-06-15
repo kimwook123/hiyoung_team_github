@@ -10,6 +10,7 @@ from app.config import (
     TENSORRT_EXPORT_HALF,
     TENSORRT_EXPORT_IMGSZ,
 )
+from app.log_utils import log_line
 from models.device_helper import resolve_torch_device
 
 
@@ -25,18 +26,39 @@ def build_yolo_runtime(
         requested_device=requested_device,
         require_cuda=require_cuda,
     )
+    log_line(
+        "MODEL",
+        action="device",
+        model=Path(model_path).name,
+        device=device,
+        tensorrt="yes" if prefer_tensorrt_engine else "no",
+    )
     runtime_model_path = resolve_runtime_model_path(
         yolo_cls=yolo_cls,
         model_path=model_path,
         device=device,
         prefer_tensorrt_engine=prefer_tensorrt_engine,
     )
+    log_line(
+        "MODEL",
+        action="runtime",
+        model=Path(runtime_model_path).name,
+        path=runtime_model_path,
+    )
     try:
+        log_line("MODEL", action="load-start", model=Path(runtime_model_path).name)
         model = load_yolo_model(
             yolo_cls=yolo_cls,
             model_path=runtime_model_path,
         )
+        log_line("MODEL", action="load-ready", model=Path(runtime_model_path).name)
     except Exception as error:
+        log_line(
+            "WARN",
+            message="YOLO runtime load failed",
+            model=Path(runtime_model_path).name,
+            error=error,
+        )
         fallback_model_path = _fallback_model_path_for_tensorrt_error(
             model_path=model_path,
             runtime_model_path=runtime_model_path,
@@ -45,10 +67,12 @@ def build_yolo_runtime(
         if fallback_model_path is None:
             raise
         runtime_model_path = fallback_model_path
+        log_line("MODEL", action="fallback", model=Path(runtime_model_path).name)
         model = load_yolo_model(
             yolo_cls=yolo_cls,
             model_path=runtime_model_path,
         )
+        log_line("MODEL", action="load-ready", model=Path(runtime_model_path).name)
     predict_kwargs = build_predict_kwargs(
         runtime_model_path=runtime_model_path,
         device=device,
@@ -132,6 +156,12 @@ def _can_export_tensorrt_engine(*, model_path: Path, device: str) -> bool:
 
 def _export_tensorrt_engine(*, yolo_cls, model_path: Path, device: str) -> str:
     _patch_tensorrt_for_ultralytics_export()
+    log_line(
+        "MODEL",
+        action="engine-export-start",
+        model=model_path.name,
+        device=device,
+    )
     export_model = load_yolo_model(
         yolo_cls=yolo_cls,
         model_path=str(model_path),
@@ -150,6 +180,11 @@ def _export_tensorrt_engine(*, yolo_cls, model_path: Path, device: str) -> str:
         engine_path=resolved_exported_path,
         source_model_path=model_path,
         device=device,
+    )
+    log_line(
+        "MODEL",
+        action="engine-export-ready",
+        model=resolved_exported_path.name,
     )
     return str(resolved_exported_path)
 

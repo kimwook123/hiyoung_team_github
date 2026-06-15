@@ -108,12 +108,19 @@ if not "%INPUT_REMOTE_SERVER_URL%"=="" (
   set "REMOTE_SERVER_URL=%INPUT_REMOTE_SERVER_URL%"
 )
 
-powershell -NoProfile -Command "$p='%SETTINGS_PATH%'; $data=@{}; if (Test-Path -LiteralPath $p) { try { $json=Get-Content -LiteralPath $p -Raw | ConvertFrom-Json; foreach ($prop in $json.PSObject.Properties) { $data[$prop.Name]=$prop.Value } } catch {} }; $data['remote_server_base_url']='%REMOTE_SERVER_URL%'; if (-not $data.ContainsKey('client_id') -or [string]::IsNullOrWhiteSpace([string]$data['client_id'])) { $hostName=[System.Net.Dns]::GetHostName().ToLowerInvariant() -replace '[^a-z0-9]+','_'; $hostName=$hostName.Trim('_'); if ([string]::IsNullOrWhiteSpace($hostName)) { $hostName='local' }; $data['client_id']='client_' + $hostName }; $data | ConvertTo-Json | Set-Content -LiteralPath $p -Encoding UTF8"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%\scripts\update_client_settings.ps1" -SettingsPath "%SETTINGS_PATH%" -RemoteServerUrl "%REMOTE_SERVER_URL%"
+if errorlevel 1 (
+  echo Failed to update client settings.
+  pause
+  exit /b 1
+)
 
 echo Checking storage server health at %REMOTE_SERVER_URL% ...
-powershell -NoProfile -Command "try { $r = Invoke-WebRequest -UseBasicParsing -Uri '%REMOTE_SERVER_URL%/health' -TimeoutSec 5; if ($r.StatusCode -eq 200) { Write-Host 'Server health check succeeded.'; exit 0 } else { exit 1 } } catch { exit 1 }"
+powershell -NoProfile -Command "try { $u='%REMOTE_SERVER_URL%'.TrimEnd('/') + '/health'; $r = Invoke-WebRequest -UseBasicParsing -Uri $u -TimeoutSec 5; if ($r.StatusCode -eq 200) { Write-Host 'Server health check succeeded.'; exit 0 } else { Write-Host ('Server health check returned HTTP ' + $r.StatusCode); exit 1 } } catch { Write-Host ('Server health check error: ' + $_.Exception.Message); exit 1 }"
 if errorlevel 1 (
   echo Warning: storage server health check failed. The client app will still start.
+  echo Check that the server PC can open http://127.0.0.1:8000/health and this client PC can open %REMOTE_SERVER_URL%/health.
+  echo If localhost works only on the server PC, allow inbound TCP 8000 in Windows Firewall on the server PC.
 )
 
 start "Safety Monitor Client" /D "%CLIENT_BUILD_DIR%" "%CLIENT_EXE%"

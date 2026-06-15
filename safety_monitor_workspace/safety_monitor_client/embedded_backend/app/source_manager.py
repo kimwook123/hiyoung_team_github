@@ -231,6 +231,12 @@ class AnalysisSourceManager:
     def list_registered_sources(self) -> list[dict[str, Any]]:
         return list_sources(DATABASE_PATH)
 
+    def sync_all_to_server(self) -> None:
+        for source_record in list_sources(DATABASE_PATH):
+            self._sync_source_to_server(source_record)
+        for status_record in list_source_statuses(DATABASE_PATH):
+            remote_server_reporter.post_status(status_record)
+
     def start_source(self, source_key: str) -> dict[str, Any]:
         normalized_source_key = source_key.strip()
         source_record = get_source(DATABASE_PATH, normalized_source_key)

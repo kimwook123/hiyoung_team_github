@@ -1994,6 +1994,7 @@ class _HomeScreenState extends State<HomeScreen> {
     eventApiService.updateBaseUrl(nextBaseUrl);
     await _saveServerBaseUrlConfig(eventApiService.baseUrl);
     await _disconnectRealtimeUpdates();
+    await _clearViewerRuntimeStateForServerSwitch();
     unawaited(_connectRealtimeUpdates());
     await apiEventController.checkHealth();
     await _refreshSourceOverviews();
@@ -2003,6 +2004,35 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) {
       _showInfoSnack('서버 주소를 ${eventApiService.baseUrl} 로 적용했습니다.');
     }
+  }
+
+  Future<void> _clearViewerRuntimeStateForServerSwitch() async {
+    for (final slot in _sourceSlots) {
+      slot.controller.disposeController();
+    }
+    apiEventFeed.clearSelection();
+    if (!mounted) {
+      _sourceSlots.clear();
+      registeredSourcesByKey = const {};
+      sourceStatusesByKey = const {};
+      sourceOverviewsByKey = const {};
+      frameDetectionBySourceKey = const {};
+      return;
+    }
+    setState(() {
+      _sourceSlots.clear();
+      _activeSlotId = '';
+      selectedApiEventDetail = null;
+      apiDetailErrorMessage = null;
+      frameDetectionSnapshots = const [];
+      frameDetectionBySourceKey = const {};
+      sourceOverviewsByKey = const {};
+      registeredSourcesByKey = const {};
+      sourceStatusesByKey = const {};
+      frameDetectionSourceKey = '';
+      isEditingDangerZone = false;
+      previewRefreshCacheBust = DateTime.now().millisecondsSinceEpoch;
+    });
   }
 
   void _startApiAutoRefresh() {
@@ -3606,6 +3636,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _saveServerBaseUrlConfig(String baseUrl) async {
     try {
       final configPath = _resolveViewerConfigFile();
+      await configPath.parent.create(recursive: true);
       final payload = {'api_base_url': baseUrl};
       await configPath.writeAsString(
         const JsonEncoder.withIndent('  ').convert(payload),

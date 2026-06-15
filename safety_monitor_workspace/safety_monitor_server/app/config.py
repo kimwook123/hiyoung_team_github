@@ -12,11 +12,21 @@ DATABASE_PATH = (SERVER_DATA_DIR / "monitor.db").resolve()
 ENABLE_SERVER_REQUEST_LOG = True
 SERVER_REQUEST_LOG_SUMMARY_INTERVAL_SECONDS = 5.0
 SERVER_REQUEST_LOG_SUMMARY_PATHS = (
+    "/health",
+    "/api/frame-detections",
     "/api/frame-detections/current",
+    "/api/frame-detections/latest",
+    "/api/source-previews",
+    "/api/source-previews/latest",
+    "/api/source-streams/{source_key:path}",
     "/api/source-status",
     "/api/sources",
+    "/api/sources/overview",
     "/api/events",
+    "/api/events/latest",
+    "/api/events/detail",
 )
+SERVER_REQUEST_LOG_IMMEDIATE_MIN_STATUS = 400
 
 
 def ensure_server_dirs() -> None:

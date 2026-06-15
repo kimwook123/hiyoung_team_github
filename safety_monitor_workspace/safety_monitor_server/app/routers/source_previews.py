@@ -5,6 +5,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from app.config import SERVER_SOURCE_PREVIEW_DIR
+from app.server_clip_recorder import server_clip_recorder
 
 router = APIRouter(prefix="/api/source-previews", tags=["source-previews"])
 
@@ -26,18 +27,25 @@ async def upload_source_preview(
 
     preview_path = preview_path_for_source_key(normalized_source_key)
     try:
+        preview_bytes = bytearray()
         with preview_path.open("wb") as output:
             while True:
                 chunk = await file.read(1024 * 1024)
                 if not chunk:
                     break
                 output.write(chunk)
+                preview_bytes.extend(chunk)
     finally:
         await file.close()
 
     if not preview_path.exists() or preview_path.stat().st_size <= 0:
         preview_path.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail="preview upload is empty")
+
+    server_clip_recorder.add_frame(
+        source_key=normalized_source_key,
+        jpeg_bytes=bytes(preview_bytes),
+    )
 
     return {
         "ok": True,

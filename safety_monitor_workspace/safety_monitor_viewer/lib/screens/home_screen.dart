@@ -77,6 +77,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool pendingRealtimeStatusesRefresh = false;
   bool isSavingRuleConfig = false;
   bool isEditingDangerZone = false;
+  int _ruleConfigSaveTicket = 0;
   int previewRefreshCacheBust = 0;
 
   @override
@@ -184,8 +185,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: Column(
                           children: [
-                            _buildViewerRoleBanner(),
-                            const SizedBox(height: 12),
                             _buildViewerServerControls(),
                             const SizedBox(height: 12),
                             _buildViewerVideoGridPanel(),
@@ -205,6 +204,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildViewerSourceHeader() {
     final activePath = videoController.videoPath.trim();
     final sourceLabel = activePath.isEmpty ? 'No source opened' : activePath;
@@ -266,6 +266,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildViewerRoleBanner() {
     final overviewItems = sourceOverviewsByKey.values.toList(growable: false);
     final runningCount = overviewItems.where((item) => item.isRunning).length;
@@ -393,6 +394,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildViewerStatChip({
     required String label,
     required String value,
@@ -538,6 +540,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildServerSourceSidebar() {
     final slots = [..._sourceSlots];
     slots.sort((left, right) {
@@ -604,7 +607,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                     Text(
                                       overview == null
                                           ? slot.label
-                                          : '${overview.clientId.isEmpty ? 'client' : overview.clientId} / ${slot.label}',
+                                          : _buildClientCameraTitle(
+                                              clientId: overview.clientId,
+                                              sessionId: overview.sessionId,
+                                              sourceValue: slot.sourceValue,
+                                            ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
@@ -692,10 +699,11 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
+    final visibleSlots = _sourceSlots.take(4).toList(growable: false);
     return _buildPanelCard(
       title: 'Live Monitoring',
       trailing: Text(
-        '2 columns',
+        '${visibleSlots.length} / 4',
         style: Theme.of(
           context,
         ).textTheme.bodySmall?.copyWith(color: Colors.white60),
@@ -707,11 +715,11 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisCount: 2,
           mainAxisSpacing: 12,
           crossAxisSpacing: 12,
-          childAspectRatio: 1.08,
+          childAspectRatio: 16 / 9,
         ),
-        itemCount: _sourceSlots.length,
+        itemCount: visibleSlots.length,
         itemBuilder: (context, index) {
-          final slot = _sourceSlots[index];
+          final slot = visibleSlots[index];
           return _buildVideoTile(slot);
         },
       ),
@@ -728,7 +736,11 @@ class _HomeScreenState extends State<HomeScreen> {
         final overview = sourceOverviewsByKey[sourceKey];
         return VideoViewBox(
           controller: slot.controller,
-          title: slot.label,
+          title: _buildClientCameraTitle(
+            clientId: overview?.clientId ?? runtimeStatus?.clientId ?? '',
+            sessionId: overview?.sessionId ?? runtimeStatus?.sessionId ?? '',
+            sourceValue: slot.sourceValue,
+          ),
           badgeText: _describeSlotStatus(slot),
           badgeColor: _colorForSlotStatus(slot),
           isSelected: isSelected,
@@ -917,33 +929,101 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildRuleConfigPanel() {
     final source = _activeSourceItem;
+    final ruleConfig = _activeRuleConfig;
     return _buildPanelCard(
-      title: '클라이언트 전용 설정',
+      title: '클라이언트별 룰 설정',
+      trailing: isSavingRuleConfig
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : null,
       child: source == null
           ? const Text('먼저 소스를 선택해 주세요.')
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '소스별 룰 적용과 위험구역 편집은 이 소스를 소유한 클라이언트 앱에서만 가능합니다.',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(color: Colors.white70),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  '소유 클라이언트: ${_buildSourceOwnerLabel(clientId: source.clientId, sessionId: source.sessionId)}',
+                  _buildSourceOwnerLabel(
+                    clientId: source.clientId,
+                    sessionId: source.sessionId,
+                  ),
                   style: Theme.of(
                     context,
                   ).textTheme.bodySmall?.copyWith(color: Colors.white60),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  '현재 저장된 룰 요약: ${_buildRuleConfigSummary(_activeRuleConfig)}',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: Colors.white60),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  value: ruleConfig.useNoHelmetRule,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('안전모 미착용 룰'),
+                  subtitle: const Text('사람과 helmet/head 탐지 결과 기준'),
+                  onChanged: (value) {
+                    unawaited(
+                      _saveRuleConfig(
+                        ruleConfig.copyWith(useNoHelmetRule: value),
+                      ),
+                    );
+                  },
                 ),
+                const Divider(height: 20),
+                SwitchListTile(
+                  value: ruleConfig.useDangerZoneRule,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('위험구역 룰'),
+                  subtitle: Text(
+                    ruleConfig.dangerZoneRoi == null
+                        ? '선택 후 영상 위에서 드래그로 구역을 지정하세요.'
+                        : '사람 중심점이 지정 영역 안에 들어오면 이벤트 발생',
+                  ),
+                  onChanged: (value) {
+                    unawaited(
+                      _saveRuleConfig(
+                        ruleConfig.copyWith(useDangerZoneRule: value),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.tonal(
+                      onPressed: () {
+                        setState(() {
+                          isEditingDangerZone = !isEditingDangerZone;
+                        });
+                      },
+                      child: Text(
+                        isEditingDangerZone ? '위험구역 편집 종료' : '위험구역 드래그 편집',
+                      ),
+                    ),
+                    OutlinedButton(
+                      onPressed: ruleConfig.dangerZoneRoi == null
+                          ? null
+                          : () {
+                              unawaited(
+                                _saveRuleConfig(
+                                  ruleConfig.copyWith(clearDangerZoneRoi: true),
+                                ),
+                              );
+                            },
+                      child: const Text('위험구역 초기화'),
+                    ),
+                  ],
+                ),
+                if (ruleConfig.dangerZoneRoi != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'ROI: (${ruleConfig.dangerZoneRoi!.x1}, ${ruleConfig.dangerZoneRoi!.y1}) '
+                    '- (${ruleConfig.dangerZoneRoi!.x2}, ${ruleConfig.dangerZoneRoi!.y2})',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.white70),
+                  ),
+                ],
               ],
             ),
     );
@@ -1363,6 +1443,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ignore: unused_element
   String _formatDuration(Duration value) {
     final hours = value.inHours;
     final minutes = value.inMinutes.remainder(60);
@@ -1406,9 +1487,66 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _saveRuleConfig(SourceRuleConfig nextRuleConfig) async {
-    _showInfoSnack(
-      'Viewer is read-only. Change rule settings from the client app.',
+    final source = _activeSourceItem;
+    if (source == null) {
+      return;
+    }
+
+    final nextTicket = ++_ruleConfigSaveTicket;
+    setState(() {
+      isSavingRuleConfig = true;
+      registeredSourcesByKey = {
+        ...registeredSourcesByKey,
+        source.sourceKey: SourceItem(
+          sourceKey: source.sourceKey,
+          sourceSlug: source.sourceSlug,
+          sourceType: source.sourceType,
+          sourceValue: source.sourceValue,
+          sourceDurationSeconds: source.sourceDurationSeconds,
+          serverMediaPath: source.serverMediaPath,
+          mediaUrl: source.mediaUrl,
+          previewUrl: source.previewUrl,
+          originalSourceType: source.originalSourceType,
+          originalSourceValue: source.originalSourceValue,
+          clientId: source.clientId,
+          sessionId: source.sessionId,
+          desiredRunning: source.desiredRunning,
+          ruleConfig: nextRuleConfig,
+          createdAt: source.createdAt,
+          updatedAt: source.updatedAt,
+        ),
+      };
+    });
+
+    final updated = await eventApiService.updateSourceRuleConfig(
+      sourceKey: source.sourceKey,
+      ruleConfig: nextRuleConfig,
     );
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      isSavingRuleConfig = nextTicket != _ruleConfigSaveTicket;
+      if (updated != null && nextTicket == _ruleConfigSaveTicket) {
+        registeredSourcesByKey = {
+          ...registeredSourcesByKey,
+          updated.sourceKey: updated,
+        };
+      }
+    });
+
+    if (updated == null) {
+      _showInfoSnack('룰 설정 저장에 실패했습니다.');
+      return;
+    }
+
+    if (nextTicket == _ruleConfigSaveTicket) {
+      await _refreshSourceOverviews();
+      await _refreshSourceStatuses();
+      await _refreshRegisteredSources();
+      _showInfoSnack('클라이언트별 룰 설정을 저장했습니다.');
+    }
   }
 
   void _handleDangerZoneChanged(RoiRect roi) {
@@ -1448,6 +1586,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return '-';
   }
 
+  // ignore: unused_element
   double? _toDoubleValue(Object? value) {
     if (value is double) {
       return value;
@@ -1478,6 +1617,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return name;
   }
 
+  // ignore: unused_element
   String _buildFrameDetectionLabel(Map<String, dynamic> detection) {
     final name = (detection['name']?.toString().trim().isNotEmpty ?? false)
         ? detection['name'].toString().trim()
@@ -1545,6 +1685,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return frameDetectionBySourceKey[slot.sourceKey.trim()];
   }
 
+  // ignore: unused_element
   List<VideoOverlayDetection> _getOverlayDetectionsForSlot(
     _SourcePanelSlot slot,
   ) {
@@ -2431,6 +2572,11 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       sourceStatusesByKey = nextMap;
     });
+    if (_sourceSlots.isNotEmpty) {
+      await _pruneLocalSlotsForRemovedRegisteredSources(
+        _visibleRegisteredSourceKeys(),
+      );
+    }
   }
 
   Future<void> _refreshSourceOverviews() async {
@@ -2465,6 +2611,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (sourceKey.isEmpty) {
         continue;
       }
+      if (!_shouldShowViewerSource(item)) {
+        continue;
+      }
       nextMap[sourceKey] = item;
     }
 
@@ -2494,6 +2643,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _restoreRegisteredSourceSlots(List<SourceItem> sources) async {
     final previousActiveSlotId = _activeSlotId;
     for (final source in sources) {
+      if (!_shouldShowViewerSource(source)) {
+        continue;
+      }
       final existingSlot = _findSourceSlotByKey(source.sourceKey);
       if (existingSlot != null) {
         continue;
@@ -2538,6 +2690,74 @@ class _HomeScreenState extends State<HomeScreen> {
       await _syncSlotAudioFocus();
       unawaited(_refreshFrameDetectionsIfNeeded());
     }
+  }
+
+  Set<String> _visibleRegisteredSourceKeys() {
+    final keys = <String>{};
+    for (final source in registeredSourcesByKey.values) {
+      if (_shouldShowViewerSource(source)) {
+        keys.add(source.sourceKey.trim());
+      }
+    }
+    return keys;
+  }
+
+  bool _shouldShowViewerSource(SourceItem source) {
+    final sourceKey = source.sourceKey.trim();
+    if (sourceKey.isEmpty) {
+      return false;
+    }
+    if (!_isCameraZeroSource(source.sourceType, source.sourceValue)) {
+      return false;
+    }
+    final status = sourceStatusesByKey[sourceKey];
+    if (status == null) {
+      return false;
+    }
+    return !_isViewerSourceOffline(status, sourceOverviewsByKey[sourceKey]);
+  }
+
+  bool _isCameraZeroSource(String sourceType, String sourceValue) {
+    return sourceType.trim().toLowerCase() == 'camera' &&
+        sourceValue.trim() == '0';
+  }
+
+  String _buildClientCameraTitle({
+    required String clientId,
+    required String sessionId,
+    required String sourceValue,
+  }) {
+    final clientLabel = _formatClientDisplayName(
+      clientId: clientId,
+      sessionId: sessionId,
+    );
+    final cameraLabel = sourceValue.trim().isEmpty ? '0' : sourceValue.trim();
+    return '$clientLabel / Camera $cameraLabel';
+  }
+
+  String _formatClientDisplayName({
+    required String clientId,
+    required String sessionId,
+  }) {
+    final raw = clientId.trim().isNotEmpty ? clientId.trim() : sessionId.trim();
+    if (raw.isEmpty) {
+      return 'Unknown PC';
+    }
+    var label = raw;
+    for (final prefix in ['client_', 'client_host_', 'client_ip_']) {
+      if (label.toLowerCase().startsWith(prefix)) {
+        label = label.substring(prefix.length);
+        break;
+      }
+    }
+    label = label
+        .replaceAll(RegExp(r'[_|]+'), '-')
+        .replaceAll(RegExp(r'-+'), '-')
+        .replaceAll(RegExp(r'^-|-$'), '');
+    if (label.isEmpty) {
+      label = raw;
+    }
+    return 'PC $label';
   }
 
   Future<List<String>> _pruneLocalSlotsForRemovedRegisteredSources(
@@ -2993,6 +3213,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ignore: unused_element
   int _countActiveViewerClients() {
     final activeClientIds = <String>{};
     for (final status in sourceStatusesByKey.values) {
@@ -3121,6 +3342,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return '$normalizedClientId / $normalizedSessionId';
   }
 
+  // ignore: unused_element
   String _buildRuleConfigSummary(SourceRuleConfig ruleConfig) {
     final noHelmet = ruleConfig.useNoHelmetRule ? '안전모 ON' : '안전모 OFF';
     final dangerZone = ruleConfig.useDangerZoneRule

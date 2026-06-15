@@ -1,3 +1,4 @@
-{
-  "remote_server_base_url": "http://127.0.0.1:8000"
+﻿{
+    "client_id":  "client_desktop_q4ttnol",
+    "remote_server_base_url":  "http://127.0.0.1:8000"
 }

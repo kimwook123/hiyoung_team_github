@@ -1,6 +1,4 @@
 from pathlib import Path
-from uuid import uuid4
-
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 
 from app.config import CLIENT_SOURCE_CACHE_DIR, CLIENT_UPLOAD_SOURCE_DIR
@@ -65,51 +63,11 @@ async def upload_video_source(
     reset_existing: bool = Form(default=True),
     start_immediately: bool = Form(default=True),
 ) -> SourceUpsertResponse:
-    manager = _manager_from_request(request)
-    filename = Path(file.filename or "uploaded_video.mp4").name
-    if not filename:
-        raise HTTPException(status_code=400, detail="invalid filename")
-
-    suffix = Path(filename).suffix
-    if not suffix:
-        suffix = ".mp4"
-    saved_name = f"{uuid4().hex}{suffix.lower()}"
-    saved_path = CLIENT_UPLOAD_SOURCE_DIR / saved_name
-
-    try:
-        with saved_path.open("wb") as output:
-            while True:
-                chunk = await file.read(1024 * 1024)
-                if not chunk:
-                    break
-                output.write(chunk)
-    finally:
-        await file.close()
-
-    if not saved_path.exists() or saved_path.stat().st_size <= 0:
-        if saved_path.exists():
-            saved_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail="uploaded file is empty")
-
-    try:
-        item = manager.register_source(
-            source_type="video",
-            source_value=str(saved_path.resolve()),
-            client_id=client_id,
-            session_id=session_id,
-            reset_existing=reset_existing,
-            start_immediately=start_immediately,
-        )
-    except Exception:
-        saved_path.unlink(missing_ok=True)
-        raise
-
-    realtime_update_hub.publish(
-        "source_changed",
-        action="registered",
-        source_key=str(item.get("source_key", "")).strip(),
+    await file.close()
+    raise HTTPException(
+        status_code=400,
+        detail="client source policy allows only camera index 0",
     )
-    return SourceUpsertResponse(ok=True, item=SourceItem(**_decorate_source_record(item)))
 
 
 def _decorate_source_record(record: dict) -> dict:

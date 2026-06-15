@@ -1,43 +1,58 @@
-# Python
+# Python bytecode / caches
 __pycache__/
 *.py[cod]
 *.pyd
+*.pyo
 *.so
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 
-# Virtual environments
+# Workspace virtual environments
 .venv/
+.venv_*/
+.venv_incomplete_backup/
 venv/
 env/
 
-# Local temp files
+# Local logs / temp files
+*.log
+logs/
 .tmp/
 tmp/
 *.tmp
 
-# Logs and runtime state
-*.log
-logs/
-safety_ai_monitor/logs/*
-!safety_ai_monitor/logs/.gitkeep
+# Runtime databases and generated backend data
+**/data/*.db
+**/data/*.db-*
+**/data/clips/
+**/data/source_previews/
+**/data/source_cache/
+**/data/uploaded_sources/
+**/data/ultralytics/
+**/runs/
+**/embedded_backend.pid
 
-# Generated clips and local media
+# Local app settings
+safety_monitor_client/client_settings.json
+safety_monitor_viewer/server_config.json
+runtime_register_response.json
+
+# AI model/runtime artifacts
+*.engine
+*.engine.meta.json
+*.onnx
+*.pt
+*.pth
+*.weights
+
+# Generated local media
 *.mp4
 *.avi
 *.mov
 *.mkv
-!README.md
-
-
-*.bin
-!safety_ai_monitor/models/weights/.gitkeep
-
-# Ultralytics local config/cache
-.yolo_config/
-safety_ai_monitor/.yolo_config/
+*.webm
 
 # Flutter / Dart
 .dart_tool/
@@ -46,11 +61,14 @@ safety_ai_monitor/.yolo_config/
 .packages
 .pub-cache/
 build/
+**/build/
 
-# Flutter Windows generated artifacts
+# Local Flutter SDK copy
 flutter/
-safety_ai_monitor_ui/build/
-safety_ai_monitor_ui/windows/flutter/ephemeral/
+
+# Windows build/tool cache archives
+*.7z
+*.zip
 
 # IDE / OS
 .idea/

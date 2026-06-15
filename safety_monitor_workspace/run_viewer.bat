@@ -26,9 +26,12 @@ if not exist "%VIEWER_EXE%" (
 if not exist "%VIEWER_EXE%" (
   if exist "%LOCAL_FLUTTER_CMD%" (
     set "FLUTTER_CMD=%LOCAL_FLUTTER_CMD%"
+    ver > nul
   )
 
-  where "%FLUTTER_CMD%" > nul 2>&1
+  if not exist "%LOCAL_FLUTTER_CMD%" (
+    where flutter > nul 2>&1
+  )
   if errorlevel 1 (
     echo Flutter SDK was not found on this PC.
     choice /C YN /M "Install Flutter SDK now"

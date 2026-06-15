@@ -5,7 +5,7 @@
   "format": "engine",
   "half": true,
   "imgsz": 640,
-  "source_model_mtime_ns": 1781134598000000000,
+  "source_model_mtime_ns": 1781479265461437100,
   "source_model_path": "C:\\Users\\AISW_203_114\\Desktop\\hiyoung_team_github\\safety_monitor_workspace\\safety_monitor_client\\embedded_backend\\app\\analysis\\models\\weights\\best.pt",
-  "source_model_size": 53049359
+  "source_model_size": 20323781
 }

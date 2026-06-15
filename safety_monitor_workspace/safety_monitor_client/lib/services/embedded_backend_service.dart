@@ -17,13 +17,17 @@ class EmbeddedBackendService extends ChangeNotifier {
   IOSink? _logSink;
   bool _isStarting = false;
   bool _isRunning = false;
+  bool _isPreparingEngine = false;
   String _lastErrorMessage = '';
   String _logFilePath = '';
+  String _engineProgressMessage = '';
 
   bool get isStarting => _isStarting;
   bool get isRunning => _isRunning;
+  bool get isPreparingEngine => _isPreparingEngine;
   String get lastErrorMessage => _lastErrorMessage;
   String get logFilePath => _logFilePath;
+  String get engineProgressMessage => _engineProgressMessage;
 
   Future<void> ensureStarted() async {
     final projectRoot = _findClientProjectRoot();
@@ -68,6 +72,14 @@ class EmbeddedBackendService extends ChangeNotifier {
       final pythonExecutable = _findPythonExecutable(projectRoot);
       if (pythonExecutable == null) {
         _setError('Python executable for the embedded backend was not found.');
+        return;
+      }
+
+      final engineReady = await _prepareRuntimeEngineIfNeeded(
+        projectRoot: projectRoot,
+        pythonExecutable: pythonExecutable,
+      );
+      if (!engineReady) {
         return;
       }
 
@@ -128,10 +140,92 @@ class EmbeddedBackendService extends ChangeNotifier {
     }
   }
 
+  Future<bool> _prepareRuntimeEngineIfNeeded({
+    required Directory projectRoot,
+    required String pythonExecutable,
+  }) async {
+    final backendDir = Directory(_join(projectRoot.path, 'embedded_backend'));
+    final enginePath = File(
+      _join(
+        backendDir.path,
+        'app',
+        'analysis',
+        'models',
+        'weights',
+        'best.engine',
+      ),
+    );
+    if (enginePath.existsSync()) {
+      return true;
+    }
+
+    final prepareScript = File(
+      _join(backendDir.path, 'ensure_runtime_engine.py'),
+    );
+    if (!prepareScript.existsSync()) {
+      _setError('TensorRT engine preparation script was not found.');
+      return false;
+    }
+
+    _isPreparingEngine = true;
+    _engineProgressMessage = 'TensorRT engine 생성 중입니다. 첫 실행에서는 시간이 걸릴 수 있습니다.';
+    notifyListeners();
+
+    try {
+      final process = await Process.start(
+        pythonExecutable,
+        [prepareScript.path],
+        workingDirectory: backendDir.path,
+        runInShell: false,
+        environment: {
+          ...Platform.environment,
+          'YOLO_CONFIG_DIR': _join(backendDir.path, 'data', 'ultralytics'),
+        },
+      );
+      process.stdout
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .listen((line) {
+            if (line.trim().isEmpty) {
+              return;
+            }
+            _engineProgressMessage = line.trim();
+            _writeLog('ENGINE $line');
+            notifyListeners();
+          });
+      process.stderr
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .listen((line) {
+            if (line.trim().isEmpty) {
+              return;
+            }
+            _engineProgressMessage = line.trim();
+            _writeLog('ENGINE ERR $line');
+            notifyListeners();
+          });
+
+      final exitCode = await process.exitCode;
+      if (exitCode != 0 || !enginePath.existsSync()) {
+        _setError('TensorRT engine 생성에 실패했습니다. 로그를 확인해 주세요.');
+        return false;
+      }
+      return true;
+    } catch (error) {
+      _setError('TensorRT engine 생성 중 오류가 발생했습니다: $error');
+      return false;
+    } finally {
+      _isPreparingEngine = false;
+      _engineProgressMessage = '';
+      notifyListeners();
+    }
+  }
+
   Future<void> shutdown() async {
     final process = _backendProcess;
     _backendProcess = null;
     _isRunning = false;
+    _isPreparingEngine = false;
     notifyListeners();
 
     if (process != null) {
@@ -295,14 +389,15 @@ class EmbeddedBackendService extends ChangeNotifier {
     }
   }
 
-  String _join(String first, String second, [String? third, String? fourth]) {
-    final parts = <String>[first, second];
-    if (third != null) {
-      parts.add(third);
-    }
-    if (fourth != null) {
-      parts.add(fourth);
-    }
+  String _join(
+    String first,
+    String second, [
+    String? third,
+    String? fourth,
+    String? fifth,
+    String? sixth,
+  ]) {
+    final parts = <String>[first, second, ?third, ?fourth, ?fifth, ?sixth];
     return parts.join(Platform.pathSeparator);
   }
 }

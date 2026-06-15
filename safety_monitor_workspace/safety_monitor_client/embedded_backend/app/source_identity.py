@@ -1,14 +1,36 @@
 from pathlib import Path
 
 
-def build_source_key(source_type: str, source_value: str) -> str:
+def build_source_key(
+    source_type: str,
+    source_value: str,
+    *,
+    client_id: str = "",
+    session_id: str = "",
+) -> str:
     normalized_type = source_type.strip().lower()
     normalized_value = normalize_source_value(source_value)
+    normalized_client_id = normalize_source_value(client_id)
+    normalized_session_id = normalize_source_value(session_id)
+    owner_identity = normalized_client_id or normalized_session_id
+    if owner_identity:
+        return f"{normalized_type}|owner={owner_identity}|{normalized_value}"
     return f"{normalized_type}|{normalized_value}"
 
 
-def build_source_slug(source_type: str, source_value: str) -> str:
-    source_key = build_source_key(source_type, source_value)
+def build_source_slug(
+    source_type: str,
+    source_value: str,
+    *,
+    client_id: str = "",
+    session_id: str = "",
+) -> str:
+    source_key = build_source_key(
+        source_type,
+        source_value,
+        client_id=client_id,
+        session_id=session_id,
+    )
     return f"src_{_fnv1a32(source_key):08x}"
 
 

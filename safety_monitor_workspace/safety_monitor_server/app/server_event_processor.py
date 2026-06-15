@@ -9,6 +9,7 @@ from app.config import DATABASE_PATH
 from app.database import get_source, insert_event
 from app.event_normalizer import normalize_event_record
 from app.realtime_hub import realtime_update_hub
+from app.server_clip_recorder import server_clip_recorder
 from app.source_rule_config import normalize_rule_config, to_roi_tuple
 
 
@@ -19,6 +20,7 @@ class _ActiveEventState:
     message: str
     level: str
     source_key: str
+    source_slug: str
     source_type: str
     source_value: str
     client_id: str
@@ -65,6 +67,7 @@ class ServerEventProcessor:
                         message=str(candidate["message"]),
                         level=str(candidate["level"]),
                         source_key=source_key,
+                        source_slug=str(candidate["source_slug"]),
                         source_type=str(candidate["source_type"]),
                         source_value=str(candidate["source_value"]),
                         client_id=str(candidate["client_id"]),
@@ -103,7 +106,9 @@ class ServerEventProcessor:
                     continue
                 active_state.missed_frames += 1
                 if active_state.missed_frames >= self.end_missing_frames:
-                    saved_events.append(self._save_event(self._build_end_event(active_state)))
+                    end_event = self._build_end_event(active_state)
+                    end_event.update(self._build_clip_fields(active_state))
+                    saved_events.append(self._save_event(end_event))
                     ended_keys.append(match_key)
 
             for match_key in ended_keys:
@@ -122,7 +127,9 @@ class ServerEventProcessor:
             active_map = self._active_by_source_key.pop(normalized_source_key, {})
         saved_events: list[dict[str, Any]] = []
         for active_state in active_map.values():
-            saved_events.append(self._save_event(self._build_end_event(active_state)))
+            end_event = self._build_end_event(active_state)
+            end_event.update(self._build_clip_fields(active_state))
+            saved_events.append(self._save_event(end_event))
         return saved_events
 
     def clear_source(self, source_key: str) -> None:
@@ -131,6 +138,7 @@ class ServerEventProcessor:
             return
         with self._lock:
             self._active_by_source_key.pop(normalized_source_key, None)
+        server_clip_recorder.clear_source(normalized_source_key)
 
     def _build_candidates(
         self,
@@ -141,6 +149,7 @@ class ServerEventProcessor:
         rule_config = normalize_rule_config(source_record.get("rule_config"))
         detections = _normalize_detections(frame_record.get("detections"))
         source_key = str(source_record.get("source_key", "")).strip()
+        source_slug = str(source_record.get("source_slug", "")).strip()
         source_type = str(source_record.get("source_type", "")).strip()
         source_value = str(source_record.get("source_value", "")).strip()
         client_id = str(source_record.get("client_id", "")).strip()
@@ -156,6 +165,7 @@ class ServerEventProcessor:
             for event in _build_no_helmet_candidates(
                 detections=detections,
                 source_key=source_key,
+                source_slug=source_slug,
                 source_type=source_type,
                 source_value=source_value,
                 client_id=client_id,
@@ -173,6 +183,7 @@ class ServerEventProcessor:
                 detections=detections,
                 roi=danger_zone_roi,
                 source_key=source_key,
+                source_slug=source_slug,
                 source_type=source_type,
                 source_value=source_value,
                 client_id=client_id,
@@ -220,6 +231,7 @@ class ServerEventProcessor:
             "source_type": state.source_type,
             "source_value": state.source_value,
             "source_key": state.source_key,
+            "source_slug": state.source_slug,
             "client_id": state.client_id,
             "session_id": state.session_id,
             "source_time_seconds": state.source_time_seconds,
@@ -228,6 +240,16 @@ class ServerEventProcessor:
             "ended_source_time_text": state.source_time_text,
             "related_detections": list(state.related_detections),
         }
+
+    def _build_clip_fields(self, state: _ActiveEventState) -> dict[str, object]:
+        clip_fields = server_clip_recorder.encode_event_clip(
+            source_key=state.source_key,
+            source_slug=state.source_slug,
+            event_key=state.event_key,
+            started_at=state.started_at,
+            ended_at=state.last_seen_at,
+        )
+        return clip_fields or {}
 
     def _save_event(self, event_record: dict[str, Any]) -> dict[str, Any]:
         normalized = normalize_event_record(event_record)
@@ -246,6 +268,7 @@ def _build_no_helmet_candidates(
     *,
     detections: list[dict[str, Any]],
     source_key: str,
+    source_slug: str,
     source_type: str,
     source_value: str,
     client_id: str,
@@ -273,6 +296,7 @@ def _build_no_helmet_candidates(
                     created_at=created_at,
                     frame_id=frame_id,
                     source_key=source_key,
+                    source_slug=source_slug,
                     source_type=source_type,
                     source_value=source_value,
                     client_id=client_id,
@@ -315,6 +339,7 @@ def _build_no_helmet_candidates(
                 created_at=created_at,
                 frame_id=frame_id,
                 source_key=source_key,
+                source_slug=source_slug,
                 source_type=source_type,
                 source_value=source_value,
                 client_id=client_id,
@@ -331,6 +356,7 @@ def _build_danger_zone_candidates(
     detections: list[dict[str, Any]],
     roi: tuple[int, int, int, int],
     source_key: str,
+    source_slug: str,
     source_type: str,
     source_value: str,
     client_id: str,
@@ -361,6 +387,7 @@ def _build_danger_zone_candidates(
                 created_at=created_at,
                 frame_id=frame_id,
                 source_key=source_key,
+                source_slug=source_slug,
                 source_type=source_type,
                 source_value=source_value,
                 client_id=client_id,
@@ -381,6 +408,7 @@ def _build_candidate_event(
     created_at: str,
     frame_id: int,
     source_key: str,
+    source_slug: str,
     source_type: str,
     source_value: str,
     client_id: str,
@@ -413,6 +441,7 @@ def _build_candidate_event(
         "source_type": source_type,
         "source_value": source_value,
         "source_key": source_key,
+        "source_slug": source_slug,
         "client_id": client_id,
         "session_id": session_id,
         "source_time_seconds": source_time_seconds,

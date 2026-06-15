@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
+import socket
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -53,6 +54,41 @@ class AnalysisSourceManager:
             source_key = str(source_record.get("source_key", "")).strip()
             if not source_key:
                 continue
+            source_type = str(source_record.get("source_type", "")).strip().lower()
+            source_value = str(source_record.get("source_value", "")).strip()
+            if source_type != "camera" or source_value != "0":
+                set_source_desired_running(
+                    DATABASE_PATH,
+                    source_key=source_key,
+                    desired_running=False,
+                )
+                continue
+            if "owner=" not in source_key:
+                migrated = build_source_record(
+                    source_type="camera",
+                    source_value="0",
+                    original_source_type=str(
+                        source_record.get("original_source_type", "camera")
+                    ).strip()
+                    or "camera",
+                    original_source_value=str(
+                        source_record.get("original_source_value", "0")
+                    ).strip()
+                    or "0",
+                    client_id=str(source_record.get("client_id", "")).strip()
+                    or _build_default_client_id(),
+                    session_id=str(source_record.get("session_id", "")).strip(),
+                    desired_running=bool(source_record.get("desired_running", False)),
+                )
+                migrated["rule_config"] = normalize_rule_config(
+                    source_record.get("rule_config")
+                )
+                upsert_source(DATABASE_PATH, migrated)
+                delete_source(DATABASE_PATH, source_key)
+                delete_source_status(DATABASE_PATH, source_key)
+                remote_server_reporter.delete_source(source_key, clear_data=False)
+                source_record = migrated
+                source_key = str(source_record.get("source_key", "")).strip()
             latest_source = get_source(DATABASE_PATH, source_key) or source_record
             self._sync_source_to_server(latest_source)
             latest_status = get_source_status(DATABASE_PATH, source_key)
@@ -89,6 +125,9 @@ class AnalysisSourceManager:
         reset_existing: bool = True,
         start_immediately: bool = True,
     ) -> dict[str, Any]:
+        source_type = "camera"
+        source_value = "0"
+        client_id = client_id.strip() or _build_default_client_id()
         resolved = resolve_source(source_type=source_type, source_value=source_value)
         source_record = build_source_record(
             source_type=resolved["source_type"],
@@ -541,3 +580,10 @@ class AnalysisSourceManager:
             heartbeat_status = dict(status_record)
             heartbeat_status["updated_at"] = datetime.now().isoformat()
             self._upsert_status_and_sync(heartbeat_status)
+
+
+def _build_default_client_id() -> str:
+    hostname = socket.gethostname().strip().lower()
+    normalized = "".join(char if char.isalnum() else "_" for char in hostname)
+    normalized = "_".join(part for part in normalized.split("_") if part)
+    return f"client_{normalized}" if normalized else "client_local"

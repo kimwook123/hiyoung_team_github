@@ -422,15 +422,23 @@ class AnalysisSourceManager:
             delete_source(DATABASE_PATH, source_key)
             delete_source_status(DATABASE_PATH, source_key)
             prune_orphan_source_data(DATABASE_PATH)
-            remote_server_reporter.delete_source(
-                source_key,
-                clear_data=False,
-                client_id=client_id,
-                session_id=str(source_record.get("session_id", "")).strip(),
+            is_same_client_family = _canonical_client_id(client_id) == _canonical_client_id(
+                current_client_id
             )
+            if is_same_client_family:
+                remote_server_reporter.delete_source(
+                    source_key,
+                    clear_data=False,
+                    client_id=client_id,
+                    session_id=str(source_record.get("session_id", "")).strip(),
+                )
             log_line(
                 "SRC",
-                action="remove-stale-camera",
+                action=(
+                    "remove-stale-camera"
+                    if is_same_client_family
+                    else "remove-foreign-camera-local"
+                ),
                 source=source_key,
                 client=client_id or "-",
             )
@@ -641,3 +649,15 @@ def _read_configured_client_id() -> str:
     if not isinstance(decoded, dict):
         return ""
     return str(decoded.get("client_id", "")).strip()
+
+
+def _canonical_client_id(client_id: str) -> str:
+    normalized = client_id.strip().lower()
+    parts = normalized.rsplit("_", 1)
+    if (
+        len(parts) == 2
+        and len(parts[1]) == 6
+        and all(char in "0123456789abcdef" for char in parts[1])
+    ):
+        return parts[0]
+    return normalized

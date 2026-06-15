@@ -61,12 +61,7 @@ if (Test-Path -LiteralPath $SettingsPath) {
 
 $hostToken = Normalize-Token ([System.Net.Dns]::GetHostName())
 $machineId = "host_$hostToken"
-$macSuffix = Get-PrimaryMacSuffix
-$generatedClientId = if ([string]::IsNullOrWhiteSpace($macSuffix)) {
-  "client_$hostToken"
-} else {
-  "client_${hostToken}_$macSuffix"
-}
+$generatedClientId = "client_$hostToken"
 
 $configuredMachineId = ''
 if ($settings.ContainsKey('machine_id') -and $null -ne $settings['machine_id']) {
@@ -77,6 +72,7 @@ $configuredClientId = ''
 if ($settings.ContainsKey('client_id') -and $null -ne $settings['client_id']) {
   $configuredClientId = [string]$settings['client_id']
 }
+$normalizedConfiguredClientId = Normalize-Token $configuredClientId
 
 $forcedClientId = ''
 if ($env:SAFETY_MONITOR_CLIENT_ID) {
@@ -88,7 +84,8 @@ if (-not [string]::IsNullOrWhiteSpace($forcedClientId)) {
 } elseif (
   [string]::IsNullOrWhiteSpace($configuredClientId) -or
   [string]::IsNullOrWhiteSpace($configuredMachineId) -or
-  $configuredMachineId.Trim() -ne $machineId
+  $configuredMachineId.Trim() -ne $machineId -or
+  $normalizedConfiguredClientId -ne $generatedClientId
 ) {
   $settings['client_id'] = $generatedClientId
 }

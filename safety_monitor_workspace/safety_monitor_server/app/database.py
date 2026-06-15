@@ -91,6 +91,7 @@ def init_db(db_path: Path) -> None:
             );
             """
         )
+    prune_legacy_camera_client_variants(db_path)
 
 
 @contextmanager
@@ -743,6 +744,85 @@ def delete_source(db_path: Path, source_key: str) -> bool:
             (source_key,),
         ).rowcount
     return deleted_count > 0
+
+
+def prune_legacy_camera_client_variants(
+    db_path: Path,
+    *,
+    keep_client_id: str = "",
+) -> list[str]:
+    sources = list_sources(db_path)
+    camera_sources_by_owner: dict[str, list[dict]] = {}
+    for source in sources:
+        source_type = str(source.get("source_type", "")).strip().lower()
+        source_value = str(source.get("source_value", "")).strip()
+        client_id = str(source.get("client_id", "")).strip()
+        if source_type != "camera" or source_value != "0" or not client_id:
+            continue
+        owner_key = _canonical_camera_client_id(client_id)
+        camera_sources_by_owner.setdefault(owner_key, []).append(source)
+
+    removed_source_keys: list[str] = []
+    for variants in camera_sources_by_owner.values():
+        if len(variants) <= 1:
+            continue
+
+        keep_source_key = _select_camera_variant_to_keep(
+            variants,
+            keep_client_id=keep_client_id,
+        )
+        for source in variants:
+            source_key = str(source.get("source_key", "")).strip()
+            if not source_key or source_key == keep_source_key:
+                continue
+            delete_source(db_path, source_key)
+            delete_source_status(db_path, source_key)
+            removed_source_keys.append(source_key)
+
+    if removed_source_keys:
+        prune_orphan_source_statuses(db_path)
+        prune_orphan_source_data(db_path)
+    return removed_source_keys
+
+
+def _select_camera_variant_to_keep(
+    variants: list[dict],
+    *,
+    keep_client_id: str,
+) -> str:
+    normalized_keep_client_id = keep_client_id.strip()
+    if normalized_keep_client_id:
+        for source in variants:
+            if str(source.get("client_id", "")).strip() == normalized_keep_client_id:
+                return str(source.get("source_key", "")).strip()
+
+    unsuffixed = [
+        source
+        for source in variants
+        if _canonical_camera_client_id(str(source.get("client_id", "")).strip())
+        == str(source.get("client_id", "")).strip()
+    ]
+    candidates = unsuffixed or variants
+    candidates.sort(
+        key=lambda source: (
+            str(source.get("updated_at", "")).strip(),
+            str(source.get("source_key", "")).strip(),
+        ),
+        reverse=True,
+    )
+    return str(candidates[0].get("source_key", "")).strip()
+
+
+def _canonical_camera_client_id(client_id: str) -> str:
+    normalized = client_id.strip().lower()
+    parts = normalized.rsplit("_", 1)
+    if (
+        len(parts) == 2
+        and len(parts[1]) == 6
+        and all(char in "0123456789abcdef" for char in parts[1])
+    ):
+        return parts[0]
+    return normalized
 
 
 def set_source_desired_running(

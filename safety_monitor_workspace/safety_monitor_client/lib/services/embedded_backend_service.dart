@@ -15,6 +15,7 @@ class EmbeddedBackendService extends ChangeNotifier {
 
   Process? _backendProcess;
   IOSink? _logSink;
+  Timer? _shutdownTimer;
   bool _isStarting = false;
   bool _isRunning = false;
   bool _isPreparingEngine = false;
@@ -30,6 +31,9 @@ class EmbeddedBackendService extends ChangeNotifier {
   String get engineProgressMessage => _engineProgressMessage;
 
   Future<void> ensureStarted() async {
+    _shutdownTimer?.cancel();
+    _shutdownTimer = null;
+
     final projectRoot = _findClientProjectRoot();
     if (projectRoot == null) {
       _setError('Client project root could not be resolved.');
@@ -224,6 +228,9 @@ class EmbeddedBackendService extends ChangeNotifier {
   }
 
   Future<void> shutdown() async {
+    _shutdownTimer?.cancel();
+    _shutdownTimer = null;
+
     final process = _backendProcess;
     _backendProcess = null;
     _isRunning = false;
@@ -253,6 +260,14 @@ class EmbeddedBackendService extends ChangeNotifier {
     } catch (_) {
       // Ignore pid cleanup failures.
     }
+  }
+
+  void scheduleShutdown({Duration delay = const Duration(seconds: 5)}) {
+    _shutdownTimer?.cancel();
+    _shutdownTimer = Timer(delay, () {
+      _shutdownTimer = null;
+      unawaited(shutdown());
+    });
   }
 
   Future<bool> _waitForHealth() async {

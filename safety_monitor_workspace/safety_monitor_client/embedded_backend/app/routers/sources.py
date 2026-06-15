@@ -2,6 +2,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 
 from app.config import CLIENT_SOURCE_CACHE_DIR, CLIENT_UPLOAD_SOURCE_DIR
+from app.log_utils import log_line
 from app.realtime_hub import realtime_update_hub
 from app.schemas import (
     SourceActionResponse,
@@ -115,6 +116,7 @@ def _decorate_source_record(record: dict) -> dict:
 @router.post("/{source_key:path}/start", response_model=SourceActionResponse)
 def start_source(source_key: str, request: Request) -> SourceActionResponse:
     manager = _manager_from_request(request)
+    log_line("SRC", action="api-start", source=source_key.strip())
     try:
         manager.start_source(source_key)
     except KeyError as error:
@@ -130,6 +132,7 @@ def start_source(source_key: str, request: Request) -> SourceActionResponse:
 @router.post("/{source_key:path}/stop", response_model=SourceActionResponse)
 def stop_source(source_key: str, request: Request) -> SourceActionResponse:
     manager = _manager_from_request(request)
+    log_line("SRC", action="api-stop", source=source_key.strip())
     record = manager.stop_source(source_key)
     if record is None:
         raise HTTPException(status_code=404, detail="source not found")
@@ -144,6 +147,7 @@ def stop_source(source_key: str, request: Request) -> SourceActionResponse:
 @router.post("/{source_key:path}/restart", response_model=SourceActionResponse)
 def restart_source(source_key: str, request: Request) -> SourceActionResponse:
     manager = _manager_from_request(request)
+    log_line("SRC", action="api-restart", source=source_key.strip())
     try:
         manager.restart_source(source_key)
     except KeyError as error:
@@ -185,6 +189,7 @@ def delete_source(
     clear_data: bool = Query(default=False),
 ) -> SourceActionResponse:
     manager = _manager_from_request(request)
+    log_line("SRC", action="api-delete", source=source_key.strip())
     ok = manager.remove_source(source_key, clear_data=clear_data)
     if not ok:
         raise HTTPException(status_code=404, detail="source not found")

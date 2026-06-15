@@ -247,7 +247,7 @@ def _compact_field_text(tag: str, fields: dict[str, object]) -> str:
         if action in {"first-frame", "first-predict"}:
             _push(parts, "f=", _text("frame"))
             _push(parts, "det=", _text("detections"))
-        if action in {"stop", "retry"}:
+        if action in {"stop", "retry", "stop-request"}:
             _push(parts, "reason=", _text("reason"))
         if action == "retry":
             _push(parts, "wait=", _text("wait"))

@@ -72,8 +72,16 @@ if exist "%LOCAL_FLUTTER_CMD%" (
   set "FLUTTER_CMD=%LOCAL_FLUTTER_CMD%"
 )
 
+set "NEED_CLIENT_BUILD=0"
 if not exist "%CLIENT_EXE%" (
-  echo Client executable not found. Building Flutter Windows app now...
+  set "NEED_CLIENT_BUILD=1"
+) else (
+  powershell -NoProfile -Command "$exe = Get-Item -LiteralPath '%CLIENT_EXE%'; $paths = @('%CLIENT_DIR%\lib', '%CLIENT_DIR%\pubspec.yaml', '%CLIENT_DIR%\pubspec.lock'); $latest = Get-ChildItem -LiteralPath $paths -Recurse -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1; if ($latest -and $latest.LastWriteTimeUtc -gt $exe.LastWriteTimeUtc) { exit 1 } exit 0"
+  if errorlevel 1 set "NEED_CLIENT_BUILD=1"
+)
+
+if "%NEED_CLIENT_BUILD%"=="1" (
+  echo Client executable is missing or older than the Flutter sources. Building Flutter Windows app now...
   call "%ROOT_DIR%\build_client.bat" /nopause
   if errorlevel 1 (
     echo Client build failed.

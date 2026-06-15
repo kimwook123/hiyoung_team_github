@@ -132,7 +132,6 @@ class _HomeScreenState extends State<HomeScreen> {
     streamTextController.dispose();
     cameraTextController.dispose();
     serverBaseUrlTextController.dispose();
-    EmbeddedBackendService.instance.scheduleShutdown();
     super.dispose();
   }
 

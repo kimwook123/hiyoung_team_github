@@ -95,19 +95,37 @@ class AnalysisSourceManager:
                 source_key = str(source_record.get("source_key", "")).strip()
             latest_source = get_source(DATABASE_PATH, source_key) or source_record
             self._sync_source_to_server(latest_source)
-            latest_status = get_source_status(DATABASE_PATH, source_key)
-            if latest_status is not None:
-                synced_status = dict(latest_status)
-                synced_status["updated_at"] = datetime.now().isoformat()
-                self._upsert_status_and_sync(synced_status)
-            if not bool(source_record.get("desired_running", False)):
-                continue
+            set_source_desired_running(
+                DATABASE_PATH,
+                source_key=source_key,
+                desired_running=False,
+            )
+            latest_source = get_source(DATABASE_PATH, source_key) or latest_source
+            self._sync_source_to_server(latest_source)
+            previous_status = get_source_status(DATABASE_PATH, source_key) or {}
+            self._upsert_status_and_sync(
+                {
+                    "source_key": source_key,
+                    "source_type": latest_source["source_type"],
+                    "source_value": latest_source["source_value"],
+                    "client_id": latest_source["client_id"],
+                    "session_id": latest_source["session_id"],
+                    "state": "registered",
+                    "is_running": False,
+                    "source_fps": float(previous_status.get("source_fps", 0.0) or 0.0),
+                    "last_frame_id": int(previous_status.get("last_frame_id", -1) or -1),
+                    "last_source_time_seconds": float(
+                        previous_status.get("last_source_time_seconds", 0.0) or 0.0
+                    ),
+                    "error_message": "",
+                }
+            )
             log_line(
                 "SRC",
-                action="bootstrap-start",
+                action="bootstrap-defer-camera",
                 source=source_key,
             )
-            self.start_source(source_key)
+            continue
         self._start_server_presence_loop()
 
     def shutdown(self) -> None:

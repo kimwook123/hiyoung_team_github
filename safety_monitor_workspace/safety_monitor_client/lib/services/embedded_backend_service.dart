@@ -368,6 +368,16 @@ class EmbeddedBackendService extends ChangeNotifier {
         .transform(utf8.decoder)
         .transform(const LineSplitter())
         .listen((line) => _writeLog('ERR $line'));
+    unawaited(
+      process.exitCode.then((exitCode) {
+        _writeLog('embedded backend exited with code $exitCode');
+        if (_backendProcess == process) {
+          _backendProcess = null;
+          _isRunning = false;
+          notifyListeners();
+        }
+      }),
+    );
   }
 
   void _writeLog(String line) {

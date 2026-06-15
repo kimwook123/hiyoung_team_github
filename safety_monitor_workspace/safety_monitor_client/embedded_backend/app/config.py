@@ -1,4 +1,5 @@
 import os
+import json
 from pathlib import Path
 
 
@@ -15,10 +16,21 @@ DATABASE_PATH = (CLIENT_DATA_DIR / "monitor.db").resolve()
 ANALYSIS_DIR = (CLIENT_DIR / "app" / "analysis").resolve()
 ANALYSIS_WEIGHTS_DIR = (ANALYSIS_DIR / "models" / "weights").resolve()
 
-REMOTE_SERVER_BASE_URL = os.environ.get(
-    "SAFETY_MONITOR_SERVER_URL",
-    "http://127.0.0.1:8000",
-).strip().rstrip("/")
+def _read_settings_remote_server_url() -> str:
+    try:
+        decoded = json.loads(CLIENT_SETTINGS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(decoded, dict):
+        return ""
+    return str(decoded.get("remote_server_base_url", "")).strip().rstrip("/")
+
+
+REMOTE_SERVER_BASE_URL = (
+    os.environ.get("SAFETY_MONITOR_SERVER_URL", "").strip().rstrip("/")
+    or _read_settings_remote_server_url()
+    or "http://127.0.0.1:8000"
+)
 HTTP_TIMEOUT_SECONDS = 15.0
 
 # Analysis runtime

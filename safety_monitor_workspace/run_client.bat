@@ -115,6 +115,9 @@ if errorlevel 1 (
   exit /b 1
 )
 
+echo Syncing local client runtime config...
+powershell -NoProfile -Command "try { $body = @{ remote_server_base_url = '%REMOTE_SERVER_URL%' } | ConvertTo-Json -Compress; $r = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8100/api/admin/remote-server' -Method Put -ContentType 'application/json' -Body $body -TimeoutSec 5; if ($r.StatusCode -eq 200) { Write-Host 'Local client runtime config synced.' } } catch { Write-Host 'Local client runtime config is not running yet or could not be synced. It will use the saved setting on startup.' }"
+
 echo Checking storage server health at %REMOTE_SERVER_URL% ...
 powershell -NoProfile -Command "try { $u='%REMOTE_SERVER_URL%'.TrimEnd('/') + '/health'; $r = Invoke-WebRequest -UseBasicParsing -Uri $u -TimeoutSec 5; if ($r.StatusCode -eq 200) { Write-Host 'Server health check succeeded.'; exit 0 } else { Write-Host ('Server health check returned HTTP ' + $r.StatusCode); exit 1 } } catch { Write-Host ('Server health check error: ' + $_.Exception.Message); exit 1 }"
 if errorlevel 1 (

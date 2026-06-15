@@ -69,52 +69,13 @@ if exist "%LOCAL_FLUTTER_CMD%" (
 )
 
 if not exist "%CLIENT_EXE%" (
-  if not exist "%LOCAL_FLUTTER_CMD%" (
-    where flutter > nul 2>&1
-    if errorlevel 1 (
-      echo Flutter SDK was not found on this PC.
-      echo Expected local SDK:
-      echo   %LOCAL_FLUTTER_CMD%
-      pause
-      exit /b 1
-    )
-  )
-
   echo Client executable not found. Building Flutter Windows app now...
-  pushd "%CLIENT_DIR%"
-  call "%FLUTTER_CMD%" clean
+  call "%ROOT_DIR%\build_client.bat" /nopause
   if errorlevel 1 (
-    echo flutter clean failed.
-    popd
+    echo Client build failed.
     pause
     exit /b 1
   )
-  if not exist "windows\flutter\CMakeLists.txt" (
-    echo Windows Flutter build files are missing. Regenerating them...
-    call "%FLUTTER_CMD%" create --platforms=windows .
-    if errorlevel 1 (
-      echo flutter create windows files failed.
-      popd
-      pause
-      exit /b 1
-    )
-  )
-  call "%FLUTTER_CMD%" pub get
-  if errorlevel 1 (
-    echo flutter pub get failed.
-    popd
-    pause
-    exit /b 1
-  )
-  call "%FLUTTER_CMD%" config --enable-windows-desktop
-  call "%FLUTTER_CMD%" build windows
-  if errorlevel 1 (
-    echo flutter build windows failed.
-    popd
-    pause
-    exit /b 1
-  )
-  popd
 )
 
 if not exist "%CLIENT_EXE%" (

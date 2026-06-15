@@ -101,6 +101,12 @@
 install_dependencies.bat all
 ```
 
+다른 PC에서 처음 실행하거나 빌드 환경이 의심될 때는 아래 진단 배치로 Python/Flutter/Visual Studio C++/Windows SDK/긴 경로 설정을 먼저 확인할 수 있습니다.
+
+```powershell
+check_environment.bat
+```
+
 모드별 실행도 가능합니다.
 
 ```powershell
@@ -160,11 +166,26 @@ build_viewer.bat
 
 빌드 배치파일은 실행 전 `flutter clean`으로 이전 PC 경로가 남은 CMake 캐시를 정리합니다. 또한 `windows/flutter/CMakeLists.txt` 같은 Windows Flutter 생성 파일이 누락된 경우 `flutter create --platforms=windows .`로 자동 복구한 뒤 빌드합니다.
 
+Windows에서 `media_kit_libs_windows_video` 빌드 중 `MSB3491` 또는 `.tlog` 경로 오류가 나지 않도록, 빌드 배치파일은 기본적으로 워크스페이스를 `S:\` 짧은 가상 드라이브에 임시 매핑한 뒤 빌드합니다. `S:`가 이미 사용 중이면 다른 드라이브 문자를 지정할 수 있습니다.
+
+```powershell
+set SAFETY_MONITOR_BUILD_DRIVE=R:
+build_client.bat
+```
+
+가상 드라이브 매핑을 끄려면 아래처럼 실행할 수 있지만, Flutter Windows 빌드는 가능한 짧은 경로에서 실행하는 것을 권장합니다.
+
+```powershell
+set SAFETY_MONITOR_DISABLE_SUBST=1
+build_client.bat
+```
+
 ## 주요 파일
 
 - 루트 전체 의존성: `requirements.txt`
 - 서버 전용 의존성: `requirements-server.txt`
 - 의존성 설치 배치: `install_dependencies.bat`
+- 환경 진단 배치: `check_environment.bat`
 - 서버 실행: `run_server.bat`
 - 클라이언트 실행: `run_client.bat`
 - 뷰어 실행: `run_viewer.bat`

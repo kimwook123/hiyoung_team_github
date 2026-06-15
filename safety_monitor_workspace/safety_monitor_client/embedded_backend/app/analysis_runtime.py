@@ -115,8 +115,20 @@ def build_source_record(
     normalized_source_value = source_value
     if source_type == "video":
         normalized_source_value = normalize_video_source_value(source_value)
-    source_key = build_source_key(source_type=source_type, source_value=normalized_source_value)
-    source_slug = build_source_slug(source_type=source_type, source_value=normalized_source_value)
+    normalized_client_id = client_id.strip()
+    normalized_session_id = session_id.strip()
+    source_key = build_source_key(
+        source_type=source_type,
+        source_value=normalized_source_value,
+        client_id=normalized_client_id,
+        session_id=normalized_session_id,
+    )
+    source_slug = build_source_slug(
+        source_type=source_type,
+        source_value=normalized_source_value,
+        client_id=normalized_client_id,
+        session_id=normalized_session_id,
+    )
     source_duration_seconds = (
         _read_video_duration_seconds(normalized_source_value)
         if source_type == "video"
@@ -130,8 +142,8 @@ def build_source_record(
         "source_duration_seconds": source_duration_seconds,
         "original_source_type": original_source_type,
         "original_source_value": original_source_value,
-        "client_id": client_id.strip(),
-        "session_id": (session_id.strip() or source_key),
+        "client_id": normalized_client_id,
+        "session_id": (normalized_session_id or source_key),
         "desired_running": desired_running,
         "rule_config": build_default_rule_config(),
     }
@@ -163,7 +175,8 @@ def build_pipeline_for_source(
         raise RuntimeError(f"unsupported source_type: {source_type}")
 
     model = _build_model()
-    rules = _build_rules(source_record)
+    # 위험상황 룰 판정과 이벤트 클립 인코딩은 중앙 서버가 담당합니다.
+    rules: list[Any] = []
     tracker = PersonTracker(
         max_distance=TRACK_MAX_DISTANCE,
         max_missing_frames=TRACK_MAX_MISSING_FRAMES,
@@ -174,7 +187,7 @@ def build_pipeline_for_source(
     )
     source_fps = frame_source.get_fps()
     clip_recorder = EventClipRecorder(
-        enabled=SAVE_EVENT_CLIP,
+        enabled=False,
         clip_dir=str(CLIENT_CLIP_DIR),
         fps=source_fps,
         before_seconds=EVENT_CLIP_BEFORE_SECONDS,
@@ -189,7 +202,7 @@ def build_pipeline_for_source(
         progress_log_interval_seconds=ANALYSIS_PROGRESS_LOG_INTERVAL_SECONDS,
     )
     preview_publisher = ClientSourcePreviewPublisher()
-    handlers: list[EventHandler] = [ClientEventHandler()]
+    handlers: list[EventHandler] = []
 
     return VideoPipeline(
         frame_source=frame_source,

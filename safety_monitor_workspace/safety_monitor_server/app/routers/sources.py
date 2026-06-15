@@ -28,6 +28,7 @@ from app.database import (
 from app.realtime_hub import realtime_update_hub
 from app.server_event_processor import server_event_processor
 from app.schemas import SourceActionResponse
+from app.schemas import SourceConfigUpdateRequest
 from app.schemas import SourceItem
 from app.schemas import SourceListResponse
 from app.schemas import SourceOverviewItem
@@ -88,13 +89,19 @@ def upsert_source_route(
         if source_type.strip().lower() == "video"
         else source_value
     )
+    client_id = str(payload.get("client_id", "")).strip()
+    session_id = str(payload.get("session_id", "")).strip()
     source_key = str(payload.get("source_key", "")).strip() or build_source_key(
         source_type=source_type,
         source_value=normalized_source_value,
+        client_id=client_id,
+        session_id=session_id,
     )
     source_slug = str(payload.get("source_slug", "")).strip() or build_source_slug(
         source_type=source_type,
         source_value=normalized_source_value,
+        client_id=client_id,
+        session_id=session_id,
     )
 
     previous = get_source(DATABASE_PATH, source_key)
@@ -113,8 +120,8 @@ def upsert_source_route(
     normalized["original_source_value"] = str(
         normalized.get("original_source_value", source_value)
     ).strip() or source_value
-    normalized["client_id"] = str(normalized.get("client_id", "")).strip()
-    normalized["session_id"] = str(normalized.get("session_id", "")).strip()
+    normalized["client_id"] = client_id
+    normalized["session_id"] = session_id
     normalized["desired_running"] = bool(normalized.get("desired_running", False))
     normalized["rule_config"] = normalize_rule_config(normalized.get("rule_config"))
     normalized["preview_url"] = (
@@ -251,6 +258,27 @@ def delete_source_route(
         source_key=source_key.strip(),
     )
     return SourceActionResponse(ok=True, source_key=source_key, state="deleted")
+
+
+@router.patch("/{source_key:path}/config", response_model=SourceUpsertResponse)
+def update_source_config_route(
+    source_key: str,
+    payload: SourceConfigUpdateRequest,
+) -> SourceUpsertResponse:
+    record = get_source(DATABASE_PATH, source_key)
+    if record is None:
+        raise HTTPException(status_code=404, detail="source not found")
+
+    next_record = dict(record)
+    next_record["rule_config"] = normalize_rule_config(payload.rule_config)
+    next_record["updated_at"] = datetime.now().isoformat()
+    saved = upsert_source(DATABASE_PATH, next_record)
+    realtime_update_hub.publish(
+        "source_changed",
+        action="config_updated",
+        source_key=source_key.strip(),
+    )
+    return SourceUpsertResponse(ok=True, item=SourceItem(**_decorate_source_record(saved)))
 
 
 def _decorate_source_record(record: dict[str, Any]) -> dict[str, Any]:

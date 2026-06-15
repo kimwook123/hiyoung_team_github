@@ -20,7 +20,6 @@ import '../models/video_overlay_detection.dart';
 import '../services/event_api_service.dart';
 import '../services/embedded_backend_service.dart';
 import '../widgets/event_log_box.dart';
-import '../widgets/file_bar.dart';
 import '../widgets/video_control_bar.dart';
 import '../widgets/video_view_box.dart';
 
@@ -80,13 +79,14 @@ class _HomeScreenState extends State<HomeScreen> {
   String lastFrameDetectionRequestSourceKey = '';
   double lastFrameDetectionRequestSeconds = -1;
   String lastFrameDetectionStatusUpdatedAt = '';
-  late final String clientId;
+  String clientId = '';
   bool isRealtimeConnected = false;
   bool pendingRealtimeEventsRefresh = false;
   bool pendingRealtimeSourcesRefresh = false;
   bool pendingRealtimeStatusesRefresh = false;
   bool isSavingRuleConfig = false;
   bool isEditingDangerZone = false;
+  bool _didAutoRegisterCamera = false;
   int _ruleConfigSaveTicket = 0;
   int previewRefreshCacheBust = 0;
 
@@ -100,7 +100,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     apiEventController = ApiEventController(service: remoteEventApiService);
     apiEventFeed = ApiEventFeedSource(apiEventController);
-    clientId = 'client_gui_${DateTime.now().microsecondsSinceEpoch}';
     unawaited(_initializeServerConnection());
     _startApiAutoRefresh();
     _startFrameDetectionRefresh();
@@ -203,57 +202,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: Column(
                           children: [
-                            _buildClientRoleBanner(),
-                            const SizedBox(height: 12),
-                            AnimatedBuilder(
-                              animation: videoController,
-                              builder: (context, _) {
-                                return FileBar(
-                                  videoPath: videoController.videoPath,
-                                  sourceType: videoController.sourceType,
-                                  sourceHint: _buildSourceHint(),
-                                  sourceCount: registeredSourcesByKey.length,
-                                  activeSourceLabel: _buildActiveSourceLabel(),
-                                  hasSelectedSource:
-                                      selectedSourceKey.isNotEmpty,
-                                  canReturnFromReplay:
-                                      videoController.canReturnFromReplay,
-                                  isReadOnly: _isViewerReadOnly,
-                                  streamTextController: streamTextController,
-                                  cameraTextController: cameraTextController,
-                                  onPickVideo: _isViewerReadOnly
-                                      ? null
-                                      : _pickVideoFile,
-                                  onClearSelectedSource: _clearSelectedSource,
-                                  onOpenStream: _isViewerReadOnly
-                                      ? null
-                                      : _openStream,
-                                  onOpenCamera: _isViewerReadOnly
-                                      ? null
-                                      : _openCamera,
-                                  onReturnLive: _returnToLive,
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 12),
+                            _buildEngineProgressPanel(),
                             _buildClientApiControls(),
                             const SizedBox(height: 12),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                SizedBox(
-                                  width: 240,
-                                  child: _buildSourceSidebar(),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(child: _buildVideoGridPanel()),
-                              ],
-                            ),
+                            _buildVideoGridPanel(),
                           ],
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      SizedBox(width: 420, child: _buildInspectorPanel()),
                     ],
                   ),
                 ),
@@ -326,6 +281,41 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildEngineProgressPanel() {
+    return AnimatedBuilder(
+      animation: EmbeddedBackendService.instance,
+      builder: (context, _) {
+        final backend = EmbeddedBackendService.instance;
+        if (!backend.isPreparingEngine) {
+          return const SizedBox.shrink();
+        }
+        final message = backend.engineProgressMessage.trim().isEmpty
+            ? 'TensorRT engine 생성 중입니다.'
+            : backend.engineProgressMessage.trim();
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _buildPanelCard(
+            title: 'Engine 준비 중',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const LinearProgressIndicator(),
+                const SizedBox(height: 10),
+                Text(
+                  message,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.white70),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ignore: unused_element
   Widget _buildClientRoleBanner() {
     final runtime = clientRuntimeConfig;
     return AnimatedBuilder(
@@ -475,6 +465,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildSourceSidebar() {
     final slots = [..._sourceSlots];
     return _buildPanelCard(
@@ -565,35 +556,20 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_sourceSlots.isEmpty) {
       return _buildPanelCard(
         title: '실시간 모니터',
-        child: const Center(
-          child: Text('왼쪽 상단에서 비디오, 스트림, 카메라를 등록하면 여러 소스를 동시에 볼 수 있습니다.'),
-        ),
+        child: const Center(child: Text('0번 카메라를 준비하는 중입니다.')),
       );
     }
 
+    final slot = _sourceSlots.first;
     return _buildPanelCard(
       title: '실시간 모니터',
       trailing: Text(
-        '가로 2열',
+        '카메라 0',
         style: Theme.of(
           context,
         ).textTheme.bodySmall?.copyWith(color: Colors.white60),
       ),
-      child: GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 12,
-          crossAxisSpacing: 12,
-          childAspectRatio: 1.08,
-        ),
-        itemCount: _sourceSlots.length,
-        itemBuilder: (context, index) {
-          final slot = _sourceSlots[index];
-          return _buildVideoTile(slot);
-        },
-      ),
+      child: AspectRatio(aspectRatio: 16 / 9, child: _buildVideoTile(slot)),
     );
   }
 
@@ -628,6 +604,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildInspectorPanel() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -654,6 +631,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildSelectedSourceSummaryPanel() {
     final source = _activeSourceItem;
     final status = source == null
@@ -1271,6 +1249,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ignore: unused_element
   String _formatDuration(Duration value) {
     final hours = value.inHours;
     final minutes = value.inMinutes.remainder(60);
@@ -1504,6 +1483,7 @@ class _HomeScreenState extends State<HomeScreen> {
         '${value.second.toString().padLeft(2, '0')}';
   }
 
+  // ignore: unused_element
   Future<void> _pickVideoFile() async {
     if (_isViewerReadOnly) {
       _showInfoSnack(
@@ -1582,6 +1562,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ignore: unused_element
   Future<void> _openStream() async {
     if (_isViewerReadOnly) {
       _showInfoSnack(
@@ -1660,20 +1641,8 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       return;
     }
-    final cameraIndexText = cameraTextController.text.trim();
-    if (cameraIndexText.isEmpty) {
-      if (mounted) {
-        _showInfoSnack('카메라 인덱스를 입력해 주세요. 예: 0');
-      }
-      return;
-    }
-    final cameraIndex = int.tryParse(cameraIndexText);
-    if (cameraIndex == null || cameraIndex < 0) {
-      if (mounted) {
-        _showInfoSnack('카메라 인덱스는 0 이상의 정수여야 합니다.');
-      }
-      return;
-    }
+    const cameraIndex = 0;
+    cameraTextController.text = cameraIndex.toString();
 
     final existingSlot = _findSourceSlot(
       sourceType: 'camera',
@@ -1726,6 +1695,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return frameDetectionBySourceKey[slot.sourceKey.trim()];
   }
 
+  // ignore: unused_element
   List<VideoOverlayDetection> _getOverlayDetectionsForSlot(
     _SourcePanelSlot slot,
   ) {
@@ -1917,6 +1887,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await _refreshFrameDetectionsForSource(sourceItem.sourceKey);
   }
 
+  // ignore: unused_element
   Future<void> _returnToLive() async {
     await videoController.returnToLive();
   }
@@ -2729,6 +2700,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final nextMap = <String, SourceItem>{};
     for (final item in items) {
+      if (!_isPolicyCameraSource(item.sourceType, item.sourceValue)) {
+        continue;
+      }
       final sourceKey = item.sourceKey.trim();
       if (sourceKey.isEmpty) {
         continue;
@@ -2759,6 +2733,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _restoreRegisteredSourceSlots(List<SourceItem> sources) async {
     final previousActiveSlotId = _activeSlotId;
     for (final source in sources) {
+      if (!_isPolicyCameraSource(source.sourceType, source.sourceValue)) {
+        continue;
+      }
       final existingSlot = _findSourceSlotByKey(source.sourceKey);
       if (existingSlot != null) {
         continue;
@@ -2857,6 +2834,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return normalizedLeft == normalizedRight;
   }
 
+  // ignore: unused_element
   String _buildSourceHint() {
     if (selectedSourceKey.isEmpty) {
       return '비디오, 스트림, 카메라를 등록하면 여기서 각 소스의 오버레이와 이벤트를 바로 확인할 수 있습니다.';
@@ -2923,6 +2901,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return '';
   }
 
+  // ignore: unused_element
   String _buildActiveSourceLabel() {
     final slot = _activeSlot;
     if (slot == null) {
@@ -3277,6 +3256,11 @@ class _HomeScreenState extends State<HomeScreen> {
     return '${clampedSeconds.toStringAsFixed(1)} / ${durationSeconds.toStringAsFixed(1)}s (${percent.toStringAsFixed(1)}%)';
   }
 
+  bool _isPolicyCameraSource(String sourceType, String sourceValue) {
+    return sourceType.trim().toLowerCase() == 'camera' &&
+        sourceValue.trim() == '0';
+  }
+
   String _buildAverageDetectionTimeText(
     SourceItem? source,
     SourceRuntimeStatus? status,
@@ -3362,6 +3346,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ignore: unused_element
   Future<void> _clearSelectedSource() async {
     apiEventFeed.clearSelection();
     apiEventFeed.setSourceKeyFilter('');
@@ -3405,6 +3390,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _initializeServerConnection() async {
+    clientId = await _resolveClientIdentity();
     await EmbeddedBackendService.instance.ensureStarted();
     unawaited(_connectRealtimeUpdates());
     await _refreshClientRuntimeConfig();
@@ -3412,6 +3398,68 @@ class _HomeScreenState extends State<HomeScreen> {
     await _refreshApiEventsIfNeeded();
     await _refreshSourceStatuses();
     await _refreshRegisteredSources();
+    await _ensureSingleCameraSource();
+  }
+
+  Future<String> _resolveClientIdentity() async {
+    final configPath = _resolveLegacyClientSettingsFile();
+    try {
+      if (await configPath.exists()) {
+        final decoded = jsonDecode(await configPath.readAsString());
+        if (decoded is Map<String, dynamic>) {
+          final configured = decoded['client_id']?.toString().trim() ?? '';
+          if (configured.isNotEmpty) {
+            return configured;
+          }
+        }
+      }
+    } catch (_) {
+      // 설정 파일이 깨져 있어도 아래 기본 식별자로 복구합니다.
+    }
+
+    final host = Platform.localHostname.trim().toLowerCase();
+    final normalizedHost = host
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_|_$'), '');
+    final generated = normalizedHost.isEmpty
+        ? 'client_local'
+        : 'client_$normalizedHost';
+    await _saveClientIdentityConfig(generated);
+    return generated;
+  }
+
+  Future<void> _saveClientIdentityConfig(String nextClientId) async {
+    try {
+      final configPath = _resolveLegacyClientSettingsFile();
+      final payload = <String, dynamic>{};
+      if (await configPath.exists()) {
+        final decoded = jsonDecode(await configPath.readAsString());
+        if (decoded is Map<String, dynamic>) {
+          payload.addAll(decoded);
+        }
+      }
+      payload['client_id'] = nextClientId.trim();
+      payload['remote_server_base_url'] =
+          payload['remote_server_base_url']?.toString().trim().isNotEmpty ==
+              true
+          ? payload['remote_server_base_url'].toString().trim()
+          : serverBaseUrlTextController.text.trim();
+      await configPath.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(payload),
+      );
+    } catch (_) {
+      // client_id 저장 실패는 현재 실행을 막지 않습니다.
+    }
+  }
+
+  Future<void> _ensureSingleCameraSource() async {
+    if (_didAutoRegisterCamera) {
+      return;
+    }
+    _didAutoRegisterCamera = true;
+    cameraTextController.text = '0';
+    await _openCamera();
   }
 
   Future<void> _connectRealtimeUpdates() async {
@@ -3548,7 +3596,17 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> saveServerBaseUrlConfig(String baseUrl) async {
     try {
       final configPath = _resolveLegacyClientSettingsFile();
-      final payload = {'remote_server_base_url': baseUrl};
+      final payload = <String, dynamic>{};
+      if (await configPath.exists()) {
+        final decoded = jsonDecode(await configPath.readAsString());
+        if (decoded is Map<String, dynamic>) {
+          payload.addAll(decoded);
+        }
+      }
+      payload['remote_server_base_url'] = baseUrl;
+      if (clientId.trim().isNotEmpty) {
+        payload['client_id'] = clientId.trim();
+      }
       await configPath.writeAsString(
         const JsonEncoder.withIndent('  ').convert(payload),
       );

@@ -281,6 +281,7 @@ class ApiEventController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ignore: unused_element
   List<ApiEventItem> _latestItemsBySourceAndEventKey(
     List<ApiEventItem> sourceItems,
   ) {

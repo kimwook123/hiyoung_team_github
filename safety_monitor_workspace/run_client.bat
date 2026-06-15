@@ -12,10 +12,13 @@ set "MODEL_PATH=%BACKEND_DIR%\app\analysis\models\weights\best.pt"
 set "ENGINE_PATH=%BACKEND_DIR%\app\analysis\models\weights\best.engine"
 set "FLUTTER_CMD=flutter"
 set "LOCAL_FLUTTER_CMD=%ROOT_DIR%\flutter\bin\flutter.bat"
-set "PYTHON_CMD=py -3.12"
+set "PYTHON_CMD=%ROOT_DIR%\.venv\Scripts\python.exe"
 
-if exist "%ROOT_DIR%\.venv\Scripts\python.exe" (
-  set "PYTHON_CMD=%ROOT_DIR%\.venv\Scripts\python.exe"
+call "%ROOT_DIR%\install_dependencies.bat" client
+if errorlevel 1 (
+  echo Failed to prepare client dependencies.
+  pause
+  exit /b 1
 )
 
 if not exist "%CLIENT_DIR%\pubspec.yaml" (
@@ -32,25 +35,7 @@ if not exist "%BACKEND_DIR%\main.py" (
   exit /b 1
 )
 
-call %PYTHON_CMD% -c "import fastapi, uvicorn, cv2, numpy, requests, yt_dlp, websockets, torch, tensorrt, onnx, onnxruntime, ultralytics" > nul 2>&1
-if errorlevel 1 (
-  echo Required embedded backend packages are missing.
-  choice /M "Install embedded backend requirements now"
-  if errorlevel 2 (
-    echo Skipping package installation. Client was not started.
-    pause
-    exit /b 1
-  )
-
-  call %PYTHON_CMD% -m pip install -r "%BACKEND_DIR%\requirements.txt"
-  if errorlevel 1 (
-    echo Failed to install embedded backend requirements.
-    pause
-    exit /b 1
-  )
-)
-
-call %PYTHON_CMD% -c "import torch; raise SystemExit(0 if torch.cuda.is_available() else 1)" > nul 2>&1
+"%PYTHON_CMD%" -c "import torch; raise SystemExit(0 if torch.cuda.is_available() else 1)" > nul 2>&1
 if errorlevel 1 (
   echo CUDA is not available in the Python environment used by the embedded backend.
   pause
@@ -66,7 +51,7 @@ if exist "%ENGINE_PATH%" (
 ) else (
   if /I "%SAFETY_MONITOR_PREPARE_TENSORRT%"=="1" (
     echo No prebuilt TensorRT engine found. Preparing it before launch because SAFETY_MONITOR_PREPARE_TENSORRT=1.
-    call %PYTHON_CMD% "%BACKEND_DIR%\ensure_runtime_engine.py"
+    "%PYTHON_CMD%" "%BACKEND_DIR%\ensure_runtime_engine.py"
     if errorlevel 1 (
       echo Failed to prepare a CUDA TensorRT runtime engine for the client backend.
       pause
@@ -84,11 +69,15 @@ if exist "%LOCAL_FLUTTER_CMD%" (
 )
 
 if not exist "%CLIENT_EXE%" (
-  where "%FLUTTER_CMD%" > nul 2>&1
-  if errorlevel 1 (
-    echo Flutter SDK was not found on this PC.
-    pause
-    exit /b 1
+  if not exist "%LOCAL_FLUTTER_CMD%" (
+    where flutter > nul 2>&1
+    if errorlevel 1 (
+      echo Flutter SDK was not found on this PC.
+      echo Expected local SDK:
+      echo   %LOCAL_FLUTTER_CMD%
+      pause
+      exit /b 1
+    )
   )
 
   echo Client executable not found. Building Flutter Windows app now...
@@ -141,9 +130,7 @@ if not "%INPUT_REMOTE_SERVER_URL%"=="" (
   set "REMOTE_SERVER_URL=%INPUT_REMOTE_SERVER_URL%"
 )
 
-> "%SETTINGS_PATH%" echo {
->> "%SETTINGS_PATH%" echo   "remote_server_base_url": "%REMOTE_SERVER_URL%"
->> "%SETTINGS_PATH%" echo }
+powershell -NoProfile -Command "$p='%SETTINGS_PATH%'; $data=@{}; if (Test-Path -LiteralPath $p) { try { $json=Get-Content -LiteralPath $p -Raw | ConvertFrom-Json; foreach ($prop in $json.PSObject.Properties) { $data[$prop.Name]=$prop.Value } } catch {} }; $data['remote_server_base_url']='%REMOTE_SERVER_URL%'; if (-not $data.ContainsKey('client_id') -or [string]::IsNullOrWhiteSpace([string]$data['client_id'])) { $hostName=[System.Net.Dns]::GetHostName().ToLowerInvariant() -replace '[^a-z0-9]+','_'; $hostName=$hostName.Trim('_'); if ([string]::IsNullOrWhiteSpace($hostName)) { $hostName='local' }; $data['client_id']='client_' + $hostName }; $data | ConvertTo-Json | Set-Content -LiteralPath $p -Encoding UTF8"
 
 echo Checking storage server health at %REMOTE_SERVER_URL% ...
 powershell -NoProfile -Command "try { $r = Invoke-WebRequest -UseBasicParsing -Uri '%REMOTE_SERVER_URL%/health' -TimeoutSec 5; if ($r.StatusCode -eq 200) { Write-Host 'Server health check succeeded.'; exit 0 } else { exit 1 } } catch { exit 1 }"

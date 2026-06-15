@@ -7,6 +7,7 @@ import '../models/api_server_health.dart';
 import '../models/frame_detection_snapshot.dart';
 import '../models/source_overview_item.dart';
 import '../models/source_item.dart';
+import '../models/source_rule_config.dart';
 import '../models/source_runtime_status.dart';
 
 // 이 파일은 Flutter에서 FastAPI 서버를 호출하는 HTTP 서비스입니다.
@@ -255,6 +256,40 @@ class EventApiService {
     } catch (_) {
       return const [];
     }
+  }
+
+  Future<SourceItem?> updateSourceRuleConfig({
+    required String sourceKey,
+    required SourceRuleConfig ruleConfig,
+  }) async {
+    final uri = _buildUri(
+      '/api/sources/${Uri.encodeComponent(sourceKey)}/config',
+      const {},
+    );
+    try {
+      final response = await _client.patch(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'rule_config': ruleConfig.toJson()}),
+      );
+      if (response.statusCode != 200) {
+        return null;
+      }
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        return null;
+      }
+      final item = decoded['item'];
+      if (item is Map<String, dynamic>) {
+        return SourceItem.fromJson(item);
+      }
+      if (item is Map) {
+        return SourceItem.fromJson(Map<String, dynamic>.from(item));
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
   }
 
   Future<FrameDetectionSnapshot?> fetchCurrentFrameDetection({

@@ -61,48 +61,13 @@ if not exist "%VIEWER_EXE%" (
     set "FLUTTER_CMD=%FLUTTER_DIR%\bin\flutter.bat"
   )
 
-  call :ensure_windows_build_tools
-  if errorlevel 1 (
-    echo Windows desktop build tools are not ready.
-    pause
-    exit /b 1
-  )
-
   echo Viewer executable not found. Building Flutter Windows app now...
-  pushd "%VIEWER_DIR%"
-  call "%FLUTTER_CMD%" clean
+  call "%ROOT_DIR%\build_viewer.bat" /nopause
   if errorlevel 1 (
-    echo flutter clean failed.
-    popd
+    echo Viewer build failed.
     pause
     exit /b 1
   )
-  if not exist "windows\flutter\CMakeLists.txt" (
-    echo Windows Flutter build files are missing. Regenerating them...
-    call "%FLUTTER_CMD%" create --platforms=windows .
-    if errorlevel 1 (
-      echo flutter create windows files failed.
-      popd
-      pause
-      exit /b 1
-    )
-  )
-  call "%FLUTTER_CMD%" pub get
-  if errorlevel 1 (
-    echo flutter pub get failed.
-    popd
-    pause
-    exit /b 1
-  )
-  call "%FLUTTER_CMD%" config --enable-windows-desktop
-  call "%FLUTTER_CMD%" build windows
-  if errorlevel 1 (
-    echo flutter build windows failed.
-    popd
-    pause
-    exit /b 1
-  )
-  popd
 
   set "VIEWER_BUILD_DIR=%VIEWER_DIR%\build\windows\x64\runner\Release"
   set "VIEWER_EXE=%VIEWER_BUILD_DIR%\safety_monitor_viewer.exe"

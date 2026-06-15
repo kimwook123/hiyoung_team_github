@@ -21,6 +21,7 @@ from app.database import (
     get_source,
     list_source_overviews,
     list_sources,
+    prune_legacy_camera_client_variants,
     prune_orphan_source_data,
     reset_source_data,
     upsert_source,
@@ -149,6 +150,12 @@ def upsert_source_route(
     normalized["updated_at"] = datetime.now().isoformat()
 
     saved = upsert_source(DATABASE_PATH, normalized)
+    removed_source_keys = prune_legacy_camera_client_variants(
+        DATABASE_PATH,
+        keep_client_id=client_id,
+    )
+    for removed_source_key in removed_source_keys:
+        server_event_processor.clear_source(removed_source_key)
     realtime_update_hub.publish(
         "source_changed",
         action="upserted",

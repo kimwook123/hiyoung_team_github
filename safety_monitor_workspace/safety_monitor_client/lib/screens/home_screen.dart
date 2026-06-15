@@ -3442,6 +3442,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<String> _resolveClientIdentity() async {
     final configPath = _resolveLegacyClientSettingsFile();
     final currentMachineId = _buildCurrentMachineId();
+    final generated = _buildDefaultClientId();
     try {
       if (await configPath.exists()) {
         final decoded = jsonDecode(await configPath.readAsString());
@@ -3451,7 +3452,8 @@ class _HomeScreenState extends State<HomeScreen> {
               decoded['machine_id']?.toString().trim() ?? '';
           if (configured.isNotEmpty &&
               configuredMachineId.isNotEmpty &&
-              configuredMachineId == currentMachineId) {
+              configuredMachineId == currentMachineId &&
+              configured == generated) {
             return configured;
           }
         }
@@ -3460,7 +3462,6 @@ class _HomeScreenState extends State<HomeScreen> {
       // 설정 파일이 깨져 있어도 아래 기본 식별자로 복구합니다.
     }
 
-    final generated = _buildDefaultClientId();
     await _saveClientIdentityConfig(generated, machineId: currentMachineId);
     return generated;
   }

@@ -421,6 +421,7 @@ class AnalysisSourceManager:
             self.stop_source(source_key, update_desired_running=False)
             delete_source(DATABASE_PATH, source_key)
             delete_source_status(DATABASE_PATH, source_key)
+            prune_orphan_source_data(DATABASE_PATH)
             remote_server_reporter.delete_source(
                 source_key,
                 clear_data=False,

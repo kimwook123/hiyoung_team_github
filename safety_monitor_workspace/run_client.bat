@@ -128,7 +128,7 @@ if errorlevel 1 (
 )
 
 echo Restarting local client runtime if an old one is still running...
-powershell -NoProfile -Command "$pidPath='%CLIENT_DIR%\embedded_backend.pid'; try { if (Test-Path -LiteralPath $pidPath) { $raw = (Get-Content -LiteralPath $pidPath -Raw).Trim(); $backendPid = [int]$raw; $process = Get-Process -Id $backendPid -ErrorAction SilentlyContinue; if ($process) { Stop-Process -Id $backendPid -Force; Write-Host ('Stopped old local client runtime PID ' + $backendPid); Start-Sleep -Seconds 1 }; Remove-Item -LiteralPath $pidPath -Force -ErrorAction SilentlyContinue } } catch { Write-Host ('Old local client runtime cleanup skipped: ' + $_.Exception.Message) }"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%\scripts\stop_client_runtime.ps1" -ClientDir "%CLIENT_DIR%" -Port 8100
 
 echo Checking storage server health at %REMOTE_SERVER_URL% ...
 powershell -NoProfile -Command "try { $u='%REMOTE_SERVER_URL%'.TrimEnd('/') + '/health'; $r = Invoke-WebRequest -UseBasicParsing -Uri $u -TimeoutSec 5; if ($r.StatusCode -eq 200) { Write-Host 'Server health check succeeded.'; exit 0 } else { Write-Host ('Server health check returned HTTP ' + $r.StatusCode); exit 1 } } catch { Write-Host ('Server health check error: ' + $_.Exception.Message); exit 1 }"

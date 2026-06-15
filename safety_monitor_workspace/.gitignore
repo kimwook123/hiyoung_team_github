@@ -63,8 +63,8 @@ runtime_register_response.json
 build/
 **/build/
 
-# Local Flutter SDK copy
-flutter/
+# Local Flutter SDK copy at workspace root
+/flutter/
 
 # Windows build/tool cache archives
 *.7z

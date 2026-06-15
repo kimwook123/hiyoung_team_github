@@ -158,6 +158,8 @@ build_client.bat
 build_viewer.bat
 ```
 
+빌드 배치파일은 실행 전 `flutter clean`으로 이전 PC 경로가 남은 CMake 캐시를 정리합니다. 또한 `windows/flutter/CMakeLists.txt` 같은 Windows Flutter 생성 파일이 누락된 경우 `flutter create --platforms=windows .`로 자동 복구한 뒤 빌드합니다.
+
 ## 주요 파일
 
 - 루트 전체 의존성: `requirements.txt`

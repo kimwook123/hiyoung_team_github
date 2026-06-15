@@ -1,12 +1,14 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 
 set "ORIGINAL_ROOT_DIR=%~dp0"
 if "%ORIGINAL_ROOT_DIR:~-1%"=="\" set "ORIGINAL_ROOT_DIR=%ORIGINAL_ROOT_DIR:~0,-1%"
 set "ROOT_DIR=%ORIGINAL_ROOT_DIR%"
 set "SHORT_BUILD_DRIVE=%SAFETY_MONITOR_BUILD_DRIVE%"
 if "%SHORT_BUILD_DRIVE%"=="" set "SHORT_BUILD_DRIVE=S:"
+if not "%SHORT_BUILD_DRIVE:~-1%"==":" set "SHORT_BUILD_DRIVE=%SHORT_BUILD_DRIVE%:"
 set "MAPPED_SHORT_DRIVE="
+set "JUNCTION_SHORT_ROOT="
 set "PAUSE_ON_EXIT=1"
 if /I "%~1"=="/nopause" set "PAUSE_ON_EXIT=0"
 if /I "%~1"=="--no-pause" set "PAUSE_ON_EXIT=0"
@@ -88,23 +90,41 @@ exit /b 0
 if /I "%SAFETY_MONITOR_DISABLE_SUBST%"=="1" exit /b 0
 if /I "%ORIGINAL_ROOT_DIR:~0,3%"=="%SHORT_BUILD_DRIVE%\" exit /b 0
 
-subst %SHORT_BUILD_DRIVE% > nul 2>&1
-if not errorlevel 1 (
-  for /f "tokens=1,* delims=\: " %%a in ('subst %SHORT_BUILD_DRIVE%') do (
-    echo %SHORT_BUILD_DRIVE% is already in use. Set SAFETY_MONITOR_BUILD_DRIVE to a free drive letter or move the workspace to C:\smw.
-    exit /b 1
+set "DRIVE_CANDIDATES=%SHORT_BUILD_DRIVE% S: R: Q: P: T: Y: Z: X: W: V:"
+for %%D in (%DRIVE_CANDIDATES%) do (
+  set "CANDIDATE_DRIVE=%%D"
+  if /I "!ORIGINAL_ROOT_DIR:~0,3!"=="!CANDIDATE_DRIVE!\" exit /b 0
+  if not exist "!CANDIDATE_DRIVE!\" (
+    subst !CANDIDATE_DRIVE! "%ORIGINAL_ROOT_DIR%" > nul 2>&1
+    if not errorlevel 1 (
+      set "MAPPED_SHORT_DRIVE=!CANDIDATE_DRIVE!"
+      set "ROOT_DIR=!CANDIDATE_DRIVE!"
+      echo Building through short path !ROOT_DIR! to avoid Windows path length issues.
+      exit /b 0
+    )
   )
 )
 
-subst %SHORT_BUILD_DRIVE% "%ORIGINAL_ROOT_DIR%" > nul 2>&1
+call :map_junction_root
+exit /b %ERRORLEVEL%
+
+:map_junction_root
+if /I "%SAFETY_MONITOR_DISABLE_JUNCTION%"=="1" (
+  echo Failed to create a short build path with subst, and junction fallback is disabled.
+  echo Set SAFETY_MONITOR_BUILD_DRIVE to a free drive letter or move the workspace to C:\smw.
+  exit /b 1
+)
+set "JUNCTION_SHORT_ROOT=%SAFETY_MONITOR_BUILD_LINK%"
+if "%JUNCTION_SHORT_ROOT%"=="" set "JUNCTION_SHORT_ROOT=%TEMP%\smw_build"
+if exist "%JUNCTION_SHORT_ROOT%" rmdir "%JUNCTION_SHORT_ROOT%" > nul 2>&1
+cmd /c mklink /J "%JUNCTION_SHORT_ROOT%" "%ORIGINAL_ROOT_DIR%" > nul 2>&1
 if errorlevel 1 (
-  echo Failed to map %ORIGINAL_ROOT_DIR% to %SHORT_BUILD_DRIVE%.
+  echo Failed to create a short build path with subst or junction.
   echo Move the workspace to a short path such as C:\smw and retry.
   exit /b 1
 )
-set "MAPPED_SHORT_DRIVE=%SHORT_BUILD_DRIVE%"
-set "ROOT_DIR=%SHORT_BUILD_DRIVE%"
-echo Building through short path %ROOT_DIR% to avoid Windows path length issues.
+set "ROOT_DIR=%JUNCTION_SHORT_ROOT%"
+echo Building through short junction %ROOT_DIR% to avoid Windows path length issues.
 exit /b 0
 
 :prepare_windows_build_environment
@@ -147,6 +167,9 @@ exit /b 1
 :cleanup_short_root
 if not "%MAPPED_SHORT_DRIVE%"=="" (
   subst %MAPPED_SHORT_DRIVE% /D > nul 2>&1
+)
+if not "%JUNCTION_SHORT_ROOT%"=="" (
+  if exist "%JUNCTION_SHORT_ROOT%" rmdir "%JUNCTION_SHORT_ROOT%" > nul 2>&1
 )
 exit /b 0
 

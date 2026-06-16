@@ -3,7 +3,11 @@ setlocal EnableExtensions
 
 set "ROOT_DIR=%~dp0"
 if "%ROOT_DIR:~-1%"=="\" set "ROOT_DIR=%ROOT_DIR:~0,-1%"
-set "CLIENT_DIR=%ROOT_DIR%\safety_monitor_client"
+set "PROJECT_DIR=%ROOT_DIR%\safety_monitor_client"
+set "PROJECT_REL=safety_monitor_client"
+set "PROJECT_NAME=Client"
+set "INSTALL_TARGET=client"
+set "BUILD_LINK=C:\smw_build_client"
 set "LOCAL_FLUTTER=%ROOT_DIR%\flutter\bin\flutter.bat"
 set "FLUTTER_CMD=flutter"
 set "PAUSE_ON_EXIT=1"
@@ -14,22 +18,43 @@ call :check_workspace_path
 if errorlevel 1 goto :fail
 call :find_flutter
 if errorlevel 1 goto :fail
-call "%ROOT_DIR%\install_dependencies.bat" client
+call "%ROOT_DIR%\install_dependencies.bat" %INSTALL_TARGET%
 if errorlevel 1 goto :fail
 call :prepare_windows_build_environment
 if errorlevel 1 goto :fail
 
-if not exist "%CLIENT_DIR%\pubspec.yaml" (
-  echo Client project not found:
-  echo   %CLIENT_DIR%\pubspec.yaml
+if not exist "%PROJECT_DIR%\pubspec.yaml" (
+  echo %PROJECT_NAME% project not found:
+  echo   %PROJECT_DIR%\pubspec.yaml
   goto :fail
 )
 
-pushd "%CLIENT_DIR%"
+call :prepare_short_link
+if errorlevel 1 goto :fail
+call :build_project "%BUILD_LINK%\%PROJECT_REL%" "%PROJECT_NAME%"
+set "BUILD_RESULT=%ERRORLEVEL%"
+call :release_short_link
+if not "%BUILD_RESULT%"=="0" goto :fail
+
+echo %PROJECT_NAME% build finished.
+if "%PAUSE_ON_EXIT%"=="1" pause
+exit /b 0
+
+:build_project
+set "SHORT_PROJECT_DIR=%~1"
+set "SHORT_PROJECT_NAME=%~2"
+if not exist "%SHORT_PROJECT_DIR%\pubspec.yaml" (
+  echo %SHORT_PROJECT_NAME% project not found through short build path:
+  echo   %SHORT_PROJECT_DIR%\pubspec.yaml
+  exit /b 1
+)
+
+echo Building %SHORT_PROJECT_NAME% through short path %SHORT_PROJECT_DIR%
+pushd "%SHORT_PROJECT_DIR%"
 call "%FLUTTER_CMD%" clean
 if errorlevel 1 (
   popd
-  goto :fail
+  exit /b 1
 )
 
 if not exist "windows\flutter\CMakeLists.txt" (
@@ -37,42 +62,51 @@ if not exist "windows\flutter\CMakeLists.txt" (
   call "%FLUTTER_CMD%" create --platforms=windows .
   if errorlevel 1 (
     popd
-    goto :fail
+    exit /b 1
   )
 )
 
 call "%FLUTTER_CMD%" pub get
 if errorlevel 1 (
   popd
-  goto :fail
+  exit /b 1
 )
 
 call "%FLUTTER_CMD%" config --enable-windows-desktop
 if errorlevel 1 (
   popd
-  goto :fail
+  exit /b 1
 )
 
 call "%FLUTTER_CMD%" build windows
-if errorlevel 1 (
-  popd
-  goto :fail
-)
+set "RESULT=%ERRORLEVEL%"
 popd
-
-echo Client build finished.
-if "%PAUSE_ON_EXIT%"=="1" pause
-exit /b 0
+exit /b %RESULT%
 
 :check_workspace_path
 for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "'%ROOT_DIR%'.Length"`) do set "ROOT_LEN=%%i"
 echo Workspace root: %ROOT_DIR%
 echo Path length: %ROOT_LEN%
 if %ROOT_LEN% GEQ 80 (
-  echo This path is too long. Move the repository near a drive root, e.g. C:\safety_monitor_workspace or D:\safety_monitor_workspace.
+  echo This path is too long. Move the repository near a drive root, e.g. C:\hiyoung_team_github\safety_monitor_workspace or D:\safety_monitor_workspace.
   exit /b 1
 )
 exit /b 0
+
+:prepare_short_link
+call :release_short_link
+cmd /c mklink /J "%BUILD_LINK%" "%ROOT_DIR%" > nul
+if errorlevel 1 (
+  echo Could not create build junction:
+  echo   %BUILD_LINK% =^> %ROOT_DIR%
+  exit /b 1
+)
+echo Using short build path %BUILD_LINK% mapped to %ROOT_DIR%
+exit /b 0
+
+:release_short_link
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%\scripts\cleanup_build_link.ps1" -Link "%BUILD_LINK%" > nul 2>&1
+exit /b %ERRORLEVEL%
 
 :find_flutter
 if exist "%LOCAL_FLUTTER%" (
@@ -108,6 +142,7 @@ echo Install Visual Studio Build Tools with "Desktop development with C++" and W
 exit /b 1
 
 :fail
-echo Client build failed.
+call :release_short_link
+echo %PROJECT_NAME% build failed.
 if "%PAUSE_ON_EXIT%"=="1" pause
 exit /b 1

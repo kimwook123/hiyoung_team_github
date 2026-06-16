@@ -95,6 +95,11 @@ exit /b 0
 
 :prepare_short_link
 call :release_short_link
+if exist "%BUILD_LINK%" (
+  echo Build link path still exists and could not be removed:
+  echo   %BUILD_LINK%
+  exit /b 1
+)
 cmd /c mklink /J "%BUILD_LINK%" "%ROOT_DIR%" > nul
 if errorlevel 1 (
   echo Could not create build junction:
@@ -105,8 +110,10 @@ echo Using short build path %BUILD_LINK% mapped to %ROOT_DIR%
 exit /b 0
 
 :release_short_link
-powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%\scripts\cleanup_build_link.ps1" -Link "%BUILD_LINK%" > nul 2>&1
-exit /b %ERRORLEVEL%
+if exist "%BUILD_LINK%" (
+  cmd /c rmdir "%BUILD_LINK%" > nul 2>&1
+)
+exit /b 0
 
 :find_flutter
 if exist "%LOCAL_FLUTTER%" (
@@ -146,3 +153,4 @@ call :release_short_link
 echo %PROJECT_NAME% build failed.
 if "%PAUSE_ON_EXIT%"=="1" pause
 exit /b 1
+

@@ -1,4 +1,4 @@
-﻿param(
+param(
     [Parameter(Mandatory = $true)]
     [string]$Link
 )
@@ -14,8 +14,8 @@ try {
 }
 
 if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-    Remove-Item -LiteralPath $Link -Force
-    exit 0
+    cmd /c "rmdir `"$Link`"" | Out-Null
+    exit $LASTEXITCODE
 }
 
 Write-Error "Build link path exists but is not a junction/reparse point: $Link"

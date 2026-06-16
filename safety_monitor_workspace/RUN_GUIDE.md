@@ -14,7 +14,7 @@ D:\safety_monitor_workspace
 C:\hiyoung_team_github\safety_monitor_workspace
 ```
 
-현재 배치파일은 `subst`나 junction 우회를 사용하지 않습니다. 경로가 너무 길면 실행 초기에 중단됩니다.
+빌드 배치파일은 Windows 경로 길이 문제를 줄이기 위해 `C:\smw_build_client`, `C:\smw_build_viewer` 같은 짧은 junction 경로를 임시로 만든 뒤 Flutter Windows 빌드를 실행합니다. 그래도 저장소 자체는 C 또는 D 드라이브 루트 근처의 짧은 실제 경로에 두는 것을 권장합니다.
 
 ## 1. 환경 확인과 의존성 준비
 
@@ -122,6 +122,20 @@ http://127.0.0.1:8100
 
 `run_client.bat` 실행 시 원격 서버 URL을 입력합니다. 원격 PC에서 실행할 때는 서버 PC의 IPv4 주소를 입력합니다.
 
+
+### Windows 빌드 경로 오류 대응
+
+`media_kit_libs_windows_video_ANGLE_EXTRACT.lastbuildstate` 또는 `media_kit_libs_windows_video_LIBMPV_EXTRACT.lastbuildstate` 관련 `MSB3491` 오류는 대부분 코드 문제가 아니라 MSBuild 중간 산출물 경로가 너무 길거나 이전 빌드 산출물이 꼬인 경우입니다.
+
+대응 순서:
+
+```bat
+build_client.bat
+build_viewer.bat
+```
+
+배치파일은 자동으로 `C:\smw_build_client`, `C:\smw_build_viewer` junction을 임시 생성해서 짧은 경로로 빌드합니다. 정상 성공/실패 경로에서는 junction을 즉시 해제하고, `Ctrl+C`나 터미널 강제 종료로 남아도 다음 빌드 실행 시작 시 기존 junction을 먼저 정리합니다. 실패가 계속되면 `safety_monitor_client\build` 또는 `safety_monitor_viewer\build` 폴더를 삭제한 뒤 다시 실행합니다.
+
 ## 5. 빌드
 
 클라이언트:
@@ -164,3 +178,6 @@ build_viewer.bat
 - 서버 메모리상의 진행 중 이벤트 상태
 
 나중에 운영 UI에서는 숨기거나 제거할 수 있습니다.
+
+
+

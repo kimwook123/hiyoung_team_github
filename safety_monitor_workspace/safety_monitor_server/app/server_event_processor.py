@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -6,7 +6,7 @@ from threading import RLock
 from typing import Any
 
 from app.config import DATABASE_PATH
-from app.database import get_source, insert_event
+from app.database import get_source, insert_event, merge_latest_event
 from app.event_normalizer import normalize_event_record
 from app.realtime_hub import realtime_update_hub
 from app.server_clip_recorder import server_clip_recorder
@@ -262,7 +262,11 @@ class ServerEventProcessor:
 
     def _save_event(self, event_record: dict[str, Any]) -> dict[str, Any]:
         normalized = normalize_event_record(event_record)
-        saved_record = insert_event(DATABASE_PATH, normalized)
+        saved_record = None
+        if str(normalized.get("status", "")).strip().upper() == "END":
+            saved_record = merge_latest_event(DATABASE_PATH, normalized)
+        if saved_record is None:
+            saved_record = insert_event(DATABASE_PATH, normalized)
         realtime_update_hub.publish(
             "event_changed",
             source_key=str(saved_record.get("source_key", "")).strip(),
@@ -377,38 +381,48 @@ def _build_danger_zone_candidates(
     danger_zone_roi: tuple[int, int, int, int],
 ) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
-    roi_x1, roi_y1, roi_x2, roi_y2 = roi
+    target_labels = {"helmet", "hardhat", "no_helmet", "nohelmet", "without_helmet", "no helmet"}
     for detection in detections:
-        if str(detection.get("name", "")).strip().lower() != "person":
+        label = str(detection.get("name", "")).strip().lower()
+        if label not in target_labels:
             continue
         box = _normalize_box(detection.get("box"))
-        if box is None:
+        if box is None or not _box_intersects_roi(box, roi):
             continue
-        center_x = int((box["x1"] + box["x2"]) / 2)
-        center_y = int((box["y1"] + box["y2"]) / 2)
-        if not (roi_x1 <= center_x <= roi_x2 and roi_y1 <= center_y <= roi_y2):
-            continue
-        candidates.append(
-            _build_candidate_event(
-                event_type="DANGER_ZONE",
-                level="DANGER",
-                message="위험구역 진입 이벤트 발생",
-                detection=detection,
-                created_at=created_at,
-                frame_id=frame_id,
-                source_key=source_key,
-                source_slug=source_slug,
-                source_type=source_type,
-                source_value=source_value,
-                client_id=client_id,
-                session_id=session_id,
-                source_time_seconds=source_time_seconds,
-                source_time_text=source_time_text,
-                danger_zone_roi=danger_zone_roi,
-            )
+        candidate = _build_candidate_event(
+            event_type="DANGER_ZONE",
+            level="DANGER",
+            message="위험구역 내 안전모/미착용 객체 감지",
+            detection=detection,
+            created_at=created_at,
+            frame_id=frame_id,
+            source_key=source_key,
+            source_slug=source_slug,
+            source_type=source_type,
+            source_value=source_value,
+            client_id=client_id,
+            session_id=session_id,
+            source_time_seconds=source_time_seconds,
+            source_time_text=source_time_text,
+            danger_zone_roi=danger_zone_roi,
         )
+        if _read_int_or_none(detection.get("track_id")) is None:
+            label_key = label.replace(" ", "_")
+            match_key = f"DANGER_ZONE:{label_key}"
+            candidate["match_key"] = match_key
+            candidate["event_key"] = f"{match_key}:start:{frame_id}"
+        candidates.append(candidate)
     return candidates
 
+
+def _box_intersects_roi(box: dict[str, int], roi: tuple[int, int, int, int]) -> bool:
+    roi_x1, roi_y1, roi_x2, roi_y2 = roi
+    return not (
+        int(box["x2"]) < roi_x1
+        or int(box["x1"]) > roi_x2
+        or int(box["y2"]) < roi_y1
+        or int(box["y1"]) > roi_y2
+    )
 
 def _build_candidate_event(
     *,
@@ -611,4 +625,3 @@ def _read_int_or_none(value: object) -> int | None:
 
 # 라이브 소스의 END 판정 타이밍을 클라이언트 쪽 clip 종료 기준과 비슷하게 맞춥니다.
 server_event_processor = ServerEventProcessor(end_missing_frames=30)
-

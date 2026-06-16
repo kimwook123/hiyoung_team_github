@@ -1,4 +1,4 @@
-﻿import json
+import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -147,16 +147,21 @@ def merge_latest_event(db_path: Path, event_record: dict) -> dict | None:
     if not event_key or not source_key or not status:
         return None
 
+    target_statuses = [status]
+    if status.upper() == "END":
+        target_statuses = ["START", "END"]
+    placeholders = ", ".join("?" for _ in target_statuses)
+
     with _connect(db_path) as connection:
         row = connection.execute(
-            """
+            f"""
             SELECT id, payload_json
             FROM events
-            WHERE event_key = ? AND source_key = ? AND status = ?
-            ORDER BY id DESC
+            WHERE event_key = ? AND source_key = ? AND status IN ({placeholders})
+            ORDER BY CASE status WHEN 'START' THEN 0 ELSE 1 END, id DESC
             LIMIT 1
             """,
-            (event_key, source_key, status),
+            (event_key, source_key, *target_statuses),
         ).fetchone()
         if row is None:
             return None
@@ -1287,5 +1292,3 @@ def _to_int(value: object, *, default: int = 0) -> int:
         except ValueError:
             return default
     return default
-
-

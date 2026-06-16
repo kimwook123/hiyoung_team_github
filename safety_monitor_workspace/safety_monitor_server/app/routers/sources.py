@@ -128,7 +128,10 @@ def upsert_source_route(
     normalized["client_id"] = client_id
     normalized["session_id"] = session_id
     normalized["desired_running"] = bool(normalized.get("desired_running", False))
-    normalized["rule_config"] = normalize_rule_config(normalized.get("rule_config"))
+    if previous is not None:
+        normalized["rule_config"] = normalize_rule_config(previous.get("rule_config"))
+    else:
+        normalized["rule_config"] = normalize_rule_config(normalized.get("rule_config"))
     normalized["preview_url"] = (
         f"/api/source-streams/{source_key}?single=true"
         if source_key

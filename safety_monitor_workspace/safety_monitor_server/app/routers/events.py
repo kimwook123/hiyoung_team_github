@@ -62,10 +62,7 @@ def create_event(
 
     try:
         saved_record = None
-        if (
-            normalized_record.get("clip_available") is True
-            and str(normalized_record.get("status", "")).strip().upper() == "END"
-        ):
+        if str(normalized_record.get("status", "")).strip().upper() == "END":
             saved_record = merge_latest_event(DATABASE_PATH, normalized_record)
         if saved_record is None:
             saved_record = insert_event(DATABASE_PATH, normalized_record)

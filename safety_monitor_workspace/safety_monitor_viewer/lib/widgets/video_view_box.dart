@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -117,6 +117,7 @@ class VideoViewBox extends StatelessWidget {
                           ? Video(
                               controller: controller.videoController,
                               controls: NoVideoControls,
+                              fit: BoxFit.cover,
                             )
                           : _PreviewFallback(previewImageUrl: previewImageUrl),
                     ),
@@ -633,5 +634,3 @@ class _DangerZonePainter extends CustomPainter {
         isEditing != oldDelegate.isEditing;
   }
 }
-
-

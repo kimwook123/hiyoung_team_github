@@ -1,4 +1,4 @@
-﻿import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 
 import '../adapters/api_event_log_adapter.dart';
 import '../models/api_event_item.dart';
@@ -321,15 +321,9 @@ class ApiEventController extends ChangeNotifier {
   }
 
   List<ApiEventItem> _visibleLogItems(List<ApiEventItem> sourceItems) {
-    return sourceItems
-        .where((item) {
-          final normalizedStatus = item.status.trim().toUpperCase();
-          if (normalizedStatus == 'END' && !item.hasClip) {
-            return false;
-          }
-          return true;
-        })
-        .toList(growable: false);
+    final visibleItems = _latestItemsBySourceAndEventKey(sourceItems)
+      ..sort(_compareByTimeline);
+    return visibleItems;
   }
 
   String _sourceEventKey(String sourceKey, String eventKey) {
@@ -430,4 +424,3 @@ class ApiEventController extends ChangeNotifier {
     }
   }
 }
-

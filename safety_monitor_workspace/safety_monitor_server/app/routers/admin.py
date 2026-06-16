@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Body, HTTPException
+﻿from fastapi import APIRouter, Body, HTTPException
 
 from app.config import (
     DATABASE_PATH,
     SERVER_CLIP_DIR,
+    SERVER_EVENT_THUMBNAIL_DIR,
     ensure_server_dirs,
 )
-from app.database import reset_source_data
+from app.database import clear_all_event_data, reset_source_data
 from app.server_event_processor import server_event_processor
 from app.schemas import ResetDataResponse
 
@@ -30,6 +31,7 @@ def reset_data(
         source_key=source_key,
         source_slug=source_slug,
         server_clip_dir=SERVER_CLIP_DIR,
+        server_thumbnail_dir=SERVER_EVENT_THUMBNAIL_DIR,
     )
     server_event_processor.clear_source(source_key)
 
@@ -40,3 +42,28 @@ def reset_data(
         deleted_event_count=deleted_event_count,
         deleted_clip_count=deleted_clip_count,
     )
+
+@router.post("/clear-events")
+def clear_events() -> dict[str, object]:
+    ensure_server_dirs()
+    deleted_event_count, deleted_frame_count, _ = clear_all_event_data(DATABASE_PATH)
+    deleted_clip_count = 0
+    for clip_path in SERVER_CLIP_DIR.glob("*.mp4"):
+        if clip_path.is_file():
+            clip_path.unlink(missing_ok=True)
+            deleted_clip_count += 1
+    deleted_thumbnail_count = 0
+    for thumbnail_path in SERVER_EVENT_THUMBNAIL_DIR.glob("*.jp*g"):
+        if thumbnail_path.is_file():
+            thumbnail_path.unlink(missing_ok=True)
+            deleted_thumbnail_count += 1
+    server_event_processor.clear_all()
+    return {
+        "ok": True,
+        "deleted_event_count": deleted_event_count,
+        "deleted_frame_count": deleted_frame_count,
+        "deleted_clip_count": deleted_clip_count,
+        "deleted_thumbnail_count": deleted_thumbnail_count,
+    }
+
+

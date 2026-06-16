@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
@@ -201,6 +201,16 @@ class EventApiService {
     }
   }
 
+
+  Future<bool> clearAllEventData() async {
+    final uri = _buildUri('/api/admin/clear-events', const {});
+    try {
+      final response = await _client.post(uri);
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
   Future<List<SourceItem>> fetchSources() async {
     final uri = _buildUri('/api/sources', const {});
     try {
@@ -472,3 +482,4 @@ class EventApiService {
     return trimmed;
   }
 }
+

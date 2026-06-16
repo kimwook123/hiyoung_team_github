@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+﻿import 'package:flutter/foundation.dart';
 
 import '../adapters/api_event_log_adapter.dart';
 import '../models/api_event_item.dart';
@@ -153,6 +153,29 @@ class ApiEventController extends ChangeNotifier {
     }
   }
 
+
+  Future<bool> clearAllEventData() async {
+    isLoading = true;
+    errorMessage = null;
+    notifyListeners();
+    try {
+      final ok = await _service.clearAllEventData();
+      if (ok) {
+        items = const [];
+        selectedKeys.clear();
+        lastUpdatedAt = DateTime.now();
+      } else {
+        errorMessage = '이벤트 DB/클립 초기화에 실패했습니다.';
+      }
+      return ok;
+    } catch (error) {
+      errorMessage = '이벤트 DB/클립 초기화에 실패했습니다: $error';
+      return false;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
   List<EventLogItem> getLogItemsForTime(double secondsValue) {
     return apiEventsToLogItems(getItemsForTime(secondsValue));
   }
@@ -407,3 +430,4 @@ class ApiEventController extends ChangeNotifier {
     }
   }
 }
+

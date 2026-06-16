@@ -15,6 +15,7 @@ class EventLogItem {
     required this.endFrameText,
     required this.durationText,
     required this.clipPathText,
+    required this.thumbnailUrlText,
     required this.messageText,
     required this.rawText,
   });
@@ -33,6 +34,7 @@ class EventLogItem {
   final String endFrameText;
   final String durationText;
   final String clipPathText;
+  final String thumbnailUrlText;
   final String messageText;
   final String rawText;
 
@@ -56,6 +58,7 @@ class EventLogItem {
       timeText.trim(),
       frameText.trim(),
       clipPathText.trim(),
+      thumbnailUrlText.trim(),
     ].join('|');
   }
 
@@ -121,6 +124,7 @@ class EventLogItem {
       endFrameText: values['end_frame'] ?? '-',
       durationText: values['duration'] ?? '-',
       clipPathText: values['clip_path'] ?? '-',
+      thumbnailUrlText: values['thumbnail_url'] ?? '-',
       messageText: values['message'] ?? '',
       rawText: line,
     );

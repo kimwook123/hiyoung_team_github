@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -20,7 +20,6 @@ import '../models/video_overlay_detection.dart';
 import '../services/event_api_service.dart';
 import '../services/embedded_backend_service.dart';
 import '../widgets/event_log_box.dart';
-import '../widgets/video_control_bar.dart';
 import '../widgets/video_view_box.dart';
 
 // 메인 화면입니다.
@@ -188,34 +187,15 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          return Scrollbar(
-            controller: appScrollController,
-            thumbVisibility: true,
-            child: SingleChildScrollView(
-              controller: appScrollController,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: math.max(0, constraints.maxHeight - 32),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          children: [
-                            _buildEngineProgressPanel(),
-                            _buildClientApiControls(),
-                            const SizedBox(height: 12),
-                            _buildVideoGridPanel(),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+            child: Column(
+              children: [
+                _buildEngineProgressPanel(),
+                _buildClientApiControls(),
+                const SizedBox(height: 8),
+                Expanded(child: _buildVideoGridPanel()),
+              ],
             ),
           );
         },
@@ -225,7 +205,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildClientApiControls() {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
       decoration: BoxDecoration(
         border: Border.all(color: Colors.black12),
         borderRadius: BorderRadius.circular(8),
@@ -239,19 +219,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 'Server Connection',
                 style: Theme.of(context).textTheme.titleSmall,
               ),
-              const Spacer(),
-              FilledButton(
-                onPressed: () => unawaited(_refreshClientRuntimeConfig()),
-                child: const Text('Refresh Runtime'),
-              ),
-              const SizedBox(width: 8),
-              FilledButton(
-                onPressed: _refreshApiEvents,
-                child: const Text('Refresh Events'),
-              ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Row(
             children: [
               Expanded(
@@ -265,14 +235,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
               OutlinedButton(
                 onPressed: () => unawaited(_applyRemoteServerBaseUrl()),
                 child: const Text('Apply Server'),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           AnimatedBuilder(
             animation: apiEventFeed,
             builder: (context, _) {
@@ -560,19 +530,15 @@ class _HomeScreenState extends State<HomeScreen> {
       return _buildPanelCard(
         title: '실시간 모니터',
         child: const Center(child: Text('0번 카메라를 준비하는 중입니다.')),
+        expandChild: true,
       );
     }
 
     final slot = _sourceSlots.first;
     return _buildPanelCard(
       title: '실시간 모니터',
-      trailing: Text(
-        '카메라 0',
-        style: Theme.of(
-          context,
-        ).textTheme.bodySmall?.copyWith(color: Colors.white60),
-      ),
-      child: AspectRatio(aspectRatio: 16 / 9, child: _buildVideoTile(slot)),
+      child: _buildVideoTile(slot),
+      expandChild: true,
     );
   }
 
@@ -583,8 +549,8 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, _) {
         return VideoViewBox(
           controller: slot.controller,
-          title: slot.label,
-          badgeText: _describeSlotStatus(slot),
+          title: '',
+          badgeText: '',
           badgeColor: _colorForSlotStatus(slot),
           isSelected: isSelected,
           onTap: () => unawaited(_setActiveSlot(slot.slotId)),
@@ -592,19 +558,49 @@ class _HomeScreenState extends State<HomeScreen> {
           overlayDetections: const [],
           overlaySourceWidth: _getOverlaySourceWidthForSlot(slot),
           overlaySourceHeight: _getOverlaySourceHeightForSlot(slot),
-          overlayStatusText: _buildTileStatusText(slot),
+          overlayStatusText: _buildStartupProgressText(slot),
           previewImageUrl: _buildPreviewImageUrlForSlot(slot),
           dangerZoneRoi: isSelected ? _activeRuleConfig.dangerZoneRoi : null,
           enableDangerZoneEditing: isSelected && isEditingDangerZone,
           onDangerZoneChanged: isSelected ? _handleDangerZoneChanged : null,
-          footer: Column(
-            children: [
-              VideoControlBar(controller: slot.controller, compact: true),
-            ],
-          ),
         );
       },
     );
+  }
+
+
+  String _buildStartupProgressText(_SourcePanelSlot slot) {
+    final backend = EmbeddedBackendService.instance;
+    if (backend.isPreparingEngine) {
+      return backend.engineProgressMessage.trim().isEmpty
+          ? 'TensorRT engine을 준비하는 중입니다.'
+          : backend.engineProgressMessage.trim();
+    }
+    if (backend.isStarting && !backend.isRunning) {
+      return '내장 분석 백엔드를 시작하고 health 응답을 기다리는 중입니다.';
+    }
+    if (_isEnsuringCameraSource) {
+      return '0번 카메라 소스를 서버에 등록하고 분석 시작을 요청하는 중입니다.';
+    }
+    final sourceKey = slot.sourceKey.trim();
+    final status = sourceStatusesByKey[sourceKey];
+    if (status == null) {
+      return '카메라 소스 상태를 동기화하는 중입니다.';
+    }
+    if (status.errorMessage.trim().isNotEmpty) {
+      return '';
+    }
+    final state = status.state.trim().toLowerCase();
+    if (state == 'starting' || state == 'registered') {
+      return '카메라 입력과 분석 런타임을 준비하는 중입니다.';
+    }
+    if (state == 'model_loading' || state == 'loading') {
+      return '객체탐지 모델을 로딩하는 중입니다.';
+    }
+    if (!status.isRunning && !slot.controller.hasVideo) {
+      return '로컬 프리뷰 스트림을 연결하는 중입니다.';
+    }
+    return '';
   }
 
   // ignore: unused_element
@@ -623,6 +619,7 @@ class _HomeScreenState extends State<HomeScreen> {
             builder: (context, _) {
               return EventLogBox(
                 eventFeed: apiEventFeed,
+                baseUrl: remoteEventApiService.baseUrl,
                 onTapItem: _onTapEventItem,
               );
             },
@@ -865,7 +862,7 @@ class _HomeScreenState extends State<HomeScreen> {
               if (trailing case final Widget trailingWidget) trailingWidget,
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           if (expandChild) Expanded(child: child) else child,
         ],
       ),
@@ -1263,6 +1260,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
+  // ignore: unused_element
   String _buildTileStatusText(_SourcePanelSlot slot) {
     final runtimeStatus = sourceStatusesByKey[slot.sourceKey.trim()];
     if (slot.controller.errorText.trim().isNotEmpty) {
@@ -1357,10 +1355,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _handleDangerZoneChanged(RoiRect roi) {
-    final nextConfig = _activeRuleConfig.copyWith(
-      useDangerZoneRule: true,
-      dangerZoneRoi: roi,
-    );
+    final nextConfig = _activeRuleConfig.copyWith(dangerZoneRoi: roi);
     unawaited(_saveRuleConfig(nextConfig));
   }
 
@@ -3846,3 +3841,6 @@ class _ClipTargetBinding {
   final VideoPanelController controller;
   final bool preserveReturnContext;
 }
+
+
+

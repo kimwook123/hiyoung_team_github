@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -91,17 +91,19 @@ class VideoEventOverlay extends StatelessWidget {
     final videoAspect = sourceWidth / sourceHeight;
     final boundsAspect = bounds.width / bounds.height;
 
+    // The preview frame is rendered with BoxFit.cover, so overlays must use the
+    // same geometry. The resolved rect may extend outside the visible bounds.
     if (videoAspect >= boundsAspect) {
-      final displayWidth = bounds.width;
-      final displayHeight = displayWidth / videoAspect;
-      final top = (bounds.height - displayHeight) / 2;
-      return Rect.fromLTWH(0, top, displayWidth, displayHeight);
+      final displayHeight = bounds.height;
+      final displayWidth = displayHeight * videoAspect;
+      final left = (bounds.width - displayWidth) / 2;
+      return Rect.fromLTWH(left, 0, displayWidth, displayHeight);
     }
 
-    final displayHeight = bounds.height;
-    final displayWidth = displayHeight * videoAspect;
-    final left = (bounds.width - displayWidth) / 2;
-    return Rect.fromLTWH(left, 0, displayWidth, displayHeight);
+    final displayWidth = bounds.width;
+    final displayHeight = displayWidth / videoAspect;
+    final top = (bounds.height - displayHeight) / 2;
+    return Rect.fromLTWH(0, top, displayWidth, displayHeight);
   }
 
   Widget _buildDetectionBox(
@@ -165,3 +167,4 @@ class VideoEventOverlay extends StatelessWidget {
     return videoRect.top + (clamped / sourceHeight) * videoRect.height;
   }
 }
+

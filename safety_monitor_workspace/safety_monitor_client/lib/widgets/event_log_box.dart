@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../controllers/event_feed_source.dart';
 import '../models/event_log_item.dart';
@@ -10,10 +10,12 @@ class EventLogBox extends StatelessWidget {
     super.key,
     required this.eventFeed,
     required this.onTapItem,
+    this.baseUrl = '',
   });
 
   final EventFeedSource eventFeed;
   final void Function(EventLogItem item) onTapItem;
+  final String baseUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -95,3 +97,4 @@ class _LogTile extends StatelessWidget {
     );
   }
 }
+

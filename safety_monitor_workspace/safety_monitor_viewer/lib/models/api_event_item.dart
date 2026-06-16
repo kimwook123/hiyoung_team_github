@@ -1,3 +1,5 @@
+﻿import 'source_rule_config.dart';
+
 // 이 파일은 FastAPI 서버 응답을 담는 모델입니다.
 // API 모드에서는 서버 DB에서 읽은 이벤트 JSON이 이 구조로 들어옵니다.
 class ApiEventItem {
@@ -20,6 +22,8 @@ class ApiEventItem {
     required this.clipUrl,
     required this.serverClipPath,
     required this.serverClipName,
+    required this.thumbnailUrl,
+    required this.thumbnailName,
     required this.clipUploadOk,
     required this.clipAvailable,
     required this.preferredClipSource,
@@ -29,6 +33,7 @@ class ApiEventItem {
     required this.startedFrameId,
     required this.endedFrameId,
     required this.relatedDetections,
+    required this.dangerZoneRoi,
   });
 
   final String eventKey;
@@ -48,6 +53,8 @@ class ApiEventItem {
   final String clipUrl;
   final String serverClipPath;
   final String serverClipName;
+  final String thumbnailUrl;
+  final String thumbnailName;
   final bool clipUploadOk;
   final bool clipAvailable;
   final String preferredClipSource;
@@ -57,6 +64,7 @@ class ApiEventItem {
   final int? startedFrameId;
   final int? endedFrameId;
   final List<Map<String, dynamic>> relatedDetections;
+  final RoiRect? dangerZoneRoi;
 
   // 서버 clip_url/server_clip_path가 있거나, 레거시 local clipPath가 있으면 재생 가능한 클립이 있다고 봅니다.
   bool get hasClip =>
@@ -81,6 +89,8 @@ class ApiEventItem {
       clipUrl: _toStringValue(json['clip_url']),
       serverClipPath: _toStringValue(json['server_clip_path']),
       serverClipName: _toStringValue(json['server_clip_name']),
+      thumbnailUrl: _toStringValue(json['thumbnail_url']),
+      thumbnailName: _toStringValue(json['thumbnail_name']),
       clipUploadOk: _toBoolValue(json['clip_upload_ok']),
       clipAvailable: _toBoolValue(json['clip_available']),
       preferredClipSource: _toStringValue(json['preferred_clip_source']),
@@ -90,6 +100,7 @@ class ApiEventItem {
       startedFrameId: _toIntValue(json['started_frame_id']),
       endedFrameId: _toIntValue(json['ended_frame_id']),
       relatedDetections: _toDetectionList(json['related_detections']),
+      dangerZoneRoi: RoiRect.fromJsonOrNull(json['danger_zone_roi']),
     );
   }
 
@@ -155,3 +166,4 @@ class ApiEventItem {
     return items;
   }
 }
+

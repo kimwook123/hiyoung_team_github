@@ -183,7 +183,6 @@ class ServerEventProcessor:
                 frame_id=frame_id,
                 source_time_seconds=source_time_seconds,
                 source_time_text=source_time_text,
-                danger_zone_roi=danger_zone_roi,
             ):
                 candidates[str(event["match_key"])] = event
         if bool(rule_config.get("use_danger_zone_rule", False)) and danger_zone_roi is not None:
@@ -287,7 +286,6 @@ def _build_no_helmet_candidates(
     frame_id: int,
     source_time_seconds: float,
     source_time_text: str,
-    danger_zone_roi: tuple[int, int, int, int],
 ) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     no_helmet_labels = {"no_helmet", "nohelmet", "without_helmet", "no helmet"}
@@ -406,6 +404,7 @@ def _build_danger_zone_candidates(
                 session_id=session_id,
                 source_time_seconds=source_time_seconds,
                 source_time_text=source_time_text,
+                danger_zone_roi=danger_zone_roi,
             )
         )
     return candidates
@@ -612,11 +611,4 @@ def _read_int_or_none(value: object) -> int | None:
 
 # 라이브 소스의 END 판정 타이밍을 클라이언트 쪽 clip 종료 기준과 비슷하게 맞춥니다.
 server_event_processor = ServerEventProcessor(end_missing_frames=30)
-
-
-
-
-
-
-
 

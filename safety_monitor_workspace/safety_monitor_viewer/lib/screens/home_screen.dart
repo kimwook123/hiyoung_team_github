@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -1164,7 +1164,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   title: const Text('위험구역 룰'),
                   subtitle: Text(
                     ruleConfig.useDangerZoneRule
-                        ? '현재 저장된 ROI 기준으로 이벤트를 판정합니다.'
+                        ? '현재는 ROI 저장/표시만 적용됩니다.'
                         : 'OFF 상태에서도 ROI 편집/저장은 가능합니다.',
                   ),
                   onChanged: (value) {
@@ -4078,18 +4078,3 @@ class _ClipTargetBinding {
   final VideoPanelController controller;
   final bool preserveReturnContext;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

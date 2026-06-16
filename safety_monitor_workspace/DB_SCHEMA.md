@@ -1,4 +1,4 @@
-﻿# 서버 DB 스키마 문서
+# 서버 DB 스키마 문서
 
 이 문서는 `safety_monitor_server`의 SQLite DB가 무엇을 저장하는지 설명합니다.
 
@@ -184,7 +184,8 @@
 
 - `NO_HELMET`
 - `DANGER_ZONE`
-- 이벤트 `START` / `END`
+- 이벤트 `START` / `END` 상태
+- 같은 `source_key + event_key`의 이벤트는 START로 생성된 행을 END로 갱신해 하나의 이벤트 수명주기로 관리합니다.
 
 ### 주요 컬럼
 

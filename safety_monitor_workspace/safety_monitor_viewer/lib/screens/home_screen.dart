@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -77,6 +77,9 @@ class _HomeScreenState extends State<HomeScreen> {
   bool pendingRealtimeStatusesRefresh = false;
   bool isSavingRuleConfig = false;
   bool isEditingDangerZone = false;
+  bool isClearingEventData = false;
+  RoiRect? pendingDangerZoneRoi;
+  String _maximizedSlotId = '';
   int _ruleConfigSaveTicket = 0;
   int previewRefreshCacheBust = 0;
 
@@ -163,40 +166,38 @@ class _HomeScreenState extends State<HomeScreen> {
                 context,
               ).textTheme.bodyMedium?.copyWith(color: Colors.white70),
             ),
+            const SizedBox(width: 12),
+            OutlinedButton.icon(
+              onPressed: isClearingEventData ? null : () => unawaited(_confirmClearEventData()),
+              icon: isClearingEventData
+                  ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.delete_sweep_outlined, size: 16),
+              label: const Text('DB Clear'),
+            ),
           ],
         ),
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          return Scrollbar(
-            controller: appScrollController,
-            thumbVisibility: true,
-            child: SingleChildScrollView(
-              controller: appScrollController,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: math.max(0, constraints.maxHeight - 32),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(width: 220, child: _buildCameraListPanel()),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
                     children: [
-                      Expanded(
-                        child: Column(
-                          children: [
-                            _buildViewerServerControls(),
-                            const SizedBox(height: 12),
-                            _buildViewerVideoGridPanel(),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      SizedBox(width: 420, child: _buildInspectorPanel()),
+                      _buildViewerServerControls(),
+                      const SizedBox(height: 8),
+                      Expanded(child: _buildViewerVideoGridPanel()),
                     ],
                   ),
                 ),
-              ),
+                const SizedBox(width: 10),
+                SizedBox(width: 360, child: _buildInspectorPanel()),
+              ],
             ),
           );
         },
@@ -340,7 +341,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildViewerServerControls() {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
       decoration: BoxDecoration(
         border: Border.all(color: Colors.black12),
         borderRadius: BorderRadius.circular(8),
@@ -354,14 +355,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 'Server Connection',
                 style: Theme.of(context).textTheme.titleSmall,
               ),
-              const Spacer(),
-              FilledButton(
-                onPressed: _refreshApiEvents,
-                child: const Text('Refresh Events'),
-              ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Row(
             children: [
               Expanded(
@@ -375,14 +371,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
               OutlinedButton(
                 onPressed: () => unawaited(_applyServerBaseUrl()),
                 child: const Text('Apply Server'),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           AnimatedBuilder(
             animation: apiEventFeed,
             builder: (context, _) {
@@ -687,6 +683,82 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+
+  Widget _buildCameraListPanel() {
+    return _buildPanelCard(
+      title: '카메라',
+      child: _sourceSlots.isEmpty
+          ? const Center(child: Text('연결된 카메라가 없습니다.'))
+          : ListView.separated(
+              itemCount: _sourceSlots.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final slot = _sourceSlots[index];
+                final isSelected = slot.slotId == _activeSlotId;
+                final sourceKey = slot.sourceKey.trim();
+                final status = sourceStatusesByKey[sourceKey];
+                final overview = sourceOverviewsByKey[sourceKey];
+                final title = _buildCameraDisplayName(slot, index);
+                final subtitle = _resolveClientConnectionStatus(slot).label;
+                return Material(
+                  color: isSelected
+                      ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.14)
+                      : const Color(0xFF11151B),
+                  borderRadius: BorderRadius.circular(8),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () => unawaited(_toggleActiveSlot(slot.slotId)),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      child: Row(
+                        children: [
+                          _buildConnectionStatusDot(slot),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  status?.state.trim().isNotEmpty == true
+                                      ? '${status!.state} · $subtitle'
+                                      : (overview?.state.trim().isNotEmpty == true
+                                          ? '${overview!.state} · $subtitle'
+                                          : subtitle),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Colors.white60,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+      expandChild: true,
+    );
+  }
+
+  String _buildCameraDisplayName(_SourcePanelSlot slot, int index) {
+    final source = registeredSourcesByKey[slot.sourceKey.trim()];
+    final cameraValue = (source?.sourceValue ?? slot.sourceValue).trim();
+    final cameraSuffix = cameraValue.isEmpty ? '' : ' · #$cameraValue';
+    return '카메라 ${index + 1}$cameraSuffix';
+  }
   Widget _buildViewerVideoGridPanel() {
     if (_sourceSlots.isEmpty) {
       return _buildPanelCard(
@@ -696,26 +768,26 @@ class _HomeScreenState extends State<HomeScreen> {
             'Uploaded sources from every connected client will appear here.',
           ),
         ),
+        expandChild: true,
       );
     }
 
-    final visibleSlots = _sourceSlots.take(4).toList(growable: false);
+    final maximizedSlot = _maximizedSlotId.isEmpty
+        ? null
+        : _findSourceSlotById(_maximizedSlotId);
+    final visibleSlots = maximizedSlot == null
+        ? _sourceSlots.toList(growable: false)
+        : <_SourcePanelSlot>[maximizedSlot];
     return _buildPanelCard(
       title: 'Live Monitoring',
-      trailing: Text(
-        '${visibleSlots.length} / 4',
-        style: Theme.of(
-          context,
-        ).textTheme.bodySmall?.copyWith(color: Colors.white60),
-      ),
       child: GridView.builder(
-        shrinkWrap: true,
+        padding: EdgeInsets.zero,
         physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 12,
-          crossAxisSpacing: 12,
-          childAspectRatio: 16 / 9,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: maximizedSlot == null ? 2 : 1,
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          childAspectRatio: maximizedSlot == null ? 16 / 9 : 1.65,
         ),
         itemCount: visibleSlots.length,
         itemBuilder: (context, index) {
@@ -723,6 +795,7 @@ class _HomeScreenState extends State<HomeScreen> {
           return _buildVideoTile(slot);
         },
       ),
+      expandChild: true,
     );
   }
 
@@ -741,64 +814,182 @@ class _HomeScreenState extends State<HomeScreen> {
             sessionId: overview?.sessionId ?? runtimeStatus?.sessionId ?? '',
             sourceValue: slot.sourceValue,
           ),
-          badgeText: _describeSlotStatus(slot),
-          badgeColor: _colorForSlotStatus(slot),
+          badgeText: '',
           isSelected: isSelected,
-          onTap: () => unawaited(_setActiveSlot(slot.slotId)),
+          onTap: () => unawaited(_toggleActiveSlot(slot.slotId)),
           overlayItems: const [],
           overlayDetections: const [],
           overlaySourceWidth: _getOverlaySourceWidthForSlot(slot),
           overlaySourceHeight: _getOverlaySourceHeightForSlot(slot),
-          overlayStatusText: _buildTileStatusText(slot),
+          overlayStatusText: _buildStartupProgressText(slot),
           previewImageUrl: _buildPreviewImageUrlForSlot(slot),
-          dangerZoneRoi: isSelected ? _activeRuleConfig.dangerZoneRoi : null,
+          dangerZoneRoi: isSelected ? _visibleDangerZoneRoiForSlot(slot) : null,
           enableDangerZoneEditing: isSelected && isEditingDangerZone,
           onDangerZoneChanged: isSelected ? _handleDangerZoneChanged : null,
-          footer: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _buildViewerMonitorChip(
-                    '진행',
-                    _buildSourceProgressText(
-                      registeredSourcesByKey[sourceKey],
-                      runtimeStatus,
-                    ),
-                  ),
-                  _buildViewerMonitorChip(
-                    '최근 갱신',
-                    _formatViewerUpdatedAt(
-                      runtimeStatus?.updatedAt ?? overview?.updatedAt ?? '',
-                    ),
-                  ),
-                  _buildViewerMonitorChip(
-                    '프레임',
-                    runtimeStatus == null || runtimeStatus.lastFrameId < 0
-                        ? '-'
-                        : runtimeStatus.lastFrameId.toString(),
-                  ),
-                  _buildViewerMonitorChip(
-                    '이벤트',
-                    _countEventsForSource(sourceKey).toString(),
-                  ),
-                  if (slot.controller.canReturnFromReplay)
-                    ActionChip(
-                      label: const Text('클립 닫기'),
-                      onPressed: () =>
-                          unawaited(slot.controller.returnToLive()),
-                    ),
-                ],
-              ),
-            ],
-          ),
+          overlayAction: _buildVideoTileActions(slot),
         );
       },
     );
   }
 
+  Widget _buildVideoTileActions(_SourcePanelSlot slot) {
+    final isMaximized = _maximizedSlotId == slot.slotId;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildConnectionStatusDot(slot),
+        const SizedBox(width: 6),
+        if (slot.controller.isReplayMode)
+          _buildOverlayIconButton(
+            tooltip: '클립 닫기',
+            icon: Icons.close,
+            onPressed: () => unawaited(_closeReplayForSlot(slot)),
+          ),
+        if (slot.controller.isReplayMode) const SizedBox(width: 6),
+        _buildOverlayIconButton(
+          tooltip: isMaximized ? '원래 크기' : '최대화',
+          icon: isMaximized ? Icons.fullscreen_exit : Icons.fullscreen,
+          onPressed: () {
+            setState(() {
+              _maximizedSlotId = isMaximized ? '' : slot.slotId;
+            });
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildConnectionStatusDot(_SourcePanelSlot slot) {
+    final status = _resolveClientConnectionStatus(slot);
+    return Tooltip(
+      message: status.label,
+      child: Container(
+        width: 16,
+        height: 16,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.65),
+          shape: BoxShape.circle,
+        ),
+        alignment: Alignment.center,
+        child: Container(
+          width: 9,
+          height: 9,
+          decoration: BoxDecoration(
+            color: status.color,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: status.color.withValues(alpha: 0.45),
+                blurRadius: 8,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOverlayIconButton({
+    required String tooltip,
+    required IconData icon,
+    required VoidCallback onPressed,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.black.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: onPressed,
+          child: SizedBox(
+            width: 30,
+            height: 30,
+            child: Icon(icon, size: 18, color: Colors.white),
+          ),
+        ),
+      ),
+    );
+  }
+
+
+
+  RoiRect? _visibleDangerZoneRoiForSlot(_SourcePanelSlot slot) {
+    if (isEditingDangerZone && slot.slotId == _activeSlotId) {
+      return pendingDangerZoneRoi ?? _ruleConfigForSlot(slot).dangerZoneRoi;
+    }
+    final eventRoi = selectedApiEventDetail?.dangerZoneRoi;
+    if (slot.controller.isReplayMode &&
+        selectedApiEventDetail?.sourceKey.trim() == slot.sourceKey.trim() &&
+        eventRoi != null) {
+      return eventRoi;
+    }
+    return _ruleConfigForSlot(slot).dangerZoneRoi;
+  }
+
+  Future<void> _toggleDangerZoneEditing() async {
+    final source = _activeSourceItem;
+    if (source == null) {
+      _showInfoSnack('먼저 카메라를 선택해 주세요.');
+      return;
+    }
+    if (!isEditingDangerZone) {
+      setState(() {
+        pendingDangerZoneRoi = source.ruleConfig.dangerZoneRoi;
+        isEditingDangerZone = true;
+      });
+      return;
+    }
+
+    final nextRoi = pendingDangerZoneRoi;
+    setState(() {
+      isEditingDangerZone = false;
+      pendingDangerZoneRoi = null;
+    });
+    if (nextRoi != null) {
+      await _saveRuleConfig(_activeRuleConfig.copyWith(dangerZoneRoi: nextRoi));
+    }
+  }
+  SourceRuleConfig _ruleConfigForSlot(_SourcePanelSlot slot) {
+    return registeredSourcesByKey[slot.sourceKey.trim()]?.ruleConfig ??
+        const SourceRuleConfig(
+          useNoHelmetRule: true,
+          useDangerZoneRule: false,
+          dangerZoneRoi: null,
+        );
+  }
+
+  String _buildStartupProgressText(_SourcePanelSlot slot) {
+    if (slot.controller.errorText.trim().isNotEmpty) {
+      return '';
+    }
+    if (slot.controller.isReplayMode) {
+      return '';
+    }
+    final sourceKey = slot.sourceKey.trim();
+    final runtimeStatus = sourceStatusesByKey[sourceKey];
+    final overview = sourceOverviewsByKey[sourceKey];
+    if (runtimeStatus == null) {
+      return _hasViewerHistory(overview) ? '' : '서버에 소스를 등록하고 첫 상태를 기다리는 중입니다.';
+    }
+    if (_isViewerSourceOffline(runtimeStatus, overview)) {
+      return '';
+    }
+    final state = runtimeStatus.state.trim().toLowerCase();
+    if (state == 'starting' || state == 'registered') {
+      return '클라이언트가 카메라와 분석 런타임을 준비하는 중입니다.';
+    }
+    if (state == 'model_loading' || state == 'loading') {
+      return '객체탐지 모델을 로딩하는 중입니다.';
+    }
+    if (!runtimeStatus.isRunning && !slot.controller.hasVideo) {
+      return '실시간 프리뷰 스트림을 연결하는 중입니다.';
+    }
+    return '';
+  }
+
+  // ignore: unused_element
   Widget _buildViewerMonitorChip(String label, String value) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
@@ -816,6 +1007,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ignore: unused_element
   int _countEventsForSource(String sourceKey) {
     final normalized = sourceKey.trim();
     if (normalized.isEmpty) {
@@ -826,6 +1018,7 @@ class _HomeScreenState extends State<HomeScreen> {
         .length;
   }
 
+  // ignore: unused_element
   String _formatViewerUpdatedAt(String value) {
     final parsed = DateTime.tryParse(value.trim());
     if (parsed == null) {
@@ -840,28 +1033,25 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildSelectedSourceSummaryPanel(),
-        const SizedBox(height: 12),
-        _buildRuleConfigPanel(),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 420,
+        Expanded(
           child: AnimatedBuilder(
             animation: apiEventFeed,
             builder: (context, _) {
               return EventLogBox(
                 eventFeed: apiEventFeed,
+                baseUrl: eventApiService.baseUrl,
                 onTapItem: _onTapEventItem,
               );
             },
           ),
         ),
-        const SizedBox(height: 12),
-        _buildApiDetailPanel(),
+        const SizedBox(height: 10),
+        _buildRuleConfigPanel(),
       ],
     );
   }
 
+  // ignore: unused_element
   Widget _buildSelectedSourceSummaryPanel() {
     final source = _activeSourceItem;
     final status = source == null
@@ -973,9 +1163,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   contentPadding: EdgeInsets.zero,
                   title: const Text('위험구역 룰'),
                   subtitle: Text(
-                    ruleConfig.dangerZoneRoi == null
-                        ? '선택 후 영상 위에서 드래그로 구역을 지정하세요.'
-                        : '사람 중심점이 지정 영역 안에 들어오면 이벤트 발생',
+                    ruleConfig.useDangerZoneRule
+                        ? '현재 저장된 ROI 기준으로 이벤트를 판정합니다.'
+                        : 'OFF 상태에서도 ROI 편집/저장은 가능합니다.',
                   ),
                   onChanged: (value) {
                     unawaited(
@@ -991,11 +1181,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   runSpacing: 8,
                   children: [
                     FilledButton.tonal(
-                      onPressed: () {
-                        setState(() {
-                          isEditingDangerZone = !isEditingDangerZone;
-                        });
-                      },
+                      onPressed: () => unawaited(_toggleDangerZoneEditing()),
                       child: Text(
                         isEditingDangerZone ? '위험구역 편집 종료' : '위험구역 드래그 편집',
                       ),
@@ -1004,6 +1190,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       onPressed: ruleConfig.dangerZoneRoi == null
                           ? null
                           : () {
+                              setState(() {
+                                pendingDangerZoneRoi = null;
+                              });
                               unawaited(
                                 _saveRuleConfig(
                                   ruleConfig.copyWith(clearDangerZoneRoi: true),
@@ -1014,6 +1203,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ],
                 ),
+                if (pendingDangerZoneRoi != null && isEditingDangerZone) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '편집 중 ROI: (${pendingDangerZoneRoi!.x1}, ${pendingDangerZoneRoi!.y1}) - (${pendingDangerZoneRoi!.x2}, ${pendingDangerZoneRoi!.y2})',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.orangeAccent),
+                  ),
+                ],
                 if (ruleConfig.dangerZoneRoi != null) ...[
                   const SizedBox(height: 8),
                   Text(
@@ -1223,6 +1419,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildApiDetailPanel() {
     // 이벤트 목록 클릭 후 GET /api/events/detail 결과를 요약해서 보여 줍니다.
     return Container(
@@ -1454,6 +1651,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
+  // ignore: unused_element
   String _buildTileStatusText(_SourcePanelSlot slot) {
     final sourceKey = slot.sourceKey.trim();
     final runtimeStatus = sourceStatusesByKey[slot.sourceKey.trim()];
@@ -1550,11 +1748,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _handleDangerZoneChanged(RoiRect roi) {
-    final nextConfig = _activeRuleConfig.copyWith(
-      useDangerZoneRule: true,
-      dangerZoneRoi: roi,
-    );
-    unawaited(_saveRuleConfig(nextConfig));
+    setState(() {
+      pendingDangerZoneRoi = roi;
+    });
   }
 
   String _formatDetectionSummary(Map<String, dynamic> detection) {
@@ -1731,7 +1927,14 @@ class _HomeScreenState extends State<HomeScreen> {
     if (snapshot != null && snapshot.frameWidth > 0) {
       return snapshot.frameWidth.toDouble();
     }
-    return slot.controller.videoWidth.toDouble();
+    if (slot.controller.videoWidth > 0) {
+      return slot.controller.videoWidth.toDouble();
+    }
+    final roi = _ruleConfigForSlot(slot).dangerZoneRoi;
+    if (roi != null) {
+      return math.max(1280, roi.x2).toDouble();
+    }
+    return 0;
   }
 
   String _buildPreviewImageUrlForSlot(_SourcePanelSlot slot) {
@@ -1765,7 +1968,14 @@ class _HomeScreenState extends State<HomeScreen> {
     if (snapshot != null && snapshot.frameHeight > 0) {
       return snapshot.frameHeight.toDouble();
     }
-    return slot.controller.videoHeight.toDouble();
+    if (slot.controller.videoHeight > 0) {
+      return slot.controller.videoHeight.toDouble();
+    }
+    final roi = _ruleConfigForSlot(slot).dangerZoneRoi;
+    if (roi != null) {
+      return math.max(720, roi.y2).toDouble();
+    }
+    return 0;
   }
 
   String _effectiveOverlaySourceKey() {
@@ -1864,27 +2074,15 @@ class _HomeScreenState extends State<HomeScreen> {
       await _setActiveSlot(resolvedTargetSlot.slotId);
     }
 
-    final targetSeconds = _resolveEventStartSeconds(sourceItem);
-    if (targetSeconds < 0) {
+    final clipSource = _resolveApiClipSource(sourceItem);
+    if (clipSource.isEmpty) {
+      if (mounted) {
+        _showInfoSnack('이 이벤트에는 재생할 클립이 없습니다.');
+      }
       return;
     }
 
-    final targetController = resolvedTargetSlot.controller;
-    if (targetController.isReplayMode && targetController.canReturnFromReplay) {
-      await targetController.returnToLive();
-    }
-
-    if (targetController.sourceType == 'stream') {
-      await _refreshFrameDetectionsForSource(sourceItem.sourceKey);
-      return;
-    }
-
-    final targetMs = (targetSeconds * 1000).round();
-    final ratio = targetController.totalDuration.inMilliseconds <= 0
-        ? 0.0
-        : targetMs / targetController.totalDuration.inMilliseconds;
-    await targetController.moveToRatio(ratio);
-    await _refreshFrameDetectionsForSource(sourceItem.sourceKey);
+    await _openApiDetailClip(sourceItem);
   }
 
   Future<void> _returnToLive() async {
@@ -1972,6 +2170,58 @@ class _HomeScreenState extends State<HomeScreen> {
     await apiEventController.checkHealth();
   }
 
+  Future<void> _confirmClearEventData() async {
+    if (isClearingEventData) {
+      return;
+    }
+    final shouldClear = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('DB Clear'),
+          content: const Text('저장된 이벤트 DB, 클립, 프리뷰 이미지를 모두 삭제할까요?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('삭제'),
+            ),
+          ],
+        );
+      },
+    );
+    if (shouldClear != true || !mounted) {
+      return;
+    }
+
+    setState(() {
+      isClearingEventData = true;
+    });
+    final ok = await apiEventController.clearAllEventData();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      isClearingEventData = false;
+      selectedApiEventDetail = null;
+      apiDetailErrorMessage = null;
+      frameDetectionSnapshots = const [];
+      frameDetectionBySourceKey = const {};
+    });
+    apiEventFeed.clearSelection();
+    if (ok) {
+      await _refreshApiEventsIfNeeded();
+      if (mounted) {
+        _showInfoSnack('이벤트 DB와 클립을 정리했습니다.');
+      }
+    } else if (mounted) {
+      _showInfoSnack(apiEventController.errorMessage ?? '이벤트 DB 정리에 실패했습니다.');
+    }
+  }
+
   Future<void> _applyServerBaseUrl() async {
     final nextBaseUrl = serverBaseUrlTextController.text.trim();
     if (nextBaseUrl.isEmpty) {
@@ -2031,6 +2281,7 @@ class _HomeScreenState extends State<HomeScreen> {
       sourceStatusesByKey = const {};
       frameDetectionSourceKey = '';
       isEditingDangerZone = false;
+      pendingDangerZoneRoi = null;
       previewRefreshCacheBust = DateTime.now().millisecondsSinceEpoch;
     });
   }
@@ -2430,6 +2681,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_activeSlotId == slotId) {
         _activeSlotId = _sourceSlots.isEmpty ? '' : _sourceSlots.last.slotId;
       }
+      if (_maximizedSlotId == slotId) {
+        _maximizedSlotId = '';
+      }
       selectedApiEventDetail = null;
       apiDetailErrorMessage = null;
       frameDetectionSnapshots = const [];
@@ -2493,6 +2747,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_activeSlotId == removedSlot.slotId) {
         _activeSlotId = _sourceSlots.isEmpty ? '' : _sourceSlots.last.slotId;
       }
+      if (_maximizedSlotId == removedSlot.slotId) {
+        _maximizedSlotId = '';
+      }
       selectedApiEventDetail = null;
       apiDetailErrorMessage = null;
       frameDetectionSnapshots = const [];
@@ -2538,6 +2795,7 @@ class _HomeScreenState extends State<HomeScreen> {
       frameDetectionLogModifiedAt = null;
       frameDetectionSourceKey = nextSourceKey;
       isEditingDangerZone = false;
+      pendingDangerZoneRoi = null;
     });
     apiEventFeed.setSourceKeyFilter(nextSourceKey);
     await _syncSlotAudioFocus();
@@ -2545,6 +2803,51 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_refreshApiEventsIfNeeded());
     unawaited(_syncActiveSlotFrameRateIfNeeded());
     unawaited(_refreshFrameDetectionsIfNeeded());
+  }
+
+  Future<void> _toggleActiveSlot(String slotId) async {
+    if (_activeSlotId == slotId) {
+      setState(() {
+        _activeSlotId = '';
+        selectedApiEventDetail = null;
+        apiDetailErrorMessage = null;
+        frameDetectionSnapshots = const [];
+        frameDetectionLogModifiedAt = null;
+        frameDetectionSourceKey = '';
+        isEditingDangerZone = false;
+      pendingDangerZoneRoi = null;
+      });
+      apiEventFeed.setSourceKeyFilter('');
+      apiEventFeed.clearSelection();
+      unawaited(_refreshApiEventsIfNeeded());
+      return;
+    }
+    await _setActiveSlot(slotId);
+  }
+
+  _SourcePanelSlot? _findSourceSlotById(String slotId) {
+    final normalized = slotId.trim();
+    if (normalized.isEmpty) {
+      return null;
+    }
+    for (final slot in _sourceSlots) {
+      if (slot.slotId == normalized) {
+        return slot;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _closeReplayForSlot(_SourcePanelSlot slot) async {
+    await slot.controller.closeReplay();
+    apiEventFeed.clearSelection();
+    if (selectedApiEventDetail?.sourceKey.trim() == slot.sourceKey.trim()) {
+      setState(() {
+        selectedApiEventDetail = null;
+        apiDetailErrorMessage = null;
+      });
+    }
+    await _refreshFrameDetectionsForSource(slot.sourceKey);
   }
 
   String _buildSlotLabel({
@@ -2825,6 +3128,9 @@ class _HomeScreenState extends State<HomeScreen> {
         ..addAll(nextSlots);
       if (removedActive) {
         _activeSlotId = _sourceSlots.isEmpty ? '' : _sourceSlots.last.slotId;
+      }
+      if (!_sourceSlots.any((slot) => slot.slotId == _maximizedSlotId)) {
+        _maximizedSlotId = '';
       }
       selectedApiEventDetail = null;
       apiDetailErrorMessage = null;
@@ -3243,6 +3549,63 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  _ClientConnectionStatus _resolveClientConnectionStatus(
+    _SourcePanelSlot slot,
+  ) {
+    if (slot.controller.errorText.trim().isNotEmpty) {
+      return const _ClientConnectionStatus(
+        color: Colors.redAccent,
+        label: '클라이언트 연결 오류',
+      );
+    }
+
+    final sourceKey = slot.sourceKey.trim();
+    final runtimeStatus = sourceStatusesByKey[sourceKey];
+    final overview = sourceOverviewsByKey[sourceKey];
+    if (runtimeStatus == null) {
+      if (_hasViewerHistory(overview)) {
+        return const _ClientConnectionStatus(
+          color: Colors.redAccent,
+          label: '클라이언트 오프라인',
+        );
+      }
+      return const _ClientConnectionStatus(
+        color: Colors.orangeAccent,
+        label: '클라이언트 연결 대기',
+      );
+    }
+
+    if (_isViewerSourceOffline(runtimeStatus, overview)) {
+      return const _ClientConnectionStatus(
+        color: Colors.redAccent,
+        label: '클라이언트 오프라인',
+      );
+    }
+
+    final runtimeState = runtimeStatus.state.trim().toLowerCase();
+    if (runtimeStatus.errorMessage.trim().isNotEmpty ||
+        runtimeState == 'error') {
+      return const _ClientConnectionStatus(
+        color: Colors.redAccent,
+        label: '클라이언트 오류',
+      );
+    }
+
+    if (runtimeStatus.isRunning ||
+        runtimeState == 'running' ||
+        runtimeState == 'analyzing') {
+      return const _ClientConnectionStatus(
+        color: Colors.green,
+        label: '클라이언트 연결됨',
+      );
+    }
+
+    return const _ClientConnectionStatus(
+      color: Colors.orangeAccent,
+      label: '클라이언트 연결됨 · 분석 대기',
+    );
+  }
+
   // ignore: unused_element
   int _countActiveViewerClients() {
     final activeClientIds = <String>{};
@@ -3439,6 +3802,7 @@ class _HomeScreenState extends State<HomeScreen> {
         frameDetectionLogModifiedAt = null;
         frameDetectionSourceKey = '';
         isEditingDangerZone = false;
+      pendingDangerZoneRoi = null;
       });
       if (mounted) {
         _showInfoSnack('소스 선택을 해제하고 전체 이벤트 로그 보기로 전환했습니다.');
@@ -3453,6 +3817,7 @@ class _HomeScreenState extends State<HomeScreen> {
       frameDetectionLogModifiedAt = null;
       frameDetectionSourceKey = '';
       isEditingDangerZone = false;
+      pendingDangerZoneRoi = null;
     });
     unawaited(_refreshApiEventsIfNeeded());
   }
@@ -3697,6 +4062,13 @@ class _SourcePanelSlot {
   final VideoPanelController controller;
 }
 
+class _ClientConnectionStatus {
+  const _ClientConnectionStatus({required this.color, required this.label});
+
+  final Color color;
+  final String label;
+}
+
 class _ClipTargetBinding {
   const _ClipTargetBinding({
     required this.controller,
@@ -3706,3 +4078,18 @@ class _ClipTargetBinding {
   final VideoPanelController controller;
   final bool preserveReturnContext;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

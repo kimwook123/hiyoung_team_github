@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -27,6 +27,7 @@ class VideoViewBox extends StatelessWidget {
     this.isSelected = false,
     this.onTap,
     this.footer,
+    this.overlayAction,
     this.dangerZoneRoi,
     this.enableDangerZoneEditing = false,
     this.onDangerZoneChanged,
@@ -45,6 +46,7 @@ class VideoViewBox extends StatelessWidget {
   final bool isSelected;
   final VoidCallback? onTap;
   final Widget? footer;
+  final Widget? overlayAction;
   final RoiRect? dangerZoneRoi;
   final bool enableDangerZoneEditing;
   final ValueChanged<RoiRect>? onDangerZoneChanged;
@@ -136,30 +138,36 @@ class VideoViewBox extends StatelessWidget {
                       ),
                     ),
                     if (overlayStatusText.isNotEmpty)
-                      Positioned(
-                        left: 12,
-                        right: 12,
-                        bottom: 12,
-                        child: DecoratedBox(
+                      Center(
+                        child: Container(
+                          width: 260,
+                          constraints: const BoxConstraints(maxWidth: 320),
+                          padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: Colors.black87,
-                            borderRadius: BorderRadius.circular(8),
+                            color: Colors.black.withValues(alpha: 0.78),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.white24),
                           ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            child: Text(
-                              overlayStatusText,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const LinearProgressIndicator(minHeight: 3),
+                              const SizedBox(height: 10),
+                              Text(
+                                overlayStatusText,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                            ),
+                            ],
                           ),
                         ),
                       ),
+                    if (overlayAction != null)
+                      Positioned(top: 8, right: 8, child: overlayAction!),
                   ],
                 ),
               ),
@@ -527,17 +535,19 @@ class _DangerZoneOverlayState extends State<_DangerZoneOverlay> {
     final videoAspect = widget.sourceWidth / widget.sourceHeight;
     final boundsAspect = bounds.width / bounds.height;
 
+    // The preview frame is rendered with BoxFit.cover, so overlays must use the
+    // same geometry. The resolved rect may extend outside the visible bounds.
     if (videoAspect >= boundsAspect) {
-      final displayWidth = bounds.width;
-      final displayHeight = displayWidth / videoAspect;
-      final top = (bounds.height - displayHeight) / 2;
-      return Rect.fromLTWH(0, top, displayWidth, displayHeight);
+      final displayHeight = bounds.height;
+      final displayWidth = displayHeight * videoAspect;
+      final left = (bounds.width - displayWidth) / 2;
+      return Rect.fromLTWH(left, 0, displayWidth, displayHeight);
     }
 
-    final displayHeight = bounds.height;
-    final displayWidth = displayHeight * videoAspect;
-    final left = (bounds.width - displayWidth) / 2;
-    return Rect.fromLTWH(left, 0, displayWidth, displayHeight);
+    final displayWidth = bounds.width;
+    final displayHeight = displayWidth / videoAspect;
+    final top = (bounds.height - displayHeight) / 2;
+    return Rect.fromLTWH(0, top, displayWidth, displayHeight);
   }
 
   int _displayXToSource(double value, Rect videoRect) {
@@ -623,3 +633,5 @@ class _DangerZonePainter extends CustomPainter {
         isEditing != oldDelegate.isEditing;
   }
 }
+
+

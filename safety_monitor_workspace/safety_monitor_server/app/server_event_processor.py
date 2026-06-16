@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -34,6 +34,7 @@ class _ActiveEventState:
     source_time_text: str
     started_source_time_text: str
     related_detections: list[dict[str, Any]]
+    danger_zone_roi: dict[str, int] | None = None
     missed_frames: int = 0
 
 
@@ -86,6 +87,7 @@ class ServerEventProcessor:
                         related_detections=_normalize_detections(
                             candidate.get("related_detections")
                         ),
+                        danger_zone_roi=_normalize_roi_dict(candidate.get("danger_zone_roi")),
                     )
                     active_map[match_key] = state
                     saved_events.append(self._save_event(self._build_start_event(candidate)))
@@ -98,6 +100,7 @@ class ServerEventProcessor:
                 active_state.related_detections = _normalize_detections(
                     candidate.get("related_detections")
                 )
+                active_state.danger_zone_roi = _normalize_roi_dict(candidate.get("danger_zone_roi"))
                 active_state.missed_frames = 0
 
             ended_keys: list[str] = []
@@ -140,6 +143,11 @@ class ServerEventProcessor:
             self._active_by_source_key.pop(normalized_source_key, None)
         server_clip_recorder.clear_source(normalized_source_key)
 
+    def clear_all(self) -> None:
+        with self._lock:
+            self._active_by_source_key.clear()
+        server_clip_recorder.clear_all()
+
     def _build_candidates(
         self,
         *,
@@ -160,6 +168,7 @@ class ServerEventProcessor:
         source_time_text = str(frame_record.get("source_time_text", "")).strip()
 
         candidates: dict[str, dict[str, Any]] = {}
+        danger_zone_roi = to_roi_tuple(rule_config.get("danger_zone_roi"))
 
         if bool(rule_config.get("use_no_helmet_rule", True)):
             for event in _build_no_helmet_candidates(
@@ -174,10 +183,9 @@ class ServerEventProcessor:
                 frame_id=frame_id,
                 source_time_seconds=source_time_seconds,
                 source_time_text=source_time_text,
+                danger_zone_roi=danger_zone_roi,
             ):
                 candidates[str(event["match_key"])] = event
-
-        danger_zone_roi = to_roi_tuple(rule_config.get("danger_zone_roi"))
         if bool(rule_config.get("use_danger_zone_rule", False)) and danger_zone_roi is not None:
             for event in _build_danger_zone_candidates(
                 detections=detections,
@@ -192,6 +200,7 @@ class ServerEventProcessor:
                 frame_id=frame_id,
                 source_time_seconds=source_time_seconds,
                 source_time_text=source_time_text,
+                danger_zone_roi=danger_zone_roi,
             ):
                 candidates[str(event["match_key"])] = event
 
@@ -239,6 +248,7 @@ class ServerEventProcessor:
             "started_source_time_text": state.started_source_time_text,
             "ended_source_time_text": state.source_time_text,
             "related_detections": list(state.related_detections),
+            "danger_zone_roi": state.danger_zone_roi,
         }
 
     def _build_clip_fields(self, state: _ActiveEventState) -> dict[str, object]:
@@ -277,6 +287,7 @@ def _build_no_helmet_candidates(
     frame_id: int,
     source_time_seconds: float,
     source_time_text: str,
+    danger_zone_roi: tuple[int, int, int, int],
 ) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     no_helmet_labels = {"no_helmet", "nohelmet", "without_helmet", "no helmet"}
@@ -365,6 +376,7 @@ def _build_danger_zone_candidates(
     frame_id: int,
     source_time_seconds: float,
     source_time_text: str,
+    danger_zone_roi: tuple[int, int, int, int],
 ) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     roi_x1, roi_y1, roi_x2, roi_y2 = roi
@@ -415,6 +427,7 @@ def _build_candidate_event(
     session_id: str,
     source_time_seconds: float,
     source_time_text: str,
+    danger_zone_roi: tuple[int, int, int, int] | None = None,
 ) -> dict[str, Any]:
     person_id = _read_int_or_none(detection.get("track_id"))
     if person_id is None:
@@ -449,9 +462,28 @@ def _build_candidate_event(
         "started_source_time_text": source_time_text,
         "ended_source_time_text": "",
         "related_detections": [_normalize_detection(detection)],
+        "danger_zone_roi": _roi_tuple_to_dict(danger_zone_roi),
     }
 
 
+def _roi_tuple_to_dict(value: tuple[int, int, int, int] | None) -> dict[str, int] | None:
+    if value is None:
+        return None
+    x1, y1, x2, y2 = value
+    return {"x1": int(x1), "y1": int(y1), "x2": int(x2), "y2": int(y2)}
+
+
+def _normalize_roi_dict(value: object) -> dict[str, int] | None:
+    if not isinstance(value, dict):
+        return None
+    try:
+        x1 = int(value.get("x1"))
+        y1 = int(value.get("y1"))
+        x2 = int(value.get("x2"))
+        y2 = int(value.get("y2"))
+    except (TypeError, ValueError):
+        return None
+    return {"x1": min(x1, x2), "y1": min(y1, y2), "x2": max(x1, x2), "y2": max(y1, y2)}
 def _normalize_detections(value: object) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
@@ -580,3 +612,11 @@ def _read_int_or_none(value: object) -> int | None:
 
 # 라이브 소스의 END 판정 타이밍을 클라이언트 쪽 clip 종료 기준과 비슷하게 맞춥니다.
 server_event_processor = ServerEventProcessor(end_missing_frames=30)
+
+
+
+
+
+
+
+

@@ -1,20 +1,28 @@
-# AI_TODO.md
+﻿# AI_TODO.md
 
-## Short-term
+## 확인 필요
 
-- [ ] 서버 시작 시 기존 `sources` 중 미완료 파일 영상 복구와 스트림/CCTV 재시도 흐름을 실제 시나리오로 검증
-- [ ] 멀티소스 동시 분석 시 처리량과 지연을 다시 측정
-- [ ] 이벤트/클립/프레임 탐지 정리 정책 보강
-- [ ] `run_gui_only.bat`의 Flutter/VS/SDK 자동 설치 시나리오를 새 PC에서 실제 검증
+- [ ] 새 PC에서 `check_environment.bat` 결과 확인
+- [ ] 새 PC에서 `install_dependencies.bat all` 검증
+- [ ] 새 PC에서 `build_client.bat` 검증
+- [ ] 새 PC에서 `build_viewer.bat` 검증
+- [ ] 서버 PC 방화벽 8000 허용 여부 확인
+- [ ] 원격 PC에서 `http://<서버IP>:8000/health` 접근 확인
 
-## Mid-term
+## 기능 점검
 
-- [ ] source별 권한/소유권 정책이 필요한지 검토
-- [ ] 서버 source 목록과 GUI 로컬 슬롯 복구 UX를 연결할지 검토
-- [ ] 서버 IP 자동 발견 또는 고정 호스트명 전략 검토
+- [ ] 뷰어 좌측 카메라 리스트 선택/선택 해제 검증
+- [ ] 이벤트 로그 전체/선택 카메라 필터 검증
+- [ ] 이벤트 썸네일 표시 검증
+- [ ] 이벤트 클릭 시 해당 타일 클립 재생 검증
+- [ ] 위험구역 이벤트 클립에서 ROI 오버레이 검증
+- [ ] ROI 드래그 후 편집 종료 시 저장 검증
+- [ ] ROI 저장이 위험구역 룰 토글을 자동 ON 하지 않는지 검증
+- [ ] DB Clear가 이벤트 DB/클립/썸네일을 정리하는지 검증
 
-## Long-term
+## 설계 TODO
 
-- [ ] SQLite에서 PostgreSQL 등 서버형 DB 전환 검토
-- [ ] WebSocket/SSE push 기반 UI 갱신 구조 검토
-- [ ] 멀티 GUI 클라이언트 인증/권한 구조 설계
+- [ ] `source_key`와 사용자 표시명 분리 설계
+- [ ] `camera_slot_id`/`display_name` 영구 저장 설계
+- [ ] PC 교체 시 새 클라이언트를 기존 카메라 슬롯에 재매핑하는 UI 설계
+- [ ] 클라이언트 headless 실행 전환 검토

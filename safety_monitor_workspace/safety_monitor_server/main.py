@@ -18,6 +18,7 @@ from app.database import init_db
 from app.log_utils import log_line
 from app.routers.admin import router as admin_router
 from app.routers.clips import router as clips_router
+from app.routers.event_thumbnails import router as event_thumbnails_router
 from app.routers.events import router as events_router
 from app.routers.frame_detections import router as frame_detections_router
 from app.routers.realtime import router as realtime_router
@@ -57,6 +58,7 @@ app.add_middleware(
 
 app.include_router(events_router)
 app.include_router(clips_router)
+app.include_router(event_thumbnails_router)
 app.include_router(admin_router)
 app.include_router(frame_detections_router)
 app.include_router(source_status_router)

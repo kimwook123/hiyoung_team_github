@@ -1,4 +1,4 @@
-import json
+﻿import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -839,7 +839,14 @@ def set_source_desired_running(
     return upsert_source(db_path, record)
 
 
-def reset_source_data(db_path: Path, *, source_key: str, source_slug: str, server_clip_dir: Path) -> tuple[bool, int, int]:
+
+def clear_all_event_data(db_path: Path) -> tuple[int, int, int]:
+    with _connect(db_path) as connection:
+        deleted_event_count = connection.execute("DELETE FROM events").rowcount
+        deleted_frame_count = connection.execute("DELETE FROM frame_detections").rowcount
+        connection.execute("DELETE FROM frame_detections_latest")
+    return deleted_event_count, deleted_frame_count, 0
+def reset_source_data(db_path: Path, *, source_key: str, source_slug: str, server_clip_dir: Path, server_thumbnail_dir: Path | None = None) -> tuple[bool, int, int]:
     removed_records = list_events(db_path, source_key=source_key)
     kept_records = list_events(db_path)
     kept_records = [
@@ -889,7 +896,38 @@ def reset_source_data(db_path: Path, *, source_key: str, source_slug: str, serve
             clip_path.unlink()
             deleted_clip_count += 1
 
+    if server_thumbnail_dir is not None:
+        remaining_thumbnail_names = {
+            thumbnail_name
+            for thumbnail_name in (_extract_thumbnail_name(record) for record in kept_records)
+            if thumbnail_name
+        }
+        removed_thumbnail_names = {
+            thumbnail_name
+            for thumbnail_name in (_extract_thumbnail_name(record) for record in removed_records)
+            if thumbnail_name and thumbnail_name not in remaining_thumbnail_names
+        }
+        for thumbnail_name in removed_thumbnail_names:
+            thumbnail_path = server_thumbnail_dir / thumbnail_name
+            if thumbnail_path.exists() and thumbnail_path.is_file():
+                thumbnail_path.unlink()
+        if source_slug:
+            for thumbnail_path in server_thumbnail_dir.glob(f"{source_slug}__*.jp*g"):
+                if not thumbnail_path.is_file() or thumbnail_path.name in remaining_thumbnail_names:
+                    continue
+                thumbnail_path.unlink()
+
     return bool(removed_records), deleted_event_count, deleted_clip_count
+
+
+def _extract_thumbnail_name(record: dict) -> str:
+    thumbnail_name = str(record.get("thumbnail_name", "")).strip()
+    if thumbnail_name:
+        return thumbnail_name
+    thumbnail_url = str(record.get("thumbnail_url", "")).strip()
+    if not thumbnail_url:
+        return ""
+    return thumbnail_url.replace("\\", "/").rstrip("/").split("/")[-1]
 
 
 def migrate_legacy_analysis_paths(
@@ -1249,3 +1287,5 @@ def _to_int(value: object, *, default: int = 0) -> int:
         except ValueError:
             return default
     return default
+
+

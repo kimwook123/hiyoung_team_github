@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import hashlib
 import re
@@ -11,7 +11,7 @@ from threading import RLock
 import cv2
 import numpy as np
 
-from app.config import SERVER_CLIP_DIR
+from app.config import SERVER_CLIP_DIR, SERVER_EVENT_THUMBNAIL_DIR
 
 
 @dataclass(frozen=True)
@@ -101,6 +101,8 @@ class ServerClipRecorder:
             ended_at=ended_at,
         )
         clip_path = (self.clip_dir / clip_name).resolve()
+        thumbnail_name = f"{Path(clip_name).stem}.jpg"
+        thumbnail_path = (SERVER_EVENT_THUMBNAIL_DIR / thumbnail_name).resolve()
 
         height, width = decoded_frames[0].shape[:2]
         fps = self._estimate_fps(selected)
@@ -125,16 +127,27 @@ class ServerClipRecorder:
             clip_path.unlink(missing_ok=True)
             return None
 
+        try:
+            SERVER_EVENT_THUMBNAIL_DIR.mkdir(parents=True, exist_ok=True)
+            thumbnail_path.write_bytes(selected[0].jpeg_bytes)
+        except OSError:
+            thumbnail_name = ""
+
         return {
             "clip_path": str(clip_path),
             "clip_url": f"/api/clips/{clip_name}",
             "server_clip_name": clip_name,
             "server_clip_path": f"clips/{clip_name}",
+            "thumbnail_url": f"/api/event-thumbnails/{thumbnail_name}" if thumbnail_name else "",
+            "thumbnail_name": thumbnail_name,
             "clip_available": True,
             "clip_upload_ok": True,
             "preferred_clip_source": "server",
         }
 
+    def clear_all(self) -> None:
+        with self._lock:
+            self._frames_by_source_key.clear()
     def clear_source(self, source_key: str) -> None:
         normalized_source_key = source_key.strip()
         if not normalized_source_key:
@@ -182,3 +195,4 @@ def _sanitize_slug(value: str) -> str:
 
 
 server_clip_recorder = ServerClipRecorder(clip_dir=SERVER_CLIP_DIR)
+

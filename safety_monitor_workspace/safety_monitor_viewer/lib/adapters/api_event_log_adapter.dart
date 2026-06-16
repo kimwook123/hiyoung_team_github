@@ -10,6 +10,7 @@ EventLogItem apiEventToLogItem(ApiEventItem item) {
   final typeText = _orDash(item.eventType);
   final levelText = _orDash(item.level);
   final clipPathText = _orDash(item.clipPath);
+  final thumbnailUrlText = _orDash(item.thumbnailUrl);
 
   return EventLogItem(
     timeText: timeText,
@@ -26,6 +27,7 @@ EventLogItem apiEventToLogItem(ApiEventItem item) {
     endFrameText: _nullableIntText(item.endedFrameId),
     durationText: _durationText(item.durationSeconds),
     clipPathText: clipPathText,
+    thumbnailUrlText: thumbnailUrlText,
     messageText: item.message,
     rawText: _buildRawText(item, timeText),
   );
@@ -87,6 +89,7 @@ String _buildRawText(ApiEventItem item, String timeText) {
     'end_frame=${_nullableIntText(item.endedFrameId)}',
     'duration=${_durationText(item.durationSeconds)}',
     'clip_path=${_orDash(item.clipPath)}',
+    'thumbnail_url=${_orDash(item.thumbnailUrl)}',
     'message=${item.message}',
   ].join(',');
 }

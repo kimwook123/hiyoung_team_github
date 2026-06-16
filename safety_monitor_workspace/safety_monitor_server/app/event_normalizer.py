@@ -14,6 +14,8 @@ def normalize_event_record(event_record: dict[str, Any]) -> dict[str, Any]:
     clip_path = _clean_string(normalized.get("clip_path"))
     server_clip_name = _clean_string(normalized.get("server_clip_name"))
     server_clip_path = _clean_string(normalized.get("server_clip_path"))
+    thumbnail_url = _clean_string(normalized.get("thumbnail_url"))
+    thumbnail_name = _clean_string(normalized.get("thumbnail_name"))
 
     if not server_clip_name and clip_url:
         server_clip_name = _extract_clip_name_from_url(clip_url)
@@ -23,6 +25,14 @@ def normalize_event_record(event_record: dict[str, Any]) -> dict[str, Any]:
     if not server_clip_path and server_clip_name:
         server_clip_path = f"clips/{server_clip_name}"
         normalized["server_clip_path"] = server_clip_path
+
+    if not thumbnail_name and thumbnail_url:
+        thumbnail_name = _extract_thumbnail_name_from_url(thumbnail_url)
+        if thumbnail_name:
+            normalized["thumbnail_name"] = thumbnail_name
+
+    if not thumbnail_url and thumbnail_name:
+        normalized["thumbnail_url"] = f"/api/event-thumbnails/{thumbnail_name}"
 
     if clip_url:
         normalized["clip_available"] = True
@@ -63,5 +73,23 @@ def _extract_clip_name_from_url(clip_url: str) -> str:
 
     name = path.name.strip()
     if not name.lower().endswith(".mp4"):
+        return ""
+    return name
+
+
+def _extract_thumbnail_name_from_url(thumbnail_url: str) -> str:
+    path_text = urlsplit(thumbnail_url).path.strip()
+    if not path_text:
+        return ""
+
+    path = PurePosixPath(path_text)
+    parts = [part for part in path.parts if part not in {"", "/"}]
+    if len(parts) < 3:
+        return ""
+    if parts[:2] != ["api", "event-thumbnails"]:
+        return ""
+
+    name = path.name.strip()
+    if not name.lower().endswith((".jpg", ".jpeg")):
         return ""
     return name

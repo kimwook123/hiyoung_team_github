@@ -7,6 +7,7 @@ class SourceItem {
   const SourceItem({
     required this.sourceKey,
     required this.sourceSlug,
+    required this.displayName,
     required this.sourceType,
     required this.sourceValue,
     required this.sourceDurationSeconds,
@@ -25,6 +26,7 @@ class SourceItem {
 
   final String sourceKey;
   final String sourceSlug;
+  final String displayName;
   final String sourceType;
   final String sourceValue;
   final double sourceDurationSeconds;
@@ -44,6 +46,7 @@ class SourceItem {
     return SourceItem(
       sourceKey: json['source_key']?.toString() ?? '',
       sourceSlug: json['source_slug']?.toString() ?? '',
+      displayName: json['display_name']?.toString() ?? '',
       sourceType: json['source_type']?.toString() ?? '',
       sourceValue: json['source_value']?.toString() ?? '',
       sourceDurationSeconds: _toDouble(json['source_duration_seconds']),

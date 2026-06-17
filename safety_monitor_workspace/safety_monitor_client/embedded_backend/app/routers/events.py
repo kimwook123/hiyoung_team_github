@@ -9,13 +9,10 @@ from app.config import DATABASE_PATH
 from app.database import (
     find_events_by_key,
     get_latest_event_by_key,
-    insert_event,
     list_events as list_events_from_db,
     list_latest_events as list_latest_events_from_db,
     list_source_summaries,
 )
-from app.event_normalizer import normalize_event_record
-from app.realtime_hub import realtime_update_hub
 from app.schemas import (
     EventCreateResponse,
     EventDetailResponse,
@@ -26,7 +23,7 @@ from app.schemas import (
 )
 
 # 이 파일은 이벤트 저장/조회 API를 담당합니다.
-# POST /api/events -> normalize_event_record -> SQLite 저장 흐름이 핵심입니다.
+# POST /api/events는 외부 생성 요청을 막고, 이벤트 조회 API만 제공합니다.
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 
@@ -35,48 +32,12 @@ router = APIRouter(prefix="/api/events", tags=["events"])
 def create_event(
     event_record: dict[str, Any] = Body(...),
 ) -> EventCreateResponse:
-    # POST는 서버에 데이터를 보내는 요청입니다.
-    # 여기서는 Python AI Worker가 보낸 이벤트 JSON을 받아 서버 저장소에 기록합니다.
-    if not event_record:
-        raise HTTPException(status_code=400, detail="event record is required")
-
-    normalized_record = dict(event_record)
-
-    event_key = str(normalized_record.get("event_key", "")).strip()
-    if not event_key:
-        raise HTTPException(status_code=400, detail="event_key is required")
-
-    event_type = str(normalized_record.get("event_type", "")).strip()
-    if not event_type:
-        raise HTTPException(status_code=400, detail="event_type is required")
-
-    normalized_record["event_key"] = event_key
-    normalized_record["event_type"] = event_type
-
-    if "message" not in normalized_record or normalized_record["message"] is None:
-        normalized_record["message"] = ""
-
-    status = str(normalized_record.get("status", "")).strip()
-    if not status:
-        normalized_record["status"] = "ACTIVE"
-
-    normalized_record = normalize_event_record(normalized_record)
-
-    try:
-        saved_record = insert_event(DATABASE_PATH, normalized_record)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-    except Exception as error:
-        raise HTTPException(status_code=500, detail="failed to save event") from error
-
-    realtime_update_hub.publish(
-        "event_changed",
-        source_key=str(saved_record.get("source_key", "")).strip(),
-        event_key=str(saved_record.get("event_key", "")).strip(),
-        status=str(saved_record.get("status", "")).strip(),
-        event_type=str(saved_record.get("event_type", "")).strip(),
+    # 클라이언트 내장 백엔드는 이벤트를 생성하지 않습니다.
+    # 이벤트 판정/저장/클립 생성은 중앙 서버가 frame_detections를 받아 처리합니다.
+    raise HTTPException(
+        status_code=410,
+        detail="client does not create events; server derives events from frame detections",
     )
-    return EventCreateResponse(ok=True, item=saved_record)
 
 
 @router.get("", response_model=EventListResponse)

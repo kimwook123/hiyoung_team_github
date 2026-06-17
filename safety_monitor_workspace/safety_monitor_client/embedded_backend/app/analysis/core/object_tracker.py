@@ -27,8 +27,11 @@ class PersonTracker:
 
     def update(self, result: DetectionResult) -> DetectionResult:
         # person 객체에만 추적 ID를 붙여 이후 EventFilter와 로그가 사람별로 동작하게 합니다.
-        # person 객체에만 간단한 ID를 붙인다
-        person_detections = [detection for detection in result.detections if detection.name == "person"]
+        person_detections = [
+            detection
+            for detection in result.detections
+            if detection.name.strip().lower() == "person"
+        ]
         if not person_detections:
             self._increase_missed_frames()
             self._remove_lost_tracks()

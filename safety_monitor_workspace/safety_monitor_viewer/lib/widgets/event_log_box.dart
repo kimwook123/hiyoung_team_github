@@ -1,4 +1,4 @@
-// 여러 화면에서 재사용하는 Flutter 위젯 파일입니다.
+﻿// 여러 화면에서 재사용하는 Flutter 위젯 파일입니다.
 // 부모 화면에서 받은 값과 콜백을 바탕으로 UI를 구성합니다.
 
 import 'package:flutter/material.dart';
@@ -14,11 +14,13 @@ class EventLogBox extends StatefulWidget {
     required this.eventFeed,
     required this.baseUrl,
     required this.onTapItem,
+    this.sourceLabelResolver,
   });
 
   final EventFeedSource eventFeed;
   final String baseUrl;
   final void Function(EventLogItem item) onTapItem;
+  final String Function(String sourceKey)? sourceLabelResolver;
 
   @override
   State<EventLogBox> createState() => _EventLogBoxState();
@@ -75,6 +77,7 @@ class _EventLogBoxState extends State<EventLogBox> {
                             item.selectionKey,
                           ),
                           onTap: () => widget.onTapItem(item),
+                          sourceLabelResolver: widget.sourceLabelResolver,
                         );
                       },
                     ),
@@ -92,12 +95,14 @@ class _LogTile extends StatelessWidget {
     required this.baseUrl,
     required this.isSelected,
     required this.onTap,
+    this.sourceLabelResolver,
   });
 
   final EventLogItem item;
   final String baseUrl;
   final bool isSelected;
   final VoidCallback onTap;
+  final String Function(String sourceKey)? sourceLabelResolver;
 
   @override
   Widget build(BuildContext context) {
@@ -186,6 +191,10 @@ class _LogTile extends StatelessWidget {
   }
 
   String _clientLabel(String sourceKey) {
+    final resolved = sourceLabelResolver?.call(sourceKey).trim() ?? '';
+    if (resolved.isNotEmpty) {
+      return resolved;
+    }
     final match = RegExp(r'owner=([^|]+)').firstMatch(sourceKey);
     final owner = match?.group(1)?.trim() ?? '';
     if (owner.isEmpty) {

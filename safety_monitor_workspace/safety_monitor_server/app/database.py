@@ -81,6 +81,7 @@ def init_db(db_path: Path) -> None:
             CREATE TABLE IF NOT EXISTS sources (
                 source_key TEXT PRIMARY KEY,
                 source_slug TEXT NOT NULL,
+                display_name TEXT NOT NULL DEFAULT '',
                 source_type TEXT NOT NULL,
                 source_value TEXT NOT NULL,
                 original_source_type TEXT NOT NULL,
@@ -94,8 +95,17 @@ def init_db(db_path: Path) -> None:
             );
             """
         )
+        _ensure_source_display_name_column(connection)
     prune_legacy_camera_client_variants(db_path)
 
+
+def _ensure_source_display_name_column(connection: sqlite3.Connection) -> None:
+    columns = {
+        str(row["name"])
+        for row in connection.execute("PRAGMA table_info(sources)").fetchall()
+    }
+    if "display_name" not in columns:
+        connection.execute("ALTER TABLE sources ADD COLUMN display_name TEXT NOT NULL DEFAULT ''")
 
 @contextmanager
 def _connect(db_path: Path) -> Iterator[sqlite3.Connection]:
@@ -601,12 +611,13 @@ def upsert_source(db_path: Path, source_record: dict) -> dict:
         connection.execute(
             """
             INSERT INTO sources (
-                source_key, source_slug, source_type, source_value,
+                source_key, source_slug, display_name, source_type, source_value,
                 original_source_type, original_source_value, client_id, session_id,
                 desired_running, created_at, updated_at, payload_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(source_key) DO UPDATE SET
                 source_slug=excluded.source_slug,
+                display_name=excluded.display_name,
                 source_type=excluded.source_type,
                 source_value=excluded.source_value,
                 original_source_type=excluded.original_source_type,
@@ -620,6 +631,7 @@ def upsert_source(db_path: Path, source_record: dict) -> dict:
             (
                 source_key,
                 str(saved_record.get("source_slug", "")).strip(),
+                str(saved_record.get("display_name", "")).strip(),
                 str(saved_record.get("source_type", "")).strip(),
                 str(saved_record.get("source_value", "")).strip(),
                 str(saved_record.get("original_source_type", "")).strip(),
@@ -703,6 +715,7 @@ def list_source_overviews(
                 "session_id": str(source_payload.get("session_id", "")).strip(),
                 "source_key": str(source_payload.get("source_key", "")).strip(),
                 "source_slug": str(source_payload.get("source_slug", "")).strip(),
+                "display_name": str(source_payload.get("display_name", "")).strip(),
                 "source_type": str(source_payload.get("source_type", "")).strip(),
                 "source_value": str(source_payload.get("source_value", "")).strip(),
                 "source_duration_seconds": _to_float(

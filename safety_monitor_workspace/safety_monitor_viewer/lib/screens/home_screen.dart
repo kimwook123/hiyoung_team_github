@@ -604,13 +604,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      overview == null
-                                          ? slot.label
-                                          : _buildClientCameraTitle(
-                                              clientId: overview.clientId,
-                                              sessionId: overview.sessionId,
-                                              sourceValue: slot.sourceValue,
-                                            ),
+                                      _displayLabelForSlot(slot),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
@@ -721,13 +715,28 @@ class _HomeScreenState extends State<HomeScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                                  ),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                          fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    InkWell(
+                                      borderRadius: BorderRadius.circular(14),
+                                      onTap: () => unawaited(_editDisplayNameForSlot(slot)),
+                                      child: const Padding(
+                                        padding: EdgeInsets.all(3),
+                                        child: Icon(Icons.edit_outlined, size: 15),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                                 const SizedBox(height: 3),
                                 Text(
@@ -757,10 +766,146 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _buildCameraDisplayName(_SourcePanelSlot slot, int index) {
-    final source = registeredSourcesByKey[slot.sourceKey.trim()];
-    final cameraValue = (source?.sourceValue ?? slot.sourceValue).trim();
-    final cameraSuffix = cameraValue.isEmpty ? '' : ' · #$cameraValue';
-    return '카메라 ${index + 1}$cameraSuffix';
+    return _displayLabelForSlot(slot, fallbackIndex: index);
+  }
+
+  String _displayLabelForSlot(_SourcePanelSlot slot, {int? fallbackIndex}) {
+    final sourceKey = slot.sourceKey.trim();
+    final source = registeredSourcesByKey[sourceKey];
+    if (source != null) {
+      return _displayLabelForSource(source, fallbackIndex: fallbackIndex);
+    }
+    final overview = sourceOverviewsByKey[sourceKey];
+    final displayName = overview?.displayName.trim() ?? '';
+    if (displayName.isNotEmpty) {
+      return displayName;
+    }
+    return _buildNewCameraLabel(
+      clientId: overview?.clientId ?? '',
+      sessionId: overview?.sessionId ?? '',
+      sourceValue: slot.sourceValue,
+      fallbackIndex: fallbackIndex,
+    );
+  }
+
+  String _displayLabelForSource(SourceItem source, {int? fallbackIndex}) {
+    final displayName = source.displayName.trim();
+    if (displayName.isNotEmpty) {
+      return displayName;
+    }
+    return _buildNewCameraLabel(
+      clientId: source.clientId,
+      sessionId: source.sessionId,
+      sourceValue: source.sourceValue,
+      fallbackIndex: fallbackIndex,
+    );
+  }
+  String _displayLabelForSourceKey(String sourceKey) {
+    final normalized = sourceKey.trim();
+    if (normalized.isEmpty || normalized == '-') {
+      return '';
+    }
+    final source = registeredSourcesByKey[normalized];
+    if (source != null) {
+      return _displayLabelForSource(source);
+    }
+    final overview = sourceOverviewsByKey[normalized];
+    if (overview != null) {
+      final displayName = overview.displayName.trim();
+      if (displayName.isNotEmpty) {
+        return displayName;
+      }
+      return _buildNewCameraLabel(
+        clientId: overview.clientId,
+        sessionId: overview.sessionId,
+        sourceValue: overview.sourceValue,
+      );
+    }
+    final slot = _findSourceSlotByKey(normalized);
+    if (slot != null) {
+      return _displayLabelForSlot(slot);
+    }
+    return '';
+  }
+
+
+  String _buildNewCameraLabel({
+    required String clientId,
+    required String sessionId,
+    required String sourceValue,
+    int? fallbackIndex,
+  }) {
+    final owner = (clientId.trim().isNotEmpty ? clientId.trim() : sessionId.trim());
+    final cameraValue = sourceValue.trim().isEmpty ? '0' : sourceValue.trim();
+    if (owner.isNotEmpty) {
+      return '새 카메라 감지됨: $owner / camera $cameraValue';
+    }
+    final cameraNumber = fallbackIndex == null ? cameraValue : '${fallbackIndex + 1}';
+    return '새 카메라 $cameraNumber / camera $cameraValue';
+  }
+
+  Future<void> _editDisplayNameForSlot(_SourcePanelSlot slot) async {
+    final sourceKey = slot.sourceKey.trim();
+    if (sourceKey.isEmpty) {
+      return;
+    }
+    final currentSource = registeredSourcesByKey[sourceKey];
+    final currentOverview = sourceOverviewsByKey[sourceKey];
+    final controller = TextEditingController(
+      text: currentSource?.displayName.trim().isNotEmpty == true
+          ? currentSource!.displayName.trim()
+          : (currentOverview?.displayName.trim() ?? ''),
+    );
+    final nextName = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('카메라 이름 편집'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: '표시 이름',
+              hintText: '예: 입구 카메라 또는 기존 표시 이름',
+            ),
+            onSubmitted: (value) => Navigator.of(context).pop(value),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('취소'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(controller.text),
+              child: const Text('저장'),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+    if (nextName == null) {
+      return;
+    }
+    final updated = await eventApiService.updateSourceDisplayName(
+      sourceKey: sourceKey,
+      displayName: nextName,
+    );
+    if (!mounted) {
+      return;
+    }
+    if (updated == null) {
+      _showInfoSnack('카메라 이름 저장에 실패했습니다.');
+      return;
+    }
+    setState(() {
+      registeredSourcesByKey = {
+        ...registeredSourcesByKey,
+        updated.sourceKey: updated,
+      };
+    });
+    await _refreshSourceOverviews();
+    _showInfoSnack('카메라 이름을 저장했습니다.');
   }
   Widget _buildViewerVideoGridPanel() {
     if (_sourceSlots.isEmpty) {
@@ -783,23 +928,60 @@ class _HomeScreenState extends State<HomeScreen> {
         : <_SourcePanelSlot>[maximizedSlot];
     return _buildPanelCard(
       title: 'Live Monitoring',
-      child: GridView.builder(
-        padding: EdgeInsets.zero,
-        physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: maximizedSlot == null ? 2 : 1,
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: maximizedSlot == null ? 16 / 9 : 1.65,
-        ),
-        itemCount: visibleSlots.length,
-        itemBuilder: (context, index) {
-          final slot = visibleSlots[index];
-          return _buildVideoTile(slot);
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final columns = _resolveMonitoringColumnCount(
+            visibleSlots.length,
+            maximized: maximizedSlot != null,
+          );
+          final rows = (visibleSlots.length / columns).ceil().clamp(1, 999);
+          const gap = 10.0;
+          final usableWidth = math.max(
+            1.0,
+            constraints.maxWidth - (gap * (columns - 1)),
+          );
+          final usableHeight = math.max(
+            1.0,
+            constraints.maxHeight - (gap * (rows - 1)),
+          );
+          final tileWidth = usableWidth / columns;
+          final tileHeight = usableHeight / rows;
+          final aspectRatio = maximizedSlot != null
+              ? 1.65
+              : math.max(0.6, math.min(2.2, tileWidth / tileHeight));
+
+          return GridView.builder(
+            padding: EdgeInsets.zero,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: columns,
+              mainAxisSpacing: gap,
+              crossAxisSpacing: gap,
+              childAspectRatio: aspectRatio,
+            ),
+            itemCount: visibleSlots.length,
+            itemBuilder: (context, index) {
+              final slot = visibleSlots[index];
+              return _buildVideoTile(slot);
+            },
+          );
         },
       ),
       expandChild: true,
     );
+  }
+
+  int _resolveMonitoringColumnCount(int itemCount, {required bool maximized}) {
+    if (maximized || itemCount <= 1) {
+      return 1;
+    }
+    if (itemCount <= 4) {
+      return 2;
+    }
+    if (itemCount <= 9) {
+      return 3;
+    }
+    return 4;
   }
 
   Widget _buildVideoTile(_SourcePanelSlot slot) {
@@ -807,16 +989,9 @@ class _HomeScreenState extends State<HomeScreen> {
     return AnimatedBuilder(
       animation: Listenable.merge([slot.controller, apiEventFeed]),
       builder: (context, _) {
-        final sourceKey = slot.sourceKey.trim();
-        final runtimeStatus = sourceStatusesByKey[sourceKey];
-        final overview = sourceOverviewsByKey[sourceKey];
         return VideoViewBox(
           controller: slot.controller,
-          title: _buildClientCameraTitle(
-            clientId: overview?.clientId ?? runtimeStatus?.clientId ?? '',
-            sessionId: overview?.sessionId ?? runtimeStatus?.sessionId ?? '',
-            sourceValue: slot.sourceValue,
-          ),
+          title: _displayLabelForSlot(slot),
           badgeText: '',
           isSelected: isSelected,
           onTap: () => unawaited(_toggleActiveSlot(slot.slotId)),
@@ -1044,6 +1219,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 eventFeed: apiEventFeed,
                 baseUrl: eventApiService.baseUrl,
                 onTapItem: _onTapEventItem,
+                sourceLabelResolver: _displayLabelForSourceKey,
               );
             },
           ),
@@ -1084,7 +1260,7 @@ class _HomeScreenState extends State<HomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  source.sourceSlug,
+                  _displayLabelForSource(source),
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -1151,7 +1327,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   value: ruleConfig.useNoHelmetRule,
                   contentPadding: EdgeInsets.zero,
                   title: const Text('안전모 미착용 룰'),
-                  subtitle: const Text('사람과 helmet/head 탐지 결과 기준'),
+                  subtitle: const Text('NO_Helmet 탐지 결과 기준'),
                   onChanged: (value) {
                     unawaited(
                       _saveRuleConfig(
@@ -1167,7 +1343,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   title: const Text('위험구역 룰'),
                   subtitle: Text(
                     ruleConfig.useDangerZoneRule
-                        ? '현재는 ROI 저장/표시만 적용됩니다.'
+                        ? 'Person 탐지 박스가 ROI와 겹치면 이벤트가 발생합니다.'
                         : 'OFF 상태에서도 ROI 편집/저장은 가능합니다.',
                   ),
                   onChanged: (value) {
@@ -1307,7 +1483,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       radius: 10,
                       backgroundColor: _colorForSlotStatus(slot),
                     ),
-                    label: Text('${slot.label} · ${_describeSlotStatus(slot)}'),
+                    label: Text('${_displayLabelForSlot(slot)} · ${_describeSlotStatus(slot)}'),
                     onSelected: (_) => unawaited(_setActiveSlot(slot.slotId)),
                     onDeleted: () => _confirmRemoveSourceSlot(slot),
                   ),
@@ -1358,7 +1534,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      source.sourceSlug,
+                      _displayLabelForSource(source),
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
                     const SizedBox(height: 4),
@@ -1701,6 +1877,7 @@ class _HomeScreenState extends State<HomeScreen> {
         source.sourceKey: SourceItem(
           sourceKey: source.sourceKey,
           sourceSlug: source.sourceSlug,
+          displayName: source.displayName,
           sourceType: source.sourceType,
           sourceValue: source.sourceValue,
           sourceDurationSeconds: source.sourceDurationSeconds,
@@ -2638,6 +2815,7 @@ class _HomeScreenState extends State<HomeScreen> {
         frameDetectionSourceKey = '';
       });
       if (activate || _activeSlotId == slot.slotId) {
+        apiEventFeed.setSourceKeyFilter(slot.sourceKey.trim());
         unawaited(_refreshApiEventsIfNeeded());
       }
       await _syncSlotAudioFocus();
@@ -3014,6 +3192,7 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _activeSlotId = previousActiveSlotId;
       });
+      apiEventFeed.setSourceKeyFilter(_activeSlot?.sourceKey.trim() ?? '');
       await _syncSlotAudioFocus();
       unawaited(_refreshFrameDetectionsIfNeeded());
       return;
@@ -3023,6 +3202,7 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _activeSlotId = _sourceSlots.first.slotId;
       });
+      apiEventFeed.setSourceKeyFilter(_activeSlot?.sourceKey.trim() ?? '');
       await _syncSlotAudioFocus();
       unawaited(_refreshFrameDetectionsIfNeeded());
     }
@@ -3056,44 +3236,6 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isCameraZeroSource(String sourceType, String sourceValue) {
     return sourceType.trim().toLowerCase() == 'camera' &&
         sourceValue.trim() == '0';
-  }
-
-  String _buildClientCameraTitle({
-    required String clientId,
-    required String sessionId,
-    required String sourceValue,
-  }) {
-    final clientLabel = _formatClientDisplayName(
-      clientId: clientId,
-      sessionId: sessionId,
-    );
-    final cameraLabel = sourceValue.trim().isEmpty ? '0' : sourceValue.trim();
-    return '$clientLabel / Camera $cameraLabel';
-  }
-
-  String _formatClientDisplayName({
-    required String clientId,
-    required String sessionId,
-  }) {
-    final raw = clientId.trim().isNotEmpty ? clientId.trim() : sessionId.trim();
-    if (raw.isEmpty) {
-      return 'Unknown PC';
-    }
-    var label = raw;
-    for (final prefix in ['client_', 'client_host_', 'client_ip_']) {
-      if (label.toLowerCase().startsWith(prefix)) {
-        label = label.substring(prefix.length);
-        break;
-      }
-    }
-    label = label
-        .replaceAll(RegExp(r'[_|]+'), '-')
-        .replaceAll(RegExp(r'-+'), '-')
-        .replaceAll(RegExp(r'^-|-$'), '');
-    if (label.isEmpty) {
-      label = raw;
-    }
-    return 'PC $label';
   }
 
   Future<List<String>> _pruneLocalSlotsForRemovedRegisteredSources(

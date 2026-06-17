@@ -11,7 +11,6 @@ import '../models/client_runtime_config.dart';
 import '../models/api_server_health.dart';
 import '../models/frame_detection_snapshot.dart';
 import '../models/source_item.dart';
-import '../models/source_rule_config.dart';
 import '../models/source_runtime_status.dart';
 
 // 이 파일은 Flutter에서 FastAPI 서버를 호출하는 HTTP 서비스입니다.
@@ -411,19 +410,19 @@ class EventApiService {
     }
   }
 
-  Future<SourceItem?> updateSourceRuleConfig({
+  Future<SourceItem?> updateSourceDisplayName({
     required String sourceKey,
-    required SourceRuleConfig ruleConfig,
+    required String displayName,
   }) async {
     final uri = _buildUri(
-      '/api/sources/${Uri.encodeComponent(sourceKey)}/config',
+      '/api/sources/${Uri.encodeComponent(sourceKey)}/display-name',
       const {},
     );
     try {
       final response = await _client.patch(
         uri,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'rule_config': ruleConfig.toJson()}),
+        body: jsonEncode({'display_name': displayName.trim()}),
       );
       if (response.statusCode != 200) {
         return null;

@@ -248,7 +248,7 @@ class ServerEventProcessor:
             ):
                 candidates[str(event["match_key"])] = event
 
-        return candidates
+        return _deduplicate_candidates(candidates)
 
     def _build_start_event(self, candidate: dict[str, Any]) -> dict[str, Any]:
         payload = dict(candidate)
@@ -451,13 +451,89 @@ def _build_danger_zone_candidates(
             source_time_text=source_time_text,
             danger_zone_roi=danger_zone_roi,
         )
-        if _read_int_or_none(detection.get("track_id")) is None:
-            label_key = label.replace(" ", "_")
-            match_key = f"DANGER_ZONE:{label_key}"
-            candidate["match_key"] = match_key
-            candidate["event_key"] = f"{match_key}:start:{frame_id}"
         candidates.append(candidate)
     return candidates
+
+
+def _deduplicate_candidates(
+    candidates: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    # 같은 프레임에서 tracker id만 다르게 갈라진 같은 룰 이벤트를 하나로 합칩니다.
+    merged: dict[str, dict[str, Any]] = {}
+    for match_key, candidate in candidates.items():
+        duplicate_key = _find_duplicate_candidate_key(candidate, merged)
+        if duplicate_key is None:
+            merged[match_key] = candidate
+            continue
+        existing = merged[duplicate_key]
+        existing_detections = _normalize_detections(existing.get("related_detections"))
+        next_detections = _normalize_detections(candidate.get("related_detections"))
+        existing["related_detections"] = _merge_related_detections(
+            existing_detections,
+            next_detections,
+        )
+        if _candidate_confidence(candidate) > _candidate_confidence(existing):
+            existing["person_id"] = candidate.get("person_id")
+    return merged
+
+
+def _find_duplicate_candidate_key(
+    candidate: dict[str, Any],
+    merged: dict[str, dict[str, Any]],
+) -> str | None:
+    candidate_type = str(candidate.get("event_type", "")).strip()
+    candidate_roi = _normalize_roi_dict(candidate.get("danger_zone_roi"))
+    candidate_detections = _normalize_detections(candidate.get("related_detections"))
+    if not candidate_type or not candidate_detections:
+        return None
+    best_key = None
+    best_score = 0.0
+    for match_key, existing in merged.items():
+        if str(existing.get("event_type", "")).strip() != candidate_type:
+            continue
+        if _normalize_roi_dict(existing.get("danger_zone_roi")) != candidate_roi:
+            continue
+        score = _detection_similarity_score(
+            _normalize_detections(existing.get("related_detections")),
+            candidate_detections,
+        )
+        if score > best_score:
+            best_score = score
+            best_key = match_key
+    if best_key is None or best_score < 0.20:
+        return None
+    return best_key
+
+
+def _merge_related_detections(
+    left: list[dict[str, Any]],
+    right: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged = [dict(item) for item in left]
+    for detection in right:
+        detection_box = _normalize_box(detection.get("box"))
+        if detection_box is None:
+            merged.append(dict(detection))
+            continue
+        if any(
+            _box_similarity_score(existing_box, detection_box) >= 0.60
+            for existing_box in (
+                _normalize_box(item.get("box")) for item in merged
+            )
+            if existing_box is not None
+        ):
+            continue
+        merged.append(dict(detection))
+    return merged
+
+
+def _candidate_confidence(candidate: dict[str, Any]) -> float:
+    detections = _normalize_detections(candidate.get("related_detections"))
+    confidence_values = [
+        _read_float(detection.get("confidence"))
+        for detection in detections
+    ]
+    return max(confidence_values) if confidence_values else 0.0
 
 
 def _detection_similarity_score(
@@ -549,10 +625,9 @@ def _build_candidate_event(
     danger_zone_roi: tuple[int, int, int, int] | None = None,
 ) -> dict[str, Any]:
     person_id = _read_int_or_none(detection.get("track_id"))
-    if person_id is None:
-        match_key = event_type
-    else:
-        match_key = f"{event_type}:person:{person_id}"
+    # 서버 이벤트는 카메라별 룰 상태를 기준으로 관리합니다.
+    # tracker id가 흔들려도 같은 룰 이벤트가 여러 개로 갈라지지 않도록 match_key는 룰 단위로 고정합니다.
+    match_key = event_type
     event_key = f"{match_key}:start:{frame_id}"
     return {
         "match_key": match_key,

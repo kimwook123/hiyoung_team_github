@@ -861,12 +861,14 @@ def set_source_desired_running(
 
 
 
-def clear_all_event_data(db_path: Path) -> tuple[int, int, int]:
+def clear_all_event_data(db_path: Path) -> tuple[int, int, int, int]:
     with _connect(db_path) as connection:
         deleted_event_count = connection.execute("DELETE FROM events").rowcount
         deleted_frame_count = connection.execute("DELETE FROM frame_detections").rowcount
         connection.execute("DELETE FROM frame_detections_latest")
-    return deleted_event_count, deleted_frame_count, 0
+        deleted_status_count = connection.execute("DELETE FROM source_status").rowcount
+        deleted_source_count = connection.execute("DELETE FROM sources").rowcount
+    return deleted_event_count, deleted_frame_count, deleted_status_count, deleted_source_count
 def reset_source_data(db_path: Path, *, source_key: str, source_slug: str, server_clip_dir: Path, server_thumbnail_dir: Path | None = None) -> tuple[bool, int, int]:
     removed_records = list_events(db_path, source_key=source_key)
     kept_records = list_events(db_path)

@@ -24,6 +24,7 @@ async def handle_client(reader, writer):
     logging.info(f"새로운 클라이언트 연결됨: {client_id}")
 
     payload_size = struct.calcsize('Q')
+    last_frame_data = None
 
     try:
         while True:
@@ -31,6 +32,7 @@ async def handle_client(reader, writer):
             packed_msg_size = await reader.readexactly(payload_size)
             msg_size = struct.unpack('Q', packed_msg_size)[0]
             frame_data = await reader.readexactly(msg_size)
+            last_frame_data = frame_data
 
             # 클라이언트가 보낸 JPEG bytes를 OpenCV 이미지로 복원합니다.
             frame_np = np.frombuffer(frame_data, dtype=np.uint8)
@@ -51,7 +53,8 @@ async def handle_client(reader, writer):
     except Exception as e:
         logging.exception(f"에러 발생 ({client_id}): {e}")
     finally:
-        latest_frames[client_id] = frame_data  # 마지막 프레임 저장
+        if last_frame_data is not None:
+            latest_frames[client_id] = last_frame_data  # 마지막 프레임 저장
         logging.info(f"클라이언트 연결 종료: {client_id}")
         writer.close()
         await writer.wait_closed()
@@ -96,8 +99,7 @@ async def mjpeg_stream(request):
             await asyncio.sleep(0.02)  # ~50ms for faster refresh
     except asyncio.CancelledError:
         pass
-    finally:
-        return resp
+    return resp
 
 
 async def clients_list(request):

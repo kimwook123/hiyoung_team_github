@@ -1,4 +1,4 @@
-# 프로젝트 여러 곳에서 함께 사용하는 보조 코드 파일입니다.
+﻿# 프로젝트 여러 곳에서 함께 사용하는 보조 코드 파일입니다.
 # 상수, 스키마, 로그 같은 공통 흐름을 담고 있습니다.
 
 from __future__ import annotations
@@ -132,7 +132,9 @@ class RemoteServerReporter:
         return self._post_json("/api/frame-detections", frame_record)
 
     def post_event(self, event_record: dict[str, Any]) -> bool:
-        return self._post_json("/api/events", event_record)
+        # 클라이언트는 이벤트를 서버로 전송하지 않습니다.
+        # 서버가 frame_detections를 기준으로 룰 판정과 이벤트 저장을 담당합니다.
+        return False
 
     def upload_clip(
         self,

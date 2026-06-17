@@ -17,7 +17,6 @@ import '../models/client_runtime_config.dart';
 import '../models/event_log_item.dart';
 import '../models/frame_detection_snapshot.dart';
 import '../models/source_item.dart';
-import '../models/source_rule_config.dart';
 import '../models/source_runtime_status.dart';
 import '../models/video_overlay_detection.dart';
 import '../services/event_api_service.dart';
@@ -87,11 +86,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool pendingRealtimeEventsRefresh = false;
   bool pendingRealtimeSourcesRefresh = false;
   bool pendingRealtimeStatusesRefresh = false;
-  bool isSavingRuleConfig = false;
-  bool isEditingDangerZone = false;
   bool _didAutoRegisterCamera = false;
   bool _isEnsuringCameraSource = false;
-  int _ruleConfigSaveTicket = 0;
   int previewRefreshCacheBust = 0;
 
   @override
@@ -153,14 +149,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     return registeredSourcesByKey[sourceKey];
   }
-
-  SourceRuleConfig get _activeRuleConfig =>
-      _activeSourceItem?.ruleConfig ??
-      const SourceRuleConfig(
-        useNoHelmetRule: true,
-        useDangerZoneRule: false,
-        dangerZoneRoi: null,
-      );
 
   VideoPanelController get videoController =>
       _activeSlot?.controller ?? _emptyVideoController;
@@ -563,9 +551,9 @@ class _HomeScreenState extends State<HomeScreen> {
           overlaySourceHeight: _getOverlaySourceHeightForSlot(slot),
           overlayStatusText: _buildStartupProgressText(slot),
           previewImageUrl: _buildPreviewImageUrlForSlot(slot),
-          dangerZoneRoi: isSelected ? _activeRuleConfig.dangerZoneRoi : null,
-          enableDangerZoneEditing: isSelected && isEditingDangerZone,
-          onDangerZoneChanged: isSelected ? _handleDangerZoneChanged : null,
+          dangerZoneRoi: null,
+          enableDangerZoneEditing: false,
+          onDangerZoneChanged: null,
         );
       },
     );
@@ -613,8 +601,6 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         _buildSelectedSourceSummaryPanel(),
         const SizedBox(height: 12),
-        _buildRuleConfigPanel(),
-        const SizedBox(height: 12),
         SizedBox(
           height: 420,
           child: AnimatedBuilder(
@@ -647,7 +633,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('소스를 선택하면 상태, 진행도, 이벤트, 룰 설정을 여기에서 확인할 수 있습니다.'),
+                const Text('소스를 선택하면 상태, 진행도, 이벤트를 여기에서 확인할 수 있습니다.'),
                 if (replayController.isReplayMode) ...[
                   const SizedBox(height: 12),
                   FilledButton(
@@ -737,105 +723,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildRuleConfigPanel() {
-    final source = _activeSourceItem;
-    final ruleConfig = _activeRuleConfig;
-    return _buildPanelCard(
-      title: '분석 룰 설정',
-      trailing: isSavingRuleConfig
-          ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : null,
-      child: source == null
-          ? const Text('먼저 소스를 선택해 주세요.')
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SwitchListTile(
-                  value: ruleConfig.useNoHelmetRule,
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('안전모 미착용 룰'),
-                  subtitle: const Text('사람과 helmet/head 탐지 결과 기준'),
-                  onChanged: _isViewerReadOnly
-                      ? null
-                      : (value) {
-                          unawaited(
-                            _saveRuleConfig(
-                              ruleConfig.copyWith(useNoHelmetRule: value),
-                            ),
-                          );
-                        },
-                ),
-                const Divider(height: 20),
-                SwitchListTile(
-                  value: ruleConfig.useDangerZoneRule,
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('위험구역 룰'),
-                  subtitle: Text(
-                    ruleConfig.dangerZoneRoi == null
-                        ? '선택 후 드래그로 구역을 지정하세요.'
-                        : '드래그 사각형 안에 사람 중심점이 들어오면 이벤트 발생',
-                  ),
-                  onChanged: _isViewerReadOnly
-                      ? null
-                      : (value) {
-                          unawaited(
-                            _saveRuleConfig(
-                              ruleConfig.copyWith(useDangerZoneRule: value),
-                            ),
-                          );
-                        },
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    FilledButton.tonal(
-                      onPressed: _isViewerReadOnly
-                          ? null
-                          : () {
-                              setState(() {
-                                isEditingDangerZone = !isEditingDangerZone;
-                              });
-                            },
-                      child: Text(
-                        isEditingDangerZone ? '위험구역 편집 종료' : '위험구역 드래그 편집',
-                      ),
-                    ),
-                    OutlinedButton(
-                      onPressed:
-                          _isViewerReadOnly || ruleConfig.dangerZoneRoi == null
-                          ? null
-                          : () {
-                              unawaited(
-                                _saveRuleConfig(
-                                  ruleConfig.copyWith(clearDangerZoneRoi: true),
-                                ),
-                              );
-                            },
-                      child: const Text('위험구역 초기화'),
-                    ),
-                  ],
-                ),
-                if (ruleConfig.dangerZoneRoi != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'ROI: (${ruleConfig.dangerZoneRoi!.x1}, ${ruleConfig.dangerZoneRoi!.y1}) '
-                    '- (${ruleConfig.dangerZoneRoi!.x2}, ${ruleConfig.dangerZoneRoi!.y2})',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: Colors.white70),
-                  ),
-                ],
-              ],
-            ),
-    );
-  }
-
   Widget _buildPanelCard({
     required String title,
     required Widget child,
@@ -871,7 +758,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
   Widget buildSourceTabs() {
     return Container(
       width: double.infinity,
@@ -1028,7 +914,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
   Widget _buildApiStatusText() {
     String text = '3초마다 자동 새로고침되며 "API 새로고침"으로 수동 갱신도 가능합니다.';
 
@@ -1285,81 +1170,6 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
     return runtimeStatus.isRunning ? '실시간 분석 중입니다.' : '대기 중입니다.';
-  }
-
-  Future<void> _saveRuleConfig(SourceRuleConfig nextRuleConfig) async {
-    if (_isViewerReadOnly) {
-      _showInfoSnack(
-        'Viewer is read-only. Change rule settings from the client app.',
-      );
-      return;
-    }
-    final source = _activeSourceItem;
-    if (source == null) {
-      return;
-    }
-
-    final nextTicket = ++_ruleConfigSaveTicket;
-    setState(() {
-      isSavingRuleConfig = true;
-      registeredSourcesByKey = {
-        ...registeredSourcesByKey,
-        source.sourceKey: SourceItem(
-          sourceKey: source.sourceKey,
-          sourceSlug: source.sourceSlug,
-          sourceType: source.sourceType,
-          sourceValue: source.sourceValue,
-          sourceDurationSeconds: source.sourceDurationSeconds,
-          serverMediaPath: source.serverMediaPath,
-          mediaUrl: source.mediaUrl,
-          previewUrl: source.previewUrl,
-          originalSourceType: source.originalSourceType,
-          originalSourceValue: source.originalSourceValue,
-          clientId: source.clientId,
-          sessionId: source.sessionId,
-          desiredRunning: source.desiredRunning,
-          ruleConfig: nextRuleConfig,
-          createdAt: source.createdAt,
-          updatedAt: source.updatedAt,
-        ),
-      };
-    });
-    final updated = await eventApiService.updateSourceRuleConfig(
-      sourceKey: source.sourceKey,
-      ruleConfig: nextRuleConfig,
-    );
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      isSavingRuleConfig = nextTicket != _ruleConfigSaveTicket;
-      if (updated == null) {
-        return;
-      }
-      if (nextTicket == _ruleConfigSaveTicket) {
-        registeredSourcesByKey = {
-          ...registeredSourcesByKey,
-          updated.sourceKey: updated,
-        };
-      }
-    });
-
-    if (updated == null) {
-      _showInfoSnack('룰 설정 저장에 실패했습니다.');
-      return;
-    }
-
-    if (nextTicket == _ruleConfigSaveTicket) {
-      await _refreshSourceStatuses();
-      await _refreshRegisteredSources();
-      _showInfoSnack('분석 룰 설정을 저장했습니다.');
-    }
-  }
-
-  void _handleDangerZoneChanged(RoiRect roi) {
-    final nextConfig = _activeRuleConfig.copyWith(dangerZoneRoi: roi);
-    unawaited(_saveRuleConfig(nextConfig));
   }
 
   String _formatDetectionSummary(Map<String, dynamic> detection) {
@@ -2659,7 +2469,6 @@ class _HomeScreenState extends State<HomeScreen> {
           : [nextSnapshot];
       frameDetectionLogModifiedAt = null;
       frameDetectionSourceKey = nextSourceKey;
-      isEditingDangerZone = false;
     });
     apiEventFeed.setSourceKeyFilter(nextSourceKey);
     await _syncSlotAudioFocus();
@@ -3276,7 +3085,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ? 'unknown'
         : runtimeStatus.state.trim();
   }
-
   String _buildSourceProgressText(
     SourceItem? source,
     SourceRuntimeStatus? status,
@@ -3398,7 +3206,6 @@ class _HomeScreenState extends State<HomeScreen> {
         frameDetectionSnapshots = const [];
         frameDetectionLogModifiedAt = null;
         frameDetectionSourceKey = '';
-        isEditingDangerZone = false;
       });
       if (mounted) {
         _showInfoSnack('소스 선택을 해제하고 전체 이벤트 로그 보기로 전환했습니다.');
@@ -3412,7 +3219,6 @@ class _HomeScreenState extends State<HomeScreen> {
       frameDetectionSnapshots = const [];
       frameDetectionLogModifiedAt = null;
       frameDetectionSourceKey = '';
-      isEditingDangerZone = false;
     });
     unawaited(_refreshApiEventsIfNeeded());
   }

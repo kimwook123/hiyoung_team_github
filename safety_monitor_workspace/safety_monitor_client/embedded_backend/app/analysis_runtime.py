@@ -32,18 +32,14 @@ from app.config import (
     MODEL_INPUT_MAX_WIDTH,
     MODEL_PATH,
     MODEL_TYPE,
-    NO_HELMET_HEAD_RATIO,
-    NO_HELMET_OVERLAP_RATIO,
     PERSON_MODEL_PATH,
     PIPELINE_PERF_LOG_INTERVAL_FRAMES,
     PREFER_TENSORRT_ENGINE,
     SAFETY_MODEL_PATH,
-    SAVE_EVENT_CLIP,
     SOURCE_STATUS_POST_MIN_INTERVAL_SECONDS,
     TRACK_MAX_DISTANCE,
     TRACK_MAX_MISSING_FRAMES,
 )
-from app.database import insert_event
 from app.database import insert_frame_detection
 from app.database import upsert_source_status
 from app.log_utils import log_line
@@ -54,8 +50,6 @@ from app.source_identity import build_source_key
 from app.source_identity import build_source_slug
 from app.source_identity import normalize_video_source_value
 from app.source_rule_config import build_default_rule_config
-from app.source_rule_config import normalize_rule_config
-from app.source_rule_config import to_roi_tuple
 
 
 def _ensure_analysis_import_path() -> None:
@@ -67,11 +61,8 @@ def _ensure_analysis_import_path() -> None:
 _ensure_analysis_import_path()
 
 from core.async_workers import AsyncLatestWorker  # type: ignore  # noqa: E402
-from core.async_workers import AsyncTaskWorker  # type: ignore  # noqa: E402
 from core.event_clip_recorder import EventClipRecorder  # type: ignore  # noqa: E402
 from core.event_filter import EventFilter  # type: ignore  # noqa: E402
-from core.event_handler import EventHandler  # type: ignore  # noqa: E402
-from core.event_rule import Event  # type: ignore  # noqa: E402
 from core.event_serializer import serialize_detection  # type: ignore  # noqa: E402
 from core.event_serializer import serialize_event  # type: ignore  # noqa: E402
 from core.frame_source import CameraFrameSource  # type: ignore  # noqa: E402
@@ -82,8 +73,6 @@ from core.pipeline import VideoPipeline  # type: ignore  # noqa: E402
 from models.dummy_model import DummyDetectionModel  # type: ignore  # noqa: E402
 from models.ensemble_yolo_model import EnsembleYoloModel  # type: ignore  # noqa: E402
 from models.yolo_model_sample import YoloModelSample  # type: ignore  # noqa: E402
-from rules.danger_zone_rule import DangerZoneRule  # type: ignore  # noqa: E402
-from rules.no_helmet_rule import NoHelmetRule  # type: ignore  # noqa: E402
 
 
 def resolve_source(*, source_type: str, source_value: str) -> dict[str, str]:
@@ -205,7 +194,7 @@ def build_pipeline_for_source(
         progress_log_interval_seconds=ANALYSIS_PROGRESS_LOG_INTERVAL_SECONDS,
     )
     preview_publisher = ClientSourcePreviewPublisher()
-    handlers: list[EventHandler] = []
+    handlers: list[Any] = []
 
     return VideoPipeline(
         frame_source=frame_source,
@@ -234,66 +223,6 @@ def build_pipeline_for_source(
         perf_log_interval_frames=PIPELINE_PERF_LOG_INTERVAL_FRAMES,
     )
 
-
-class ClientEventHandler(EventHandler):
-    def __init__(self, queue_size: int = 512) -> None:
-        self.worker = AsyncTaskWorker[dict[str, Any]](
-            name="client-event-worker",
-            consumer=self._save_payload_sync,
-            max_queue_size=queue_size,
-        )
-        self.last_payloads_by_event_key: dict[str, str] = {}
-
-    def handle(self, event: Event) -> None:
-        payload = serialize_event(event)
-        payload_text = json.dumps(payload, ensure_ascii=False, sort_keys=True)
-        event_key = str(payload.get("event_key", "") or "")
-        if self.last_payloads_by_event_key.get(event_key) == payload_text:
-            return
-        if self.worker.submit(dict(payload)):
-            self.last_payloads_by_event_key[event_key] = payload_text
-            return
-        self._save_payload_sync(payload)
-
-    def _save_payload_sync(self, payload: dict[str, Any]) -> None:
-        self._attach_remote_clip_fields(payload)
-        saved_record = insert_event(DATABASE_PATH, payload)
-        realtime_update_hub.publish(
-            "event_changed",
-            source_key=str(saved_record.get("source_key", "")).strip(),
-            event_key=str(saved_record.get("event_key", "")).strip(),
-            status=str(saved_record.get("status", "")).strip(),
-            event_type=str(saved_record.get("event_type", "")).strip(),
-        )
-        if bool(saved_record.get("clip_available", False)):
-            remote_server_reporter.post_event(saved_record)
-
-    def _attach_remote_clip_fields(self, payload: dict[str, Any]) -> None:
-        payload.setdefault("clip_upload_ok", False)
-        payload.setdefault("clip_available", False)
-        payload.setdefault("preferred_clip_source", "none")
-        clip_path = str(payload.get("clip_path", "") or "").strip()
-        if not clip_path or clip_path == "-":
-            return
-
-        upload_result = remote_server_reporter.upload_clip(
-            clip_path=clip_path,
-            event_key=str(payload.get("event_key", "")).strip(),
-            source_key=str(payload.get("source_key", "")).strip(),
-            source_slug=str(payload.get("source_slug", "")).strip(),
-        )
-        if not upload_result:
-            return
-
-        payload["server_clip_name"] = str(upload_result.get("name", "")).strip()
-        payload["server_clip_path"] = str(upload_result.get("path", "")).strip()
-        payload["clip_url"] = str(upload_result.get("url", "")).strip()
-        payload["clip_upload_ok"] = bool(upload_result.get("ok", True))
-        payload["clip_available"] = True
-        payload["preferred_clip_source"] = "server"
-
-    def close(self) -> None:
-        self.worker.close(timeout_seconds=30.0)
 
 
 class ClientFrameDetectionRecorder:
@@ -602,19 +531,9 @@ def _build_model():
 
 
 def _build_rules(source_record: dict[str, Any]) -> list[Any]:
-    rules: list[Any] = []
-    rule_config = normalize_rule_config(source_record.get("rule_config"))
-    if bool(rule_config.get("use_no_helmet_rule", True)):
-        rules.append(
-            NoHelmetRule(
-                head_ratio=NO_HELMET_HEAD_RATIO,
-                overlap_ratio=NO_HELMET_OVERLAP_RATIO,
-            )
-        )
-    danger_zone_roi = to_roi_tuple(rule_config.get("danger_zone_roi"))
-    if bool(rule_config.get("use_danger_zone_rule", False)) and danger_zone_roi is not None:
-        rules.append(DangerZoneRule(roi=danger_zone_roi))
-    return rules
+    # 룰 판정은 중앙 서버 전용 책임입니다.
+    # 클라이언트는 객체 탐지 결과(frame_detections)만 서버로 전송합니다.
+    return []
 
 
 def _download_youtube_video(url: str) -> Path:

@@ -29,6 +29,7 @@ class SourceSummaryListResponse(BaseModel):
 class SourceItem(BaseModel):
     source_key: str
     source_slug: str
+    display_name: str = ""
     source_type: str
     source_value: str
     source_duration_seconds: float = 0.0
@@ -55,6 +56,7 @@ class SourceOverviewItem(BaseModel):
     session_id: str = ""
     source_key: str
     source_slug: str = ""
+    display_name: str = ""
     source_type: str
     source_value: str
     source_duration_seconds: float = 0.0
@@ -94,6 +96,11 @@ class SourceUpsertResponse(BaseModel):
 class SourceConfigUpdateRequest(BaseModel):
     rule_config: dict[str, Any]
 
+
+
+
+class SourceDisplayNameUpdateRequest(BaseModel):
+    display_name: str = ""
 
 class SourceActionResponse(BaseModel):
     ok: bool

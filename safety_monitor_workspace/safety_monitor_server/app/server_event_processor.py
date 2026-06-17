@@ -331,7 +331,7 @@ def _build_no_helmet_candidates(
     helmets = [
         detection
         for detection in detections
-        if str(detection.get("name", "")).strip().lower() in {"helmet", "hardhat"}
+        if str(detection.get("name", "")).strip().lower() in {"helmet", "hardhat", "yes_helmet", "yes helmet"}
     ]
     heads = [
         detection
@@ -384,7 +384,7 @@ def _build_danger_zone_candidates(
     danger_zone_roi: tuple[int, int, int, int],
 ) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
-    target_labels = {"helmet", "hardhat", "no_helmet", "nohelmet", "without_helmet", "no helmet"}
+    target_labels = {"person"}
     for detection in detections:
         label = str(detection.get("name", "")).strip().lower()
         if label not in target_labels:
@@ -395,7 +395,7 @@ def _build_danger_zone_candidates(
         candidate = _build_candidate_event(
             event_type="DANGER_ZONE",
             level="DANGER",
-            message="위험구역 내 안전모/미착용 객체 감지",
+            message="위험구역 내 사람 감지",
             detection=detection,
             created_at=created_at,
             frame_id=frame_id,

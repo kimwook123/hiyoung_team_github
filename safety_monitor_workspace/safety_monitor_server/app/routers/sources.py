@@ -36,6 +36,7 @@ from app.realtime_hub import realtime_update_hub
 from app.server_event_processor import server_event_processor
 from app.schemas import SourceActionResponse
 from app.schemas import SourceConfigUpdateRequest
+from app.schemas import SourceDisplayNameUpdateRequest
 from app.schemas import SourceItem
 from app.schemas import SourceListResponse
 from app.schemas import SourceOverviewItem
@@ -131,6 +132,10 @@ def upsert_source_route(
     normalized["client_id"] = client_id
     normalized["session_id"] = session_id
     normalized["desired_running"] = bool(normalized.get("desired_running", False))
+    if previous is not None and "display_name" not in payload:
+        normalized["display_name"] = str(previous.get("display_name", "")).strip()
+    else:
+        normalized["display_name"] = str(normalized.get("display_name", "")).strip()
     if previous is not None:
         normalized["rule_config"] = normalize_rule_config(previous.get("rule_config"))
     else:
@@ -289,6 +294,27 @@ def delete_source_route(
     return SourceActionResponse(ok=True, source_key=source_key, state="deleted")
 
 
+@router.patch("/{source_key:path}/display-name", response_model=SourceUpsertResponse)
+def update_source_display_name_route(
+    source_key: str,
+    payload: SourceDisplayNameUpdateRequest,
+) -> SourceUpsertResponse:
+    record = get_source(DATABASE_PATH, source_key)
+    if record is None:
+        raise HTTPException(status_code=404, detail="source not found")
+
+    next_record = dict(record)
+    next_record["display_name"] = payload.display_name.strip()
+    next_record["updated_at"] = datetime.now().isoformat()
+    saved = upsert_source(DATABASE_PATH, next_record)
+    realtime_update_hub.publish(
+        "source_changed",
+        action="display_name_updated",
+        source_key=source_key.strip(),
+    )
+    return SourceUpsertResponse(ok=True, item=SourceItem(**_decorate_source_record(saved)))
+
+
 @router.patch("/{source_key:path}/config", response_model=SourceUpsertResponse)
 def update_source_config_route(
     source_key: str,
@@ -316,6 +342,7 @@ def _decorate_source_record(record: dict[str, Any]) -> dict[str, Any]:
         next_record.get("source_duration_seconds")
     )
     next_record["rule_config"] = normalize_rule_config(next_record.get("rule_config"))
+    next_record["display_name"] = str(next_record.get("display_name", "")).strip()
     next_record["server_media_path"] = str(
         next_record.get("server_media_path", "")
     ).strip()

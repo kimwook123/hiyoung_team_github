@@ -1,12 +1,12 @@
 // 서버 JSON이나 화면 상태를 Dart 객체로 표현하는 모델 파일입니다.
 // 필드 정의와 fromJson/toJson 변환 흐름이 포함되어 있습니다.
 
-import 'source_rule_config.dart';
 
 class SourceItem {
   const SourceItem({
     required this.sourceKey,
     required this.sourceSlug,
+    required this.displayName,
     required this.sourceType,
     required this.sourceValue,
     required this.sourceDurationSeconds,
@@ -18,13 +18,13 @@ class SourceItem {
     required this.clientId,
     required this.sessionId,
     required this.desiredRunning,
-    required this.ruleConfig,
     required this.createdAt,
     required this.updatedAt,
   });
 
   final String sourceKey;
   final String sourceSlug;
+  final String displayName;
   final String sourceType;
   final String sourceValue;
   final double sourceDurationSeconds;
@@ -36,7 +36,6 @@ class SourceItem {
   final String clientId;
   final String sessionId;
   final bool desiredRunning;
-  final SourceRuleConfig ruleConfig;
   final String createdAt;
   final String updatedAt;
 
@@ -44,6 +43,7 @@ class SourceItem {
     return SourceItem(
       sourceKey: json['source_key']?.toString() ?? '',
       sourceSlug: json['source_slug']?.toString() ?? '',
+      displayName: json['display_name']?.toString() ?? '',
       sourceType: json['source_type']?.toString() ?? '',
       sourceValue: json['source_value']?.toString() ?? '',
       sourceDurationSeconds: _toDouble(json['source_duration_seconds']),
@@ -55,13 +55,6 @@ class SourceItem {
       clientId: json['client_id']?.toString() ?? '',
       sessionId: json['session_id']?.toString() ?? '',
       desiredRunning: json['desired_running'] == true,
-      ruleConfig: SourceRuleConfig.fromJson(
-        json['rule_config'] is Map<String, dynamic>
-            ? json['rule_config'] as Map<String, dynamic>
-            : json['rule_config'] is Map
-            ? Map<String, dynamic>.from(json['rule_config'] as Map)
-            : null,
-      ),
       createdAt: json['created_at']?.toString() ?? '',
       updatedAt: json['updated_at']?.toString() ?? '',
     );

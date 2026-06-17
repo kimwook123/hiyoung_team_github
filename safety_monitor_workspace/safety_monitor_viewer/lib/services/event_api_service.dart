@@ -271,6 +271,40 @@ class EventApiService {
     }
   }
 
+  Future<SourceItem?> updateSourceDisplayName({
+    required String sourceKey,
+    required String displayName,
+  }) async {
+    final uri = _buildUri(
+      '/api/sources/${Uri.encodeComponent(sourceKey)}/display-name',
+      const {},
+    );
+    try {
+      final response = await _client.patch(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'display_name': displayName.trim()}),
+      );
+      if (response.statusCode != 200) {
+        return null;
+      }
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        return null;
+      }
+      final item = decoded['item'];
+      if (item is Map<String, dynamic>) {
+        return SourceItem.fromJson(item);
+      }
+      if (item is Map) {
+        return SourceItem.fromJson(Map<String, dynamic>.from(item));
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
   Future<SourceItem?> updateSourceRuleConfig({
     required String sourceKey,
     required SourceRuleConfig ruleConfig,

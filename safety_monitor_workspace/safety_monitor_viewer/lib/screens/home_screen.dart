@@ -46,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late final ApiEventController apiEventController;
   late final ApiEventFeedSource apiEventFeed;
   final ScrollController appScrollController = ScrollController();
+  final ScrollController monitoringGridScrollController = ScrollController();
   final TextEditingController serverBaseUrlTextController =
       TextEditingController(text: _defaultApiServerBaseUrl);
   final List<_SourcePanelSlot> _sourceSlots = [];
@@ -117,6 +118,7 @@ class _HomeScreenState extends State<HomeScreen> {
     eventApiService.dispose();
     apiEventFeed.dispose();
     appScrollController.dispose();
+    monitoringGridScrollController.dispose();
     serverBaseUrlTextController.dispose();
     super.dispose();
   }
@@ -674,7 +676,7 @@ class _HomeScreenState extends State<HomeScreen> {
         itemCount: _sourceSlots.length,
         itemBuilder: (context, index) {
           final slot = _sourceSlots[index];
-          return _buildVideoTile(slot);
+          return _buildDraggableVideoTile(slot);
         },
       ),
     );
@@ -686,9 +688,10 @@ class _HomeScreenState extends State<HomeScreen> {
       title: '카메라',
       child: _sourceSlots.isEmpty
           ? const Center(child: Text('연결된 카메라가 없습니다.'))
-          : ListView.separated(
+          : ReorderableListView.builder(
+              buildDefaultDragHandles: false,
               itemCount: _sourceSlots.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 8),
+              onReorder: _reorderSourceSlots,
               itemBuilder: (context, index) {
                 final slot = _sourceSlots[index];
                 final isSelected = slot.slotId == _activeSlotId;
@@ -697,64 +700,73 @@ class _HomeScreenState extends State<HomeScreen> {
                 final overview = sourceOverviewsByKey[sourceKey];
                 final title = _buildCameraDisplayName(slot, index);
                 final subtitle = _resolveClientConnectionStatus(slot).label;
-                return Material(
-                  color: isSelected
-                      ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.14)
-                      : const Color(0xFF11151B),
-                  borderRadius: BorderRadius.circular(8),
-                  child: InkWell(
+                return Padding(
+                  key: ValueKey(slot.slotId),
+                  padding: EdgeInsets.only(bottom: index == _sourceSlots.length - 1 ? 0 : 8),
+                  child: Material(
+                    color: isSelected
+                        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.14)
+                        : const Color(0xFF11151B),
                     borderRadius: BorderRadius.circular(8),
-                    onTap: () => unawaited(_toggleActiveSlot(slot.slotId)),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                      child: Row(
-                        children: [
-                          _buildConnectionStatusDot(slot),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        title,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                          fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () => unawaited(_toggleActiveSlot(slot.slotId)),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                        child: Row(
+                          children: [
+                            ReorderableDragStartListener(
+                              index: index,
+                              child: const Icon(Icons.drag_indicator, size: 18, color: Colors.white54),
+                            ),
+                            const SizedBox(width: 6),
+                            _buildConnectionStatusDot(slot),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          title,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    InkWell(
-                                      borderRadius: BorderRadius.circular(14),
-                                      onTap: () => unawaited(_editDisplayNameForSlot(slot)),
-                                      child: const Padding(
-                                        padding: EdgeInsets.all(3),
-                                        child: Icon(Icons.edit_outlined, size: 15),
+                                      const SizedBox(width: 4),
+                                      InkWell(
+                                        borderRadius: BorderRadius.circular(14),
+                                        onTap: () => unawaited(_editDisplayNameForSlot(slot)),
+                                        child: const Padding(
+                                          padding: EdgeInsets.all(3),
+                                          child: Icon(Icons.edit_outlined, size: 15),
+                                        ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  status?.state.trim().isNotEmpty == true
-                                      ? '${status!.state} · $subtitle'
-                                      : (overview?.state.trim().isNotEmpty == true
-                                          ? '${overview!.state} · $subtitle'
-                                          : subtitle),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Colors.white60,
+                                    ],
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    status?.state.trim().isNotEmpty == true
+                                        ? '${status!.state} · $subtitle'
+                                        : (overview?.state.trim().isNotEmpty == true
+                                            ? '${overview!.state} · $subtitle'
+                                            : subtitle),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Colors.white60,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -926,62 +938,77 @@ class _HomeScreenState extends State<HomeScreen> {
     final visibleSlots = maximizedSlot == null
         ? _sourceSlots.toList(growable: false)
         : <_SourcePanelSlot>[maximizedSlot];
+    final isScrollableGrid = maximizedSlot == null && visibleSlots.length > 4;
+    final grid = GridView.builder(
+      controller: isScrollableGrid ? monitoringGridScrollController : null,
+      padding: EdgeInsets.zero,
+      physics: isScrollableGrid
+          ? const ClampingScrollPhysics()
+          : const NeverScrollableScrollPhysics(),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: maximizedSlot == null ? 2 : 1,
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
+        childAspectRatio: maximizedSlot == null ? 16 / 9 : 1.65,
+      ),
+      itemCount: visibleSlots.length,
+      itemBuilder: (context, index) {
+        final slot = visibleSlots[index];
+        return _buildDraggableVideoTile(slot);
+      },
+    );
+
     return _buildPanelCard(
       title: 'Live Monitoring',
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final columns = _resolveMonitoringColumnCount(
-            visibleSlots.length,
-            maximized: maximizedSlot != null,
-          );
-          final rows = (visibleSlots.length / columns).ceil().clamp(1, 999);
-          const gap = 10.0;
-          final usableWidth = math.max(
-            1.0,
-            constraints.maxWidth - (gap * (columns - 1)),
-          );
-          final usableHeight = math.max(
-            1.0,
-            constraints.maxHeight - (gap * (rows - 1)),
-          );
-          final tileWidth = usableWidth / columns;
-          final tileHeight = usableHeight / rows;
-          final aspectRatio = maximizedSlot != null
-              ? 1.65
-              : math.max(0.6, math.min(2.2, tileWidth / tileHeight));
-
-          return GridView.builder(
-            padding: EdgeInsets.zero,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: columns,
-              mainAxisSpacing: gap,
-              crossAxisSpacing: gap,
-              childAspectRatio: aspectRatio,
-            ),
-            itemCount: visibleSlots.length,
-            itemBuilder: (context, index) {
-              final slot = visibleSlots[index];
-              return _buildVideoTile(slot);
-            },
-          );
-        },
-      ),
+      child: isScrollableGrid
+          ? Scrollbar(
+              controller: monitoringGridScrollController,
+              thumbVisibility: true,
+              child: grid,
+            )
+          : grid,
       expandChild: true,
     );
   }
 
-  int _resolveMonitoringColumnCount(int itemCount, {required bool maximized}) {
-    if (maximized || itemCount <= 1) {
-      return 1;
+  Widget _buildDraggableVideoTile(_SourcePanelSlot slot) {
+    if (_maximizedSlotId.isNotEmpty) {
+      return _buildVideoTile(slot);
     }
-    if (itemCount <= 4) {
-      return 2;
-    }
-    if (itemCount <= 9) {
-      return 3;
-    }
-    return 4;
+
+    return DragTarget<_SourcePanelSlot>(
+      onWillAcceptWithDetails: (details) =>
+          details.data.slotId != slot.slotId,
+      onAcceptWithDetails: (details) =>
+          _moveSourceSlotBefore(details.data.slotId, slot.slotId),
+      builder: (context, candidateData, rejectedData) {
+        final isDropTarget = candidateData.isNotEmpty;
+        return LongPressDraggable<_SourcePanelSlot>(
+          data: slot,
+          feedback: SizedBox(
+            width: 280,
+            height: 160,
+            child: Material(
+              color: Colors.transparent,
+              child: Opacity(opacity: 0.86, child: _buildVideoTile(slot)),
+            ),
+          ),
+          childWhenDragging: Opacity(
+            opacity: 0.35,
+            child: _buildVideoTile(slot),
+          ),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: isDropTarget
+                  ? Border.all(color: Theme.of(context).colorScheme.primary, width: 2)
+                  : null,
+            ),
+            child: _buildVideoTile(slot),
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildVideoTile(_SourcePanelSlot slot) {
@@ -1005,6 +1032,7 @@ class _HomeScreenState extends State<HomeScreen> {
           enableDangerZoneEditing: isSelected && isEditingDangerZone,
           onDangerZoneChanged: isSelected ? _handleDangerZoneChanged : null,
           overlayAction: _buildVideoTileActions(slot),
+          onTitleTap: () => unawaited(_editDisplayNameForSlot(slot)),
         );
       },
     );
@@ -1938,9 +1966,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ? detection['name'].toString().trim()
         : 'unknown';
     final score = _formatScore(detection['score']);
-    final trackId = detection['track_id']?.toString().trim();
-    final trackIdText = (trackId?.isNotEmpty ?? false) ? trackId! : '-';
-    return '$name / score=$score / id=$trackIdText';
+    return '$name / score=$score';
   }
 
   String _formatDetectionBoxLine(Map<String, dynamic> detection) {
@@ -1986,10 +2012,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final name = (detection['name']?.toString().trim().isNotEmpty ?? false)
         ? detection['name'].toString().trim()
         : item.eventType;
-    final trackId = detection['track_id']?.toString().trim();
-    if (trackId != null && trackId.isNotEmpty) {
-      return '$name #$trackId';
-    }
     return name;
   }
 
@@ -1998,10 +2020,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final name = (detection['name']?.toString().trim().isNotEmpty ?? false)
         ? detection['name'].toString().trim()
         : 'object';
-    final trackId = detection['track_id']?.toString().trim();
-    if (trackId != null && trackId.isNotEmpty) {
-      return '$name #$trackId';
-    }
     return name;
   }
 
@@ -2018,13 +2036,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Color _colorForDetectionName(String name) {
     switch (name.trim().toLowerCase()) {
-      case 'person':
-        return Colors.lightBlueAccent;
+      case 'yes_helmet':
       case 'helmet':
       case 'hardhat':
         return Colors.greenAccent;
+      case 'no_helmet':
+      case 'without_helmet':
+      case 'no helmet':
+        return Colors.redAccent;
+      case 'person':
+        return Colors.amberAccent;
       default:
-        return Colors.orangeAccent;
+        return Colors.amberAccent;
     }
   }
 
@@ -2826,6 +2849,40 @@ class _HomeScreenState extends State<HomeScreen> {
         _slotCreationSourceKeys.remove(normalizedSourceKey);
       }
     }
+  }
+
+  void _reorderSourceSlots(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= _sourceSlots.length) {
+      return;
+    }
+    var targetIndex = newIndex;
+    if (targetIndex > oldIndex) {
+      targetIndex -= 1;
+    }
+    targetIndex = targetIndex.clamp(0, _sourceSlots.length - 1);
+    if (oldIndex == targetIndex) {
+      return;
+    }
+    setState(() {
+      final slot = _sourceSlots.removeAt(oldIndex);
+      _sourceSlots.insert(targetIndex, slot);
+    });
+  }
+
+  void _moveSourceSlotBefore(String draggedSlotId, String targetSlotId) {
+    if (draggedSlotId == targetSlotId) {
+      return;
+    }
+    final oldIndex = _sourceSlots.indexWhere((slot) => slot.slotId == draggedSlotId);
+    final targetIndex = _sourceSlots.indexWhere((slot) => slot.slotId == targetSlotId);
+    if (oldIndex < 0 || targetIndex < 0 || oldIndex == targetIndex) {
+      return;
+    }
+    setState(() {
+      final slot = _sourceSlots.removeAt(oldIndex);
+      final insertIndex = _sourceSlots.indexWhere((item) => item.slotId == targetSlotId);
+      _sourceSlots.insert(insertIndex < 0 ? _sourceSlots.length : insertIndex, slot);
+    });
   }
 
   Future<void> _removeSourceSlot(String slotId) async {
@@ -3778,29 +3835,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _viewerClientHeartbeatTimeout;
   }
 
-  DateTime? _latestViewerActivityAt(
-    SourceRuntimeStatus? status,
-    SourceOverviewItem? overview,
-  ) {
-    final timestamps = <DateTime>[];
-    for (final value in [
-      status?.updatedAt,
-      overview?.updatedAt,
-      overview?.lastFrameReceivedAt,
-      overview?.lastEventReceivedAt,
-    ]) {
-      final parsed = DateTime.tryParse((value ?? '').trim());
-      if (parsed != null) {
-        timestamps.add(parsed.toLocal());
-      }
-    }
-    if (timestamps.isEmpty) {
-      return null;
-    }
-    timestamps.sort();
-    return timestamps.last;
-  }
-
   bool _hasRecentClientHeartbeat({
     required String clientId,
     required String sessionId,
@@ -3839,19 +3873,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final sessionId = status.sessionId.trim().isNotEmpty
         ? status.sessionId.trim()
         : overview?.sessionId.trim() ?? '';
-    if (_hasRecentClientHeartbeat(
+    return !_hasRecentClientHeartbeat(
       clientId: clientId,
       sessionId: sessionId,
       excludeSourceKey: status.sourceKey,
-    )) {
-      return false;
-    }
-    final latestActivityAt = _latestViewerActivityAt(status, overview);
-    if (latestActivityAt == null) {
-      return true;
-    }
-    return DateTime.now().difference(latestActivityAt) >
-        _viewerClientHeartbeatTimeout;
+    );
   }
 
   bool _hasViewerHistory(SourceOverviewItem? overview) {

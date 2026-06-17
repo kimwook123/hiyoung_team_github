@@ -1177,9 +1177,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ? detection['name'].toString().trim()
         : 'unknown';
     final score = _formatScore(detection['score']);
-    final trackId = detection['track_id']?.toString().trim();
-    final trackIdText = (trackId?.isNotEmpty ?? false) ? trackId! : '-';
-    return '$name / score=$score / id=$trackIdText';
+    return '$name / score=$score';
   }
 
   String _formatDetectionBoxLine(Map<String, dynamic> detection) {
@@ -1224,10 +1222,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final name = (detection['name']?.toString().trim().isNotEmpty ?? false)
         ? detection['name'].toString().trim()
         : item.eventType;
-    final trackId = detection['track_id']?.toString().trim();
-    if (trackId != null && trackId.isNotEmpty) {
-      return '$name #$trackId';
-    }
     return name;
   }
 
@@ -1235,10 +1229,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final name = (detection['name']?.toString().trim().isNotEmpty ?? false)
         ? detection['name'].toString().trim()
         : 'object';
-    final trackId = detection['track_id']?.toString().trim();
-    if (trackId != null && trackId.isNotEmpty) {
-      return '$name #$trackId';
-    }
     return name;
   }
 
@@ -1255,13 +1245,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Color _colorForDetectionName(String name) {
     switch (name.trim().toLowerCase()) {
-      case 'person':
-        return Colors.lightBlueAccent;
+      case 'yes_helmet':
       case 'helmet':
       case 'hardhat':
         return Colors.greenAccent;
+      case 'no_helmet':
+      case 'without_helmet':
+      case 'no helmet':
+        return Colors.redAccent;
+      case 'person':
+        return Colors.amberAccent;
       default:
-        return Colors.orangeAccent;
+        return Colors.amberAccent;
     }
   }
 

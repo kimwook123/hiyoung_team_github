@@ -231,16 +231,19 @@ class _ClipPlayerWindowState extends State<ClipPlayerWindow> {
   }
 
   Color _resolveDetectionColor(String label) {
-    switch (label.toLowerCase()) {
-      case 'person':
-        return const Color(0xFF5BC0BE);
+    switch (label.trim().toLowerCase()) {
+      case 'yes_helmet':
       case 'helmet':
-        return const Color(0xFF7ED957);
+      case 'hardhat':
+        return Colors.greenAccent;
       case 'no_helmet':
       case 'without_helmet':
-        return const Color(0xFFFF7A7A);
+      case 'no helmet':
+        return Colors.redAccent;
+      case 'person':
+        return Colors.amberAccent;
       default:
-        return const Color(0xFFFFC857);
+        return Colors.amberAccent;
     }
   }
 

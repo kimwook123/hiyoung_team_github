@@ -1,4 +1,7 @@
-﻿import 'package:flutter/foundation.dart';
+// 화면에서 사용하는 데이터와 로딩 상태를 관리하는 controller 파일입니다.
+// 상태 변경 후 notifyListeners로 연결된 UI 갱신을 요청합니다.
+
+import 'package:flutter/foundation.dart';
 
 import '../models/event_log_item.dart';
 import '../services/event_log_service.dart';

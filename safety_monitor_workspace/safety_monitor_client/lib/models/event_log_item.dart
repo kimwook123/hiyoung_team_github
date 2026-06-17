@@ -1,3 +1,6 @@
+// 서버 JSON이나 화면 상태를 Dart 객체로 표현하는 모델 파일입니다.
+// 필드 정의와 fromJson/toJson 변환 흐름이 포함되어 있습니다.
+
 // 이 파일은 기존 txt 로그 한 줄을 Flutter UI가 쓰기 쉬운 형태로 바꾼 모델입니다.
 class EventLogItem {
   const EventLogItem({

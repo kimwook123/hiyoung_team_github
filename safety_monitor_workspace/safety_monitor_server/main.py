@@ -1,3 +1,6 @@
+# FastAPI 앱을 생성하고 필요한 router를 연결하는 파일입니다.
+# 앱 시작/종료 처리와 공통 미들웨어 설정이 포함되어 있습니다.
+
 from contextlib import asynccontextmanager
 from time import monotonic
 from time import perf_counter

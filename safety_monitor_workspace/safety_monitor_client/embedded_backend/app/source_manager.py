@@ -1,3 +1,6 @@
+# 카메라 소스별 분석 worker를 시작하고 중지하는 관리자 파일입니다.
+# 소스 실행 상태와 서버 presence 동기화 흐름이 포함되어 있습니다.
+
 from __future__ import annotations
 
 import threading

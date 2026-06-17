@@ -1,3 +1,6 @@
+# 카메라나 영상 소스를 구분하기 위한 source_key와 slug를 만드는 파일입니다.
+# DB, 이벤트, 클립이 같은 소스를 가리키도록 식별자를 맞춥니다.
+
 from pathlib import Path
 
 

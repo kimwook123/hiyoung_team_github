@@ -1,3 +1,6 @@
+# 탐지 결과가 특정 안전 룰에 해당하는지 판단하는 파일입니다.
+# 조건 판정과 이벤트 생성 흐름이 이 파일에 들어 있습니다.
+
 from datetime import datetime
 
 from core.detection_model import Box, Detection, DetectionResult

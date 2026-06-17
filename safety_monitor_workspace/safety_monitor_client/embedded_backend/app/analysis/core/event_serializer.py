@@ -1,3 +1,6 @@
+# 분석 파이프라인 안에서 사용하는 event_serializer 기능을 분리한 파일입니다.
+# pipeline.py에서 조립되는 분석 부품 중 하나입니다.
+
 from datetime import datetime
 from enum import Enum
 

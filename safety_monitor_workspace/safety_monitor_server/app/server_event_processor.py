@@ -1,3 +1,6 @@
+# 서버에서 탐지 결과를 기준으로 이벤트 시작과 종료를 판단하는 파일입니다.
+# 룰 적용, 이벤트 저장, 클립 연결 흐름이 이 파일에 모여 있습니다.
+
 from __future__ import annotations
 
 from dataclasses import dataclass

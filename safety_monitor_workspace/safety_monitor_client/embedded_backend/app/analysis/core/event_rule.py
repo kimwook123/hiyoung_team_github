@@ -1,4 +1,7 @@
-﻿from abc import ABC, abstractmethod
+# 분석 파이프라인 안에서 사용하는 event_rule 기능을 분리한 파일입니다.
+# pipeline.py에서 조립되는 분석 부품 중 하나입니다.
+
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 

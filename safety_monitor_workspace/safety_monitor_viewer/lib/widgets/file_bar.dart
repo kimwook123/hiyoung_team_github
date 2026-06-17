@@ -1,3 +1,6 @@
+// 여러 화면에서 재사용하는 Flutter 위젯 파일입니다.
+// 부모 화면에서 받은 값과 콜백을 바탕으로 UI를 구성합니다.
+
 import 'package:flutter/material.dart';
 
 class FileBar extends StatelessWidget {

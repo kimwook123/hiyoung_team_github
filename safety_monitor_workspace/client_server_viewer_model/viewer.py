@@ -1,3 +1,6 @@
+# server.py가 열어둔 HTTP 주소에서 클라이언트 목록과 MJPEG 스트림을 받아 표시하는 뷰어입니다.
+# requests.get으로 /clients, /stream/{client} 같은 GET 요청을 보냅니다.
+
 import sys
 import requests
 import threading
@@ -5,10 +8,12 @@ import queue
 import re
 from PyQt5 import QtWidgets, QtGui, QtCore
 
+# server.py의 start_http_server에서 8080 포트로 연 HTTP 서버 주소입니다.
 SERVER = 'http://127.0.0.1:8080'
 
 
 class MJPEGStreamReader(QtCore.QThread):
+    # UI가 멈추지 않도록 MJPEG 스트림 읽기를 별도 QThread에서 처리합니다.
     frame_ready = QtCore.pyqtSignal(QtGui.QPixmap)
 
     def __init__(self, client_id):
@@ -20,6 +25,7 @@ class MJPEGStreamReader(QtCore.QThread):
 
     def run(self):
         try:
+            # server.py의 web.get('/stream/{client}', mjpeg_stream) 경로로 GET 요청을 보냅니다.
             url = f"{SERVER}/stream/{self.client_id}"
             r = requests.get(url, stream=True, timeout=10)
             if r.status_code != 200:
@@ -70,6 +76,7 @@ class MJPEGStreamReader(QtCore.QThread):
 
 
 class StreamWidget(QtWidgets.QLabel):
+    # 클라이언트 하나의 영상을 표시하는 QLabel 기반 위젯입니다.
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedSize(640, 360)
@@ -121,6 +128,7 @@ class StreamWidget(QtWidgets.QLabel):
 
 
 class Viewer(QtWidgets.QWidget):
+    # 최대 4개의 클라이언트 영상을 격자로 보여주는 메인 창입니다.
     def __init__(self):
         super().__init__()
         self.setWindowTitle('TCP-IP Viewer - Real-time')
@@ -138,6 +146,7 @@ class Viewer(QtWidgets.QWidget):
         self.refresh_clients()
 
     def refresh_clients(self):
+        # server.py의 web.get('/clients', clients_list) 경로로 GET 요청을 보내 목록을 갱신합니다.
         try:
             r = requests.get(f"{SERVER}/clients", timeout=1)
             if r.status_code == 200:

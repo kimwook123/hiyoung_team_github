@@ -23,6 +23,7 @@ class VideoViewBox extends StatelessWidget {
     required this.overlaySourceWidth,
     required this.overlaySourceHeight,
     required this.overlayStatusText,
+    this.showOfflineOverlay = false,
     this.previewImageUrl = '',
     this.title = '',
     this.badgeText = '',
@@ -43,6 +44,7 @@ class VideoViewBox extends StatelessWidget {
   final double overlaySourceWidth;
   final double overlaySourceHeight;
   final String overlayStatusText;
+  final bool showOfflineOverlay;
   final String previewImageUrl;
   final String title;
   final String badgeText;
@@ -162,7 +164,14 @@ class VideoViewBox extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const LinearProgressIndicator(minHeight: 3),
+                              if (showOfflineOverlay)
+                                const Icon(
+                                  Icons.cloud_off_outlined,
+                                  color: Colors.white70,
+                                  size: 28,
+                                )
+                              else
+                                const LinearProgressIndicator(minHeight: 3),
                               const SizedBox(height: 10),
                               Text(
                                 overlayStatusText,
@@ -246,10 +255,7 @@ class _PreviewFallbackState extends State<_PreviewFallback> {
     final previewImageUrl = widget.previewImageUrl.trim();
     if (previewImageUrl.isEmpty) {
       return const Center(
-        child: Text(
-          'Preview will appear here.',
-          style: TextStyle(color: Colors.white70),
-        ),
+        child: Text('', style: TextStyle(color: Colors.white70)),
       );
     }
 

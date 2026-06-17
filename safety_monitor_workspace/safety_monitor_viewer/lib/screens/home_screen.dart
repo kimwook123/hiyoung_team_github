@@ -660,7 +660,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-
   Widget _buildCameraListPanel() {
     return _buildPanelCard(
       title: '카메라',
@@ -687,13 +686,19 @@ class _HomeScreenState extends State<HomeScreen> {
           onWillAcceptWithDetails: (details) =>
               details.data.slotId != slot.slotId,
           onAcceptWithDetails: (details) =>
-              _moveSourceSlotBefore(details.data.slotId, slot.slotId),
+              _swapSourceSlots(details.data.slotId, slot.slotId),
           builder: (context, candidateData, rejectedData) {
             final isDropTarget = candidateData.isNotEmpty;
-            final item = _buildCameraListItem(slot, index, isDropTarget: isDropTarget);
+            final item = _buildCameraListItem(
+              slot,
+              index,
+              isDropTarget: isDropTarget,
+            );
             return Padding(
               key: ValueKey(slot.slotId),
-              padding: EdgeInsets.only(bottom: index == _sourceSlots.length - 1 ? 0 : 8),
+              padding: EdgeInsets.only(
+                bottom: index == _sourceSlots.length - 1 ? 0 : 8,
+              ),
               child: LongPressDraggable<_SourcePanelSlot>(
                 data: slot,
                 dragAnchorStrategy: pointerDragAnchorStrategy,
@@ -704,7 +709,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     elevation: 12,
                     shadowColor: Colors.black87,
                     borderRadius: BorderRadius.circular(10),
-                    child: Opacity(opacity: 0.92, child: _buildCameraListItem(slot, index, isDragging: true)),
+                    child: Opacity(
+                      opacity: 0.92,
+                      child: _buildCameraListItem(
+                        slot,
+                        index,
+                        isDragging: true,
+                      ),
+                    ),
                   ),
                 ),
                 childWhenDragging: Opacity(opacity: 0.30, child: item),
@@ -750,12 +762,18 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
-          onTap: isDragging ? null : () => unawaited(_toggleActiveSlot(slot.slotId)),
+          onTap: isDragging
+              ? null
+              : () => unawaited(_toggleActiveSlot(slot.slotId)),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             child: Row(
               children: [
-                const Icon(Icons.drag_indicator, size: 18, color: Colors.white54),
+                const Icon(
+                  Icons.drag_indicator,
+                  size: 18,
+                  color: Colors.white54,
+                ),
                 const SizedBox(width: 6),
                 _buildConnectionStatusDot(slot),
                 const SizedBox(width: 10),
@@ -770,15 +788,21 @@ class _HomeScreenState extends State<HomeScreen> {
                               title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                              ),
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    fontWeight: isSelected
+                                        ? FontWeight.w800
+                                        : FontWeight.w600,
+                                  ),
                             ),
                           ),
                           const SizedBox(width: 4),
                           InkWell(
                             borderRadius: BorderRadius.circular(14),
-                            onTap: isDragging ? null : () => unawaited(_editDisplayNameForSlot(slot)),
+                            onTap: isDragging
+                                ? null
+                                : () =>
+                                      unawaited(_editDisplayNameForSlot(slot)),
                             child: const Padding(
                               padding: EdgeInsets.all(3),
                               child: Icon(Icons.edit_outlined, size: 15),
@@ -791,13 +815,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         status?.state.trim().isNotEmpty == true
                             ? '${status!.state} · $subtitle'
                             : (overview?.state.trim().isNotEmpty == true
-                                ? '${overview!.state} · $subtitle'
-                                : subtitle),
+                                  ? '${overview!.state} · $subtitle'
+                                  : subtitle),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.white60,
-                        ),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.copyWith(color: Colors.white60),
                       ),
                     ],
                   ),
@@ -845,6 +869,7 @@ class _HomeScreenState extends State<HomeScreen> {
       fallbackIndex: fallbackIndex,
     );
   }
+
   String _displayLabelForSourceKey(String sourceKey) {
     final normalized = sourceKey.trim();
     if (normalized.isEmpty || normalized == '-') {
@@ -873,19 +898,22 @@ class _HomeScreenState extends State<HomeScreen> {
     return '';
   }
 
-
   String _buildNewCameraLabel({
     required String clientId,
     required String sessionId,
     required String sourceValue,
     int? fallbackIndex,
   }) {
-    final owner = (clientId.trim().isNotEmpty ? clientId.trim() : sessionId.trim());
+    final owner = (clientId.trim().isNotEmpty
+        ? clientId.trim()
+        : sessionId.trim());
     final cameraValue = sourceValue.trim().isEmpty ? '0' : sourceValue.trim();
     if (owner.isNotEmpty) {
       return '새 카메라 감지됨: $owner / camera $cameraValue';
     }
-    final cameraNumber = fallbackIndex == null ? cameraValue : '${fallbackIndex + 1}';
+    final cameraNumber = fallbackIndex == null
+        ? cameraValue
+        : '${fallbackIndex + 1}';
     return '새 카메라 $cameraNumber / camera $cameraValue';
   }
 
@@ -952,6 +980,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await _refreshSourceOverviews();
     _showInfoSnack('카메라 이름을 저장했습니다.');
   }
+
   Widget _buildViewerVideoGridPanel() {
     if (_sourceSlots.isEmpty) {
       return _buildPanelCard(
@@ -1021,7 +1050,7 @@ class _HomeScreenState extends State<HomeScreen> {
           onWillAcceptWithDetails: (details) =>
               details.data.slotId != slot.slotId,
           onAcceptWithDetails: (details) =>
-              _moveSourceSlotBefore(details.data.slotId, slot.slotId),
+              _swapSourceSlots(details.data.slotId, slot.slotId),
           builder: (context, candidateData, rejectedData) {
             final isDropTarget = candidateData.isNotEmpty;
             final tile = _buildVideoTile(slot);
@@ -1077,6 +1106,8 @@ class _HomeScreenState extends State<HomeScreen> {
           overlaySourceWidth: _getOverlaySourceWidthForSlot(slot),
           overlaySourceHeight: _getOverlaySourceHeightForSlot(slot),
           overlayStatusText: _buildStartupProgressText(slot),
+          showOfflineOverlay:
+              _isSlotOfflineForViewer(slot) && !slot.controller.isReplayMode,
           previewImageUrl: _buildPreviewImageUrlForSlot(slot),
           dangerZoneRoi: isSelected ? _visibleDangerZoneRoiForSlot(slot) : null,
           enableDangerZoneEditing: isSelected && isEditingDangerZone,
@@ -1169,8 +1200,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-
-
   RoiRect? _visibleDangerZoneRoiForSlot(_SourcePanelSlot slot) {
     if (isEditingDangerZone && slot.slotId == _activeSlotId) {
       return pendingDangerZoneRoi ?? _ruleConfigForSlot(slot).dangerZoneRoi;
@@ -1207,6 +1236,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await _saveRuleConfig(_activeRuleConfig.copyWith(dangerZoneRoi: nextRoi));
     }
   }
+
   SourceRuleConfig _ruleConfigForSlot(_SourcePanelSlot slot) {
     return registeredSourcesByKey[slot.sourceKey.trim()]?.ruleConfig ??
         const SourceRuleConfig(
@@ -1226,11 +1256,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final sourceKey = slot.sourceKey.trim();
     final runtimeStatus = sourceStatusesByKey[sourceKey];
     final overview = sourceOverviewsByKey[sourceKey];
+    if (_isSlotOfflineForViewer(slot)) {
+      return '클라이언트 연결이 끊겼습니다. 재연결을 기다리는 중입니다.';
+    }
     if (runtimeStatus == null) {
       return _hasViewerHistory(overview) ? '' : '서버에 소스를 등록하고 첫 상태를 기다리는 중입니다.';
-    }
-    if (_isViewerSourceOffline(runtimeStatus, overview)) {
-      return '';
     }
     final state = runtimeStatus.state.trim().toLowerCase();
     if (state == 'starting' || state == 'registered') {
@@ -1464,7 +1494,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 8),
                   Text(
                     '편집 중 ROI: (${pendingDangerZoneRoi!.x1}, ${pendingDangerZoneRoi!.y1}) - (${pendingDangerZoneRoi!.x2}, ${pendingDangerZoneRoi!.y2})',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.orangeAccent),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.orangeAccent),
                   ),
                 ],
                 if (ruleConfig.dangerZoneRoi != null) ...[
@@ -1561,7 +1593,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       radius: 10,
                       backgroundColor: _colorForSlotStatus(slot),
                     ),
-                    label: Text('${_displayLabelForSlot(slot)} · ${_describeSlotStatus(slot)}'),
+                    label: Text(
+                      '${_displayLabelForSlot(slot)} · ${_describeSlotStatus(slot)}',
+                    ),
                     onSelected: (_) => unawaited(_setActiveSlot(slot.slotId)),
                     onDeleted: () => _confirmRemoveSourceSlot(slot),
                   ),
@@ -1890,14 +1924,14 @@ class _HomeScreenState extends State<HomeScreen> {
     if (slot.controller.errorText.trim().isNotEmpty) {
       return '영상 재생 오류: ${slot.controller.errorText.trim()}';
     }
+    if (_isSlotOfflineForViewer(slot)) {
+      return '소유 클라이언트 연결이 끊겨 현재 분석 상태가 오래되었습니다.';
+    }
     if (runtimeStatus == null) {
       if (source != null) {
         return _buildViewerSourceAvailabilityText(source, null, overview);
       }
       return '분석 상태를 아직 받지 못했습니다.';
-    }
-    if (_isViewerSourceOffline(runtimeStatus, overview)) {
-      return '소유 클라이언트 연결이 끊겨 현재 분석 상태가 오래되었습니다.';
     }
     if (runtimeStatus.errorMessage.trim().isNotEmpty) {
       return runtimeStatus.errorMessage.trim();
@@ -2164,6 +2198,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _buildPreviewImageUrlForSlot(_SourcePanelSlot slot) {
+    if (_isSlotOfflineForViewer(slot) && !slot.controller.isReplayMode) {
+      return '';
+    }
     final sourceKey = slot.sourceKey.trim();
     if (sourceKey.isNotEmpty) {
       return eventApiService.buildSourceStreamUrl(sourceKey);
@@ -2439,9 +2476,13 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     apiEventFeed.clearSelection();
     if (ok) {
+      await _clearViewerRuntimeStateForServerSwitch();
+      await _refreshSourceOverviews();
+      await _refreshRegisteredSources();
+      await _refreshSourceStatuses();
       await _refreshApiEventsIfNeeded();
       if (mounted) {
-        _showInfoSnack('이벤트 DB와 클립을 정리했습니다.');
+        _showInfoSnack('이벤트 DB, 클립, 카메라 표시 이름을 정리했습니다. 클라이언트 재등록을 기다립니다.');
       }
     } else if (mounted) {
       _showInfoSnack(apiEventController.errorMessage ?? '이벤트 DB 정리에 실패했습니다.');
@@ -2874,19 +2915,23 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _moveSourceSlotBefore(String draggedSlotId, String targetSlotId) {
+  void _swapSourceSlots(String draggedSlotId, String targetSlotId) {
     if (draggedSlotId == targetSlotId) {
       return;
     }
-    final oldIndex = _sourceSlots.indexWhere((slot) => slot.slotId == draggedSlotId);
-    final targetIndex = _sourceSlots.indexWhere((slot) => slot.slotId == targetSlotId);
-    if (oldIndex < 0 || targetIndex < 0 || oldIndex == targetIndex) {
+    final draggedIndex = _sourceSlots.indexWhere(
+      (slot) => slot.slotId == draggedSlotId,
+    );
+    final targetIndex = _sourceSlots.indexWhere(
+      (slot) => slot.slotId == targetSlotId,
+    );
+    if (draggedIndex < 0 || targetIndex < 0 || draggedIndex == targetIndex) {
       return;
     }
     setState(() {
-      final slot = _sourceSlots.removeAt(oldIndex);
-      final insertIndex = _sourceSlots.indexWhere((item) => item.slotId == targetSlotId);
-      _sourceSlots.insert(insertIndex < 0 ? _sourceSlots.length : insertIndex, slot);
+      final draggedSlot = _sourceSlots[draggedIndex];
+      _sourceSlots[draggedIndex] = _sourceSlots[targetIndex];
+      _sourceSlots[targetIndex] = draggedSlot;
     });
   }
 
@@ -3058,7 +3103,7 @@ class _HomeScreenState extends State<HomeScreen> {
         frameDetectionLogModifiedAt = null;
         frameDetectionSourceKey = '';
         isEditingDangerZone = false;
-      pendingDangerZoneRoi = null;
+        pendingDangerZoneRoi = null;
       });
       apiEventFeed.setSourceKeyFilter('');
       apiEventFeed.clearSelection();
@@ -3148,11 +3193,6 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       sourceStatusesByKey = nextMap;
     });
-    if (_sourceSlots.isNotEmpty) {
-      await _pruneLocalSlotsForRemovedRegisteredSources(
-        _visibleRegisteredSourceKeys(),
-      );
-    }
   }
 
   Future<void> _refreshSourceOverviews() async {
@@ -3270,29 +3310,12 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Set<String> _visibleRegisteredSourceKeys() {
-    final keys = <String>{};
-    for (final source in registeredSourcesByKey.values) {
-      if (_shouldShowViewerSource(source)) {
-        keys.add(source.sourceKey.trim());
-      }
-    }
-    return keys;
-  }
-
   bool _shouldShowViewerSource(SourceItem source) {
     final sourceKey = source.sourceKey.trim();
     if (sourceKey.isEmpty) {
       return false;
     }
-    if (!_isCameraZeroSource(source.sourceType, source.sourceValue)) {
-      return false;
-    }
-    final status = sourceStatusesByKey[sourceKey];
-    if (status == null) {
-      return false;
-    }
-    return !_isViewerSourceOffline(status, sourceOverviewsByKey[sourceKey]);
+    return _isCameraZeroSource(source.sourceType, source.sourceValue);
   }
 
   bool _isCameraZeroSource(String sourceType, String sourceValue) {
@@ -3684,19 +3707,11 @@ class _HomeScreenState extends State<HomeScreen> {
       return '오류';
     }
     final runtimeStatus = sourceStatusesByKey[sourceKey];
-    if (runtimeStatus == null) {
-      final source = registeredSourcesByKey[sourceKey];
-      final overview = sourceOverviewsByKey[sourceKey];
-      if (source != null && _hasViewerHistory(overview)) {
-        return '오프라인';
-      }
-      return '등록됨';
-    }
-    if (_isViewerSourceOffline(
-      runtimeStatus,
-      sourceOverviewsByKey[sourceKey],
-    )) {
+    if (_isSlotOfflineForViewer(slot)) {
       return '오프라인';
+    }
+    if (runtimeStatus == null) {
+      return '등록됨';
     }
     if (runtimeStatus.errorMessage.trim().isNotEmpty ||
         runtimeStatus.state.trim().toLowerCase() == 'error') {
@@ -3748,7 +3763,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case '중지됨':
         return Colors.blueGrey;
       case '오프라인':
-        return Colors.orangeAccent;
+        return Colors.grey;
       case '등록됨':
         return Colors.grey;
       default:
@@ -3768,24 +3783,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final sourceKey = slot.sourceKey.trim();
     final runtimeStatus = sourceStatusesByKey[sourceKey];
-    final overview = sourceOverviewsByKey[sourceKey];
+    if (_isSlotOfflineForViewer(slot)) {
+      return const _ClientConnectionStatus(
+        color: Colors.grey,
+        label: '클라이언트 오프라인',
+      );
+    }
     if (runtimeStatus == null) {
-      if (_hasViewerHistory(overview)) {
-        return const _ClientConnectionStatus(
-          color: Colors.redAccent,
-          label: '클라이언트 오프라인',
-        );
-      }
       return const _ClientConnectionStatus(
         color: Colors.orangeAccent,
         label: '클라이언트 연결 대기',
-      );
-    }
-
-    if (_isViewerSourceOffline(runtimeStatus, overview)) {
-      return const _ClientConnectionStatus(
-        color: Colors.redAccent,
-        label: '클라이언트 오프라인',
       );
     }
 
@@ -3885,6 +3892,28 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  bool _isSlotOfflineForViewer(_SourcePanelSlot slot) {
+    final sourceKey = slot.sourceKey.trim();
+    final runtimeStatus = sourceStatusesByKey[sourceKey];
+    final overview = sourceOverviewsByKey[sourceKey];
+    if (runtimeStatus == null) {
+      return _hasViewerHistory(overview);
+    }
+    if (_isViewerSourceOffline(runtimeStatus, overview)) {
+      return true;
+    }
+    final runtimeState = runtimeStatus.state.trim().toLowerCase();
+    final lastFrameReceivedAt = overview?.lastFrameReceivedAt.trim() ?? '';
+    if ((runtimeStatus.isRunning ||
+            runtimeState == 'running' ||
+            runtimeState == 'analyzing') &&
+        lastFrameReceivedAt.isNotEmpty &&
+        _isStatusTimestampStale(lastFrameReceivedAt)) {
+      return true;
+    }
+    return false;
+  }
+
   bool _hasViewerHistory(SourceOverviewItem? overview) {
     if (overview == null) {
       return false;
@@ -3978,7 +4007,7 @@ class _HomeScreenState extends State<HomeScreen> {
         frameDetectionLogModifiedAt = null;
         frameDetectionSourceKey = '';
         isEditingDangerZone = false;
-      pendingDangerZoneRoi = null;
+        pendingDangerZoneRoi = null;
       });
       if (mounted) {
         _showInfoSnack('소스 선택을 해제하고 전체 이벤트 로그 보기로 전환했습니다.');

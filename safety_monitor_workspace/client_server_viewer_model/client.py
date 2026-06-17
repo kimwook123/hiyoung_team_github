@@ -1,3 +1,6 @@
+# 카메라 프레임을 읽어서 TCP socket으로 server.py에 보내는 클라이언트 파일입니다.
+# 이 예제에서는 HTTP가 아니라 직접 TCP 연결로 프레임 bytes를 전송합니다.
+
 import cv2
 import socket
 import cv2
@@ -13,6 +16,7 @@ except Exception:
 
 
 def load_model(path='YOLO26n.pt'):
+    # YOLO 모델 파일을 로드합니다. 모델이 없으면 탐지 없이 프레임만 전송합니다.
     if YOLO is None:
         print('Warning: ultralytics 패키지가 설치되어 있지 않습니다.')
         return None
@@ -31,6 +35,7 @@ def load_model(path='YOLO26n.pt'):
 
 
 def helmet_detected(model, results):
+    # YOLO 결과 안에 helmet/hardhat 계열 클래스가 있는지 확인합니다.
     # results: ultralytics Results 객체(또는 list 형태의 결과)
     try:
         res = results[0] if isinstance(results, (list, tuple)) else results
@@ -67,9 +72,11 @@ def helmet_detected(model, results):
 
 
 def run_client():
+    # server.py의 asyncio.start_server 포트인 8888로 TCP 연결을 시도합니다.
     server_ip = '127.0.0.1'
     server_port = 8888
 
+    # HTTP 요청이 아니라 socket.connect 후 sendall로 직접 데이터를 보내는 방식입니다.
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
@@ -80,6 +87,7 @@ def run_client():
         print(f'서버 연결 실패: {e}')
         return
 
+    # 0번 카메라를 열어 프레임을 계속 읽습니다.
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print('카메라를 열 수 없습니다.')
@@ -117,8 +125,10 @@ def run_client():
                     print('프레임 인코딩 실패')
                 else:
                     data = encoded_frame.tobytes()
+                    # 서버가 먼저 길이를 읽을 수 있도록 8바이트 길이 헤더를 붙입니다.
                     header = struct.pack('Q', len(data))
                     try:
+                        # 길이 헤더와 JPEG bytes를 한 번에 서버로 보냅니다.
                         client_socket.sendall(header + data)
                         print('탐지된 프레임 전송됨 (크기:', len(data), ')')
                     except BrokenPipeError:

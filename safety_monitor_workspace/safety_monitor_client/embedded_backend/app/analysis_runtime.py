@@ -484,18 +484,17 @@ class ClientSourcePreviewPublisher:
             y1 = int(getattr(box, "y1", 0))
             x2 = int(getattr(box, "x2", 0))
             y2 = int(getattr(box, "y2", 0))
-            cv2.rectangle(preview_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            label = f"{getattr(detection, 'name', '')} {float(getattr(detection, 'score', 0.0)):.2f}"
-            track_id = getattr(detection, "track_id", None)
-            if track_id is not None:
-                label += f" id={track_id}"
+            name = getattr(detection, 'name', '')
+            color = _color_for_detection_name(name)
+            cv2.rectangle(preview_frame, (x1, y1), (x2, y2), color, 2)
+            label = f"{name} {float(getattr(detection, 'score', 0.0)):.2f}"
             cv2.putText(
                 preview_frame,
                 label,
                 (x1, max(20, y1 - 8)),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.6,
-                (0, 255, 0),
+                color,
                 2,
             )
         return preview_frame
@@ -590,3 +589,13 @@ def _read_video_duration_seconds(video_path: str) -> float:
     finally:
         if cap is not None:
             cap.release()
+
+def _color_for_detection_name(name: str) -> tuple[int, int, int]:
+    normalized = str(name or "").strip().lower()
+    if normalized in {"yes_helmet", "helmet", "hardhat"}:
+        return (0, 255, 0)
+    if normalized in {"no_helmet", "without_helmet", "no helmet"}:
+        return (0, 0, 255)
+    if normalized == "person":
+        return (0, 255, 255)
+    return (0, 255, 255)

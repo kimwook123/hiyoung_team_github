@@ -403,17 +403,16 @@ class VideoPipeline:
             x2 = detection.box.x2
             y2 = detection.box.y2
 
-            cv2.rectangle(display_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            color = _color_for_detection_name(detection.name)
+            cv2.rectangle(display_frame, (x1, y1), (x2, y2), color, 2)
             label = f"{detection.name} {detection.score:.2f}"
-            if detection.track_id is not None:
-                label += f" id={detection.track_id}"
             cv2.putText(
                 display_frame,
                 label,
                 (x1, max(20, y1 - 8)),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.6,
-                (0, 255, 0),
+                color,
                 2,
             )
 
@@ -531,3 +530,13 @@ class VideoPipeline:
         if self.source_time_mode != "video":
             return False
         return self.object_detection_seen_frame_count <= 50
+
+def _color_for_detection_name(name: str) -> tuple[int, int, int]:
+    normalized = str(name or "").strip().lower()
+    if normalized in {"yes_helmet", "helmet", "hardhat"}:
+        return (0, 255, 0)
+    if normalized in {"no_helmet", "without_helmet", "no helmet"}:
+        return (0, 0, 255)
+    if normalized == "person":
+        return (0, 255, 255)
+    return (0, 255, 255)

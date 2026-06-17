@@ -29,6 +29,7 @@ class VideoViewBox extends StatelessWidget {
     this.badgeColor = Colors.green,
     this.isSelected = false,
     this.onTap,
+    this.onTitleTap,
     this.footer,
     this.overlayAction,
     this.dangerZoneRoi,
@@ -48,6 +49,7 @@ class VideoViewBox extends StatelessWidget {
   final Color badgeColor;
   final bool isSelected;
   final VoidCallback? onTap;
+  final VoidCallback? onTitleTap;
   final Widget? footer;
   final Widget? overlayAction;
   final RoiRect? dangerZoneRoi;
@@ -75,12 +77,16 @@ class VideoViewBox extends StatelessWidget {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onTitleTap,
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),

@@ -161,6 +161,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        titleSpacing: 8,
         title: Row(
           children: [
             const Text('Safety Monitor Viewer'),
@@ -173,12 +174,20 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(width: 12),
             OutlinedButton.icon(
-              onPressed: isClearingEventData ? null : () => unawaited(_confirmClearEventData()),
+              onPressed: isClearingEventData
+                  ? null
+                  : () => unawaited(_confirmClearEventData()),
               icon: isClearingEventData
-                  ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : const Icon(Icons.delete_sweep_outlined, size: 16),
               label: const Text('DB Clear'),
             ),
+            const SizedBox(width: 12),
+            Expanded(child: _buildTopServerConnectionBar()),
           ],
         ),
       ),
@@ -191,15 +200,7 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 SizedBox(width: 220, child: _buildCameraListPanel()),
                 const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    children: [
-                      _buildViewerServerControls(),
-                      const SizedBox(height: 8),
-                      Expanded(child: _buildViewerVideoGridPanel()),
-                    ],
-                  ),
-                ),
+                Expanded(child: _buildViewerVideoGridPanel()),
                 const SizedBox(width: 10),
                 SizedBox(width: 360, child: _buildInspectorPanel()),
               ],
@@ -344,54 +345,31 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildViewerServerControls() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.black12),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                'Server Connection',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-            ],
+  Widget _buildTopServerConnectionBar() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: TextField(
+            controller: serverBaseUrlTextController,
+            style: const TextStyle(fontSize: 13),
+            decoration: const InputDecoration(
+              labelText: 'Server URL',
+              hintText: 'http://127.0.0.1:8000',
+              border: OutlineInputBorder(),
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            ),
+            onSubmitted: (_) => unawaited(_applyServerBaseUrl()),
           ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: serverBaseUrlTextController,
-                  decoration: const InputDecoration(
-                    labelText: 'Server URL',
-                    hintText: 'http://127.0.0.1:8000',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton(
-                onPressed: () => unawaited(_applyServerBaseUrl()),
-                child: const Text('Apply Server'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          AnimatedBuilder(
-            animation: apiEventFeed,
-            builder: (context, _) {
-              return _buildApiStatusText();
-            },
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton(
+          onPressed: () => unawaited(_applyServerBaseUrl()),
+          child: const Text('Apply Server'),
+        ),
+      ],
     );
   }
 
@@ -688,92 +666,147 @@ class _HomeScreenState extends State<HomeScreen> {
       title: '카메라',
       child: _sourceSlots.isEmpty
           ? const Center(child: Text('연결된 카메라가 없습니다.'))
-          : ReorderableListView.builder(
-              buildDefaultDragHandles: false,
+          : ListView.builder(
               itemCount: _sourceSlots.length,
-              onReorder: _reorderSourceSlots,
               itemBuilder: (context, index) {
                 final slot = _sourceSlots[index];
-                final isSelected = slot.slotId == _activeSlotId;
-                final sourceKey = slot.sourceKey.trim();
-                final status = sourceStatusesByKey[sourceKey];
-                final overview = sourceOverviewsByKey[sourceKey];
-                final title = _buildCameraDisplayName(slot, index);
-                final subtitle = _resolveClientConnectionStatus(slot).label;
-                return Padding(
-                  key: ValueKey(slot.slotId),
-                  padding: EdgeInsets.only(bottom: index == _sourceSlots.length - 1 ? 0 : 8),
-                  child: Material(
-                    color: isSelected
-                        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.14)
-                        : const Color(0xFF11151B),
-                    borderRadius: BorderRadius.circular(8),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () => unawaited(_toggleActiveSlot(slot.slotId)),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                        child: Row(
-                          children: [
-                            ReorderableDragStartListener(
-                              index: index,
-                              child: const Icon(Icons.drag_indicator, size: 18, color: Colors.white54),
-                            ),
-                            const SizedBox(width: 6),
-                            _buildConnectionStatusDot(slot),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          title,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      InkWell(
-                                        borderRadius: BorderRadius.circular(14),
-                                        onTap: () => unawaited(_editDisplayNameForSlot(slot)),
-                                        child: const Padding(
-                                          padding: EdgeInsets.all(3),
-                                          child: Icon(Icons.edit_outlined, size: 15),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    status?.state.trim().isNotEmpty == true
-                                        ? '${status!.state} · $subtitle'
-                                        : (overview?.state.trim().isNotEmpty == true
-                                            ? '${overview!.state} · $subtitle'
-                                            : subtitle),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Colors.white60,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                );
+                return _buildDraggableCameraListItem(slot, index);
               },
             ),
       expandChild: true,
+    );
+  }
+
+  Widget _buildDraggableCameraListItem(_SourcePanelSlot slot, int index) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final itemWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : 220.0;
+        return DragTarget<_SourcePanelSlot>(
+          onWillAcceptWithDetails: (details) =>
+              details.data.slotId != slot.slotId,
+          onAcceptWithDetails: (details) =>
+              _moveSourceSlotBefore(details.data.slotId, slot.slotId),
+          builder: (context, candidateData, rejectedData) {
+            final isDropTarget = candidateData.isNotEmpty;
+            final item = _buildCameraListItem(slot, index, isDropTarget: isDropTarget);
+            return Padding(
+              key: ValueKey(slot.slotId),
+              padding: EdgeInsets.only(bottom: index == _sourceSlots.length - 1 ? 0 : 8),
+              child: LongPressDraggable<_SourcePanelSlot>(
+                data: slot,
+                dragAnchorStrategy: pointerDragAnchorStrategy,
+                feedback: SizedBox(
+                  width: itemWidth,
+                  child: Material(
+                    color: Colors.transparent,
+                    elevation: 12,
+                    shadowColor: Colors.black87,
+                    borderRadius: BorderRadius.circular(10),
+                    child: Opacity(opacity: 0.92, child: _buildCameraListItem(slot, index, isDragging: true)),
+                  ),
+                ),
+                childWhenDragging: Opacity(opacity: 0.30, child: item),
+                child: item,
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildCameraListItem(
+    _SourcePanelSlot slot,
+    int index, {
+    bool isDropTarget = false,
+    bool isDragging = false,
+  }) {
+    final isSelected = slot.slotId == _activeSlotId;
+    final sourceKey = slot.sourceKey.trim();
+    final status = sourceStatusesByKey[sourceKey];
+    final overview = sourceOverviewsByKey[sourceKey];
+    final title = _buildCameraDisplayName(slot, index);
+    final subtitle = _resolveClientConnectionStatus(slot).label;
+    final baseColor = isSelected
+        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.14)
+        : const Color(0xFF11151B);
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOutCubic,
+      decoration: BoxDecoration(
+        color: baseColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isDropTarget
+              ? Theme.of(context).colorScheme.primary
+              : Colors.transparent,
+          width: isDropTarget ? 2 : 1,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: isDragging ? null : () => unawaited(_toggleActiveSlot(slot.slotId)),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            child: Row(
+              children: [
+                const Icon(Icons.drag_indicator, size: 18, color: Colors.white54),
+                const SizedBox(width: 6),
+                _buildConnectionStatusDot(slot),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: isDragging ? null : () => unawaited(_editDisplayNameForSlot(slot)),
+                            child: const Padding(
+                              padding: EdgeInsets.all(3),
+                              child: Icon(Icons.edit_outlined, size: 15),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        status?.state.trim().isNotEmpty == true
+                            ? '${status!.state} · $subtitle'
+                            : (overview?.state.trim().isNotEmpty == true
+                                ? '${overview!.state} · $subtitle'
+                                : subtitle),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.white60,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -976,36 +1009,53 @@ class _HomeScreenState extends State<HomeScreen> {
       return _buildVideoTile(slot);
     }
 
-    return DragTarget<_SourcePanelSlot>(
-      onWillAcceptWithDetails: (details) =>
-          details.data.slotId != slot.slotId,
-      onAcceptWithDetails: (details) =>
-          _moveSourceSlotBefore(details.data.slotId, slot.slotId),
-      builder: (context, candidateData, rejectedData) {
-        final isDropTarget = candidateData.isNotEmpty;
-        return LongPressDraggable<_SourcePanelSlot>(
-          data: slot,
-          feedback: SizedBox(
-            width: 280,
-            height: 160,
-            child: Material(
-              color: Colors.transparent,
-              child: Opacity(opacity: 0.86, child: _buildVideoTile(slot)),
-            ),
-          ),
-          childWhenDragging: Opacity(
-            opacity: 0.35,
-            child: _buildVideoTile(slot),
-          ),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              border: isDropTarget
-                  ? Border.all(color: Theme.of(context).colorScheme.primary, width: 2)
-                  : null,
-            ),
-            child: _buildVideoTile(slot),
-          ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final feedbackWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : 320.0;
+        final feedbackHeight = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : feedbackWidth * 9 / 16;
+        return DragTarget<_SourcePanelSlot>(
+          onWillAcceptWithDetails: (details) =>
+              details.data.slotId != slot.slotId,
+          onAcceptWithDetails: (details) =>
+              _moveSourceSlotBefore(details.data.slotId, slot.slotId),
+          builder: (context, candidateData, rejectedData) {
+            final isDropTarget = candidateData.isNotEmpty;
+            final tile = _buildVideoTile(slot);
+            return LongPressDraggable<_SourcePanelSlot>(
+              data: slot,
+              dragAnchorStrategy: pointerDragAnchorStrategy,
+              feedback: SizedBox(
+                width: feedbackWidth,
+                height: feedbackHeight,
+                child: Material(
+                  color: Colors.transparent,
+                  elevation: 14,
+                  shadowColor: Colors.black87,
+                  borderRadius: BorderRadius.circular(14),
+                  child: Opacity(opacity: 0.90, child: tile),
+                ),
+              ),
+              childWhenDragging: Opacity(opacity: 0.30, child: tile),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                curve: Curves.easeOutCubic,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: isDropTarget
+                      ? Border.all(
+                          color: Theme.of(context).colorScheme.primary,
+                          width: 2,
+                        )
+                      : null,
+                ),
+                child: tile,
+              ),
+            );
+          },
         );
       },
     );
@@ -1596,33 +1646,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
         ],
       ),
-    );
-  }
-
-  Widget _buildApiStatusText() {
-    String text = '3초마다 자동 새로고침되며 "API 새로고침"으로 수동 갱신도 가능합니다.';
-
-    if (apiEventController.isLoading) {
-      text = 'API 이벤트 불러오는 중...';
-    } else if ((apiEventController.errorMessage ?? '').isNotEmpty) {
-      text = apiEventController.errorMessage!;
-    } else if (apiEventController.lastUpdatedAt != null) {
-      final updatedAt = apiEventController.lastUpdatedAt!;
-      final timestamp =
-          '${updatedAt.year.toString().padLeft(4, '0')}-'
-          '${updatedAt.month.toString().padLeft(2, '0')}-'
-          '${updatedAt.day.toString().padLeft(2, '0')} '
-          '${updatedAt.hour.toString().padLeft(2, '0')}:'
-          '${updatedAt.minute.toString().padLeft(2, '0')}:'
-          '${updatedAt.second.toString().padLeft(2, '0')}';
-      text = '마지막 갱신: $timestamp';
-    }
-
-    return Text(
-      text,
-      style: Theme.of(
-        context,
-      ).textTheme.bodySmall?.copyWith(color: Colors.black54),
     );
   }
 
@@ -2849,24 +2872,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _slotCreationSourceKeys.remove(normalizedSourceKey);
       }
     }
-  }
-
-  void _reorderSourceSlots(int oldIndex, int newIndex) {
-    if (oldIndex < 0 || oldIndex >= _sourceSlots.length) {
-      return;
-    }
-    var targetIndex = newIndex;
-    if (targetIndex > oldIndex) {
-      targetIndex -= 1;
-    }
-    targetIndex = targetIndex.clamp(0, _sourceSlots.length - 1);
-    if (oldIndex == targetIndex) {
-      return;
-    }
-    setState(() {
-      final slot = _sourceSlots.removeAt(oldIndex);
-      _sourceSlots.insert(targetIndex, slot);
-    });
   }
 
   void _moveSourceSlotBefore(String draggedSlotId, String targetSlotId) {

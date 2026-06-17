@@ -65,36 +65,45 @@ class ServerEventProcessor:
             for match_key, candidate in candidates.items():
                 active_state = active_map.get(match_key)
                 if active_state is None:
-                    state = _ActiveEventState(
-                        event_key=str(candidate.get("event_key", "")).strip(),
-                        event_type=str(candidate["event_type"]),
-                        message=str(candidate["message"]),
-                        level=str(candidate["level"]),
-                        source_key=source_key,
-                        source_slug=str(candidate["source_slug"]),
-                        source_type=str(candidate["source_type"]),
-                        source_value=str(candidate["source_value"]),
-                        client_id=str(candidate["client_id"]),
-                        session_id=str(candidate["session_id"]),
-                        person_id=_read_int_or_none(candidate.get("person_id")),
-                        started_at=_parse_datetime(candidate.get("created_at")) or datetime.now(),
-                        last_seen_at=_parse_datetime(candidate.get("created_at")) or datetime.now(),
-                        started_frame_id=_read_int(candidate.get("frame_id"), default=-1),
-                        last_frame_id=_read_int(candidate.get("frame_id"), default=-1),
-                        source_time_seconds=_read_float(candidate.get("source_time_seconds")),
-                        source_time_text=str(candidate.get("source_time_text", "")),
-                        started_source_time_text=str(
-                            candidate.get("started_source_time_text")
-                            or candidate.get("source_time_text", "")
-                        ),
-                        related_detections=_normalize_detections(
-                            candidate.get("related_detections")
-                        ),
-                        danger_zone_roi=_normalize_roi_dict(candidate.get("danger_zone_roi")),
+                    reusable_key = self._find_reusable_active_key(
+                        candidate=candidate,
+                        active_map=active_map,
+                        seen_keys=seen_keys,
                     )
-                    active_map[match_key] = state
-                    saved_events.append(self._save_event(self._build_start_event(candidate)))
-                    continue
+                    if reusable_key is not None:
+                        active_state = active_map.pop(reusable_key)
+                        active_map[match_key] = active_state
+                    else:
+                        state = _ActiveEventState(
+                            event_key=str(candidate.get("event_key", "")).strip(),
+                            event_type=str(candidate["event_type"]),
+                            message=str(candidate["message"]),
+                            level=str(candidate["level"]),
+                            source_key=source_key,
+                            source_slug=str(candidate["source_slug"]),
+                            source_type=str(candidate["source_type"]),
+                            source_value=str(candidate["source_value"]),
+                            client_id=str(candidate["client_id"]),
+                            session_id=str(candidate["session_id"]),
+                            person_id=_read_int_or_none(candidate.get("person_id")),
+                            started_at=_parse_datetime(candidate.get("created_at")) or datetime.now(),
+                            last_seen_at=_parse_datetime(candidate.get("created_at")) or datetime.now(),
+                            started_frame_id=_read_int(candidate.get("frame_id"), default=-1),
+                            last_frame_id=_read_int(candidate.get("frame_id"), default=-1),
+                            source_time_seconds=_read_float(candidate.get("source_time_seconds")),
+                            source_time_text=str(candidate.get("source_time_text", "")),
+                            started_source_time_text=str(
+                                candidate.get("started_source_time_text")
+                                or candidate.get("source_time_text", "")
+                            ),
+                            related_detections=_normalize_detections(
+                                candidate.get("related_detections")
+                            ),
+                            danger_zone_roi=_normalize_roi_dict(candidate.get("danger_zone_roi")),
+                        )
+                        active_map[match_key] = state
+                        saved_events.append(self._save_event(self._build_start_event(candidate)))
+                        continue
 
                 active_state.last_seen_at = _parse_datetime(candidate.get("created_at")) or datetime.now()
                 active_state.last_frame_id = _read_int(candidate.get("frame_id"), default=-1)
@@ -124,6 +133,39 @@ class ServerEventProcessor:
                 self._active_by_source_key.pop(source_key, None)
 
         return saved_events
+
+    def _find_reusable_active_key(
+        self,
+        *,
+        candidate: dict[str, Any],
+        active_map: dict[str, _ActiveEventState],
+        seen_keys: set[str],
+    ) -> str | None:
+        # tracker ID가 바뀌거나 탐지가 잠깐 끊긴 경우에도 같은 위치의 같은 룰 이벤트는 이어 붙입니다.
+        candidate_type = str(candidate.get("event_type", "")).strip()
+        if not candidate_type:
+            return None
+        candidate_roi = _normalize_roi_dict(candidate.get("danger_zone_roi"))
+        candidate_detections = _normalize_detections(candidate.get("related_detections"))
+        best_key = None
+        best_score = 0.0
+        for active_key, active_state in active_map.items():
+            if active_key in seen_keys:
+                continue
+            if active_state.event_type != candidate_type:
+                continue
+            if active_state.danger_zone_roi != candidate_roi:
+                continue
+            score = _detection_similarity_score(
+                active_state.related_detections,
+                candidate_detections,
+            )
+            if score > best_score:
+                best_score = score
+                best_key = active_key
+        if best_key is None or best_score < 0.20:
+            return None
+        return best_key
 
     def close_source(self, source_key: str) -> list[dict[str, Any]]:
         normalized_source_key = source_key.strip()
@@ -418,6 +460,67 @@ def _build_danger_zone_candidates(
     return candidates
 
 
+def _detection_similarity_score(
+    previous_detections: list[dict[str, Any]],
+    current_detections: list[dict[str, Any]],
+) -> float:
+    best_score = 0.0
+    for previous in previous_detections:
+        previous_box = _normalize_box(previous.get("box"))
+        if previous_box is None:
+            continue
+        for current in current_detections:
+            current_box = _normalize_box(current.get("box"))
+            if current_box is None:
+                continue
+            score = _box_similarity_score(previous_box, current_box)
+            best_score = max(best_score, score)
+    return best_score
+
+
+def _box_similarity_score(left: dict[str, int], right: dict[str, int]) -> float:
+    iou = _box_iou(left, right)
+    if iou >= 0.10:
+        return max(0.20, iou)
+
+    left_center_x = (int(left["x1"]) + int(left["x2"])) / 2.0
+    left_center_y = (int(left["y1"]) + int(left["y2"])) / 2.0
+    right_center_x = (int(right["x1"]) + int(right["x2"])) / 2.0
+    right_center_y = (int(right["y1"]) + int(right["y2"])) / 2.0
+    distance = abs(left_center_x - right_center_x) + abs(left_center_y - right_center_y)
+    dynamic_limit = max(
+        120.0,
+        max(_box_width(left), _box_height(left), _box_width(right), _box_height(right)) * 0.75,
+    )
+    if distance > dynamic_limit:
+        return 0.0
+    return 0.20 + (0.30 * (1.0 - (distance / dynamic_limit)))
+
+
+def _box_iou(left: dict[str, int], right: dict[str, int]) -> float:
+    inter_x1 = max(int(left["x1"]), int(right["x1"]))
+    inter_y1 = max(int(left["y1"]), int(right["y1"]))
+    inter_x2 = min(int(left["x2"]), int(right["x2"]))
+    inter_y2 = min(int(left["y2"]), int(right["y2"]))
+    inter_width = max(0, inter_x2 - inter_x1)
+    inter_height = max(0, inter_y2 - inter_y1)
+    inter_area = inter_width * inter_height
+    if inter_area <= 0:
+        return 0.0
+    union_area = (_box_width(left) * _box_height(left)) + (_box_width(right) * _box_height(right)) - inter_area
+    if union_area <= 0:
+        return 0.0
+    return inter_area / union_area
+
+
+def _box_width(box: dict[str, int]) -> int:
+    return max(1, int(box["x2"]) - int(box["x1"]))
+
+
+def _box_height(box: dict[str, int]) -> int:
+    return max(1, int(box["y2"]) - int(box["y1"]))
+
+
 def _box_intersects_roi(box: dict[str, int], roi: tuple[int, int, int, int]) -> bool:
     roi_x1, roi_y1, roi_x2, roi_y2 = roi
     return not (
@@ -627,4 +730,4 @@ def _read_int_or_none(value: object) -> int | None:
 
 
 # 라이브 소스의 END 판정 타이밍을 클라이언트 쪽 clip 종료 기준과 비슷하게 맞춥니다.
-server_event_processor = ServerEventProcessor(end_missing_frames=30)
+server_event_processor = ServerEventProcessor(end_missing_frames=60)

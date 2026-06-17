@@ -545,7 +545,7 @@ class _HomeScreenState extends State<HomeScreen> {
           badgeColor: _colorForSlotStatus(slot),
           isSelected: isSelected,
           onTap: () => unawaited(_setActiveSlot(slot.slotId)),
-          overlayItems: _getOverlayItemsForSlot(slot),
+          overlayItems: const [],
           overlayDetections: const [],
           overlaySourceWidth: _getOverlaySourceWidthForSlot(slot),
           overlaySourceHeight: _getOverlaySourceHeightForSlot(slot),
@@ -1493,6 +1493,7 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_refreshApiEventsIfNeeded());
   }
 
+  // ignore: unused_element
   List<EventLogItem> _getOverlayItemsForSlot(_SourcePanelSlot slot) {
     if (slot.sourceKey.trim().isEmpty) {
       return const [];

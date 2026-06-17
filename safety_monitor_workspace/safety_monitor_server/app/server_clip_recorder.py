@@ -1,4 +1,7 @@
-﻿from __future__ import annotations
+# 이벤트 발생 전후 프레임을 모아 mp4 클립으로 저장하는 파일입니다.
+# 프레임 버퍼 관리와 클립 파일 생성 흐름이 포함되어 있습니다.
+
+from __future__ import annotations
 
 import hashlib
 import re

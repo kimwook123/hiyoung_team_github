@@ -1,3 +1,6 @@
+# 클라이언트에서 카메라를 열고 AI 분석 파이프라인을 조립하는 파일입니다.
+# 모델 선택, 프레임 저장, 서버 보고 흐름이 이 파일에서 이어집니다.
+
 from __future__ import annotations
 
 import hashlib

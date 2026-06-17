@@ -1,3 +1,6 @@
+// 화면에서 사용하는 데이터와 로딩 상태를 관리하는 controller 파일입니다.
+// 상태 변경 후 notifyListeners로 연결된 UI 갱신을 요청합니다.
+
 import '../models/event_log_item.dart';
 import 'api_event_controller.dart';
 import 'event_feed_source.dart';

@@ -1,3 +1,6 @@
+# SQLite DB 테이블 생성과 데이터 조회/저장 함수를 모아둔 파일입니다.
+# 이벤트, 소스 상태, 프레임 탐지 결과가 이 계층을 통해 저장됩니다.
+
 import json
 import sqlite3
 from contextlib import contextmanager

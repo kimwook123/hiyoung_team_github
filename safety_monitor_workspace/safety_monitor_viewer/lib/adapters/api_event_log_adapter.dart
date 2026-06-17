@@ -1,3 +1,6 @@
+// API 모델을 화면 표시용 모델로 변환하는 파일입니다.
+// 서버 응답 필드와 이벤트 로그 표시 필드의 매핑을 담당합니다.
+
 import '../models/api_event_item.dart';
 import '../models/event_log_item.dart';
 

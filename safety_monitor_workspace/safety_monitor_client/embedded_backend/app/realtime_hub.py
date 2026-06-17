@@ -1,3 +1,6 @@
+# WebSocket으로 화면에 실시간 갱신 알림을 보내는 허브 파일입니다.
+# 이벤트나 소스 상태 변경 신호를 연결된 클라이언트들에게 전달합니다.
+
 from __future__ import annotations
 
 import asyncio

@@ -1,3 +1,6 @@
+# 안전모 룰과 위험구역 ROI 같은 설정값을 정리하는 파일입니다.
+# 뷰어에서 저장한 룰 설정이 서버 판정에 들어가기 전 이 형태로 맞춰집니다.
+
 from __future__ import annotations
 
 from copy import deepcopy

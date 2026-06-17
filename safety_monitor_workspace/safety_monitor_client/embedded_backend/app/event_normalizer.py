@@ -1,3 +1,6 @@
+# 이벤트 payload의 누락값과 클립 경로를 공통 형태로 맞추는 파일입니다.
+# 서버와 뷰어가 같은 이벤트 구조를 사용하도록 값을 정리합니다.
+
 from copy import deepcopy
 from pathlib import PurePosixPath
 from typing import Any

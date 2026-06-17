@@ -1,3 +1,6 @@
+// Flutter 앱의 최상위 설정과 첫 화면을 연결하는 파일입니다.
+// 테마 설정과 home 화면 연결이 포함되어 있습니다.
+
 import 'package:flutter/material.dart';
 
 import 'screens/home_screen.dart';

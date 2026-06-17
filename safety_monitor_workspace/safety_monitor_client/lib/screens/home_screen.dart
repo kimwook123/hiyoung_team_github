@@ -1,4 +1,7 @@
-﻿import 'dart:async';
+// 화면을 구성하는 Flutter 코드이며 상태값과 버튼 동작이 모여 있습니다.
+// initState, 서버 통신 함수, build 메서드가 같은 화면 흐름을 구성합니다.
+
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;

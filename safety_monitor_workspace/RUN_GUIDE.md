@@ -65,6 +65,36 @@ build_client.bat > logs\build_client_manual.log 2>&1
 
 ## 1. 처음 받은 PC에서 준비
 
+
+### 필수 외부 도구
+
+아래 항목은 `install_dependencies.bat`이 대신 설치하지 않습니다. 새 PC에서는 먼저 직접 설치되어 있어야 합니다.
+
+- Python 3.12
+  - `.venv` 생성과 서버/클라이언트 내장 백엔드 실행에 필요합니다.
+- Windows 개발자 모드
+  - Flutter Windows 빌드에서 플러그인 symlink를 만들 때 필요합니다.
+  - 설정 경로: `설정 > 시스템 > 개발자용 > 개발자 모드 > 켬`
+  - 관리자 권한 명령으로 설정할 경우:
+    ```bat
+    reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /t REG_DWORD /f /v AllowDevelopmentWithoutDevLicense /d 1
+    ```
+- Flutter SDK for Windows
+  - 클라이언트/뷰어 Windows 앱 빌드에 필요합니다.
+  - 권장: 워크스페이스 루트에 `flutter\bin\flutter.bat`가 존재하도록 둡니다.
+  - 대안: Flutter SDK의 `bin` 폴더를 PATH에 추가합니다.
+- Visual Studio Build Tools 또는 Visual Studio Community
+  - `Desktop development with C++` 워크로드
+  - MSVC v143 또는 최신 C++ x64/x86 build tools
+  - Windows 10/11 SDK
+  - CMake tools for Windows
+- Git
+  - `git pull`과 긴 경로 설정에 필요합니다.
+
+AI 클라이언트에서 GPU 추론/TensorRT engine export를 사용할 경우 NVIDIA 드라이버가 정상 설치되어 있어야 합니다. CUDA PyTorch, TensorRT, Ultralytics 등 Python 패키지는 `install_dependencies.bat all`에서 `requirements.txt` 기준으로 설치합니다.
+
+`check_environment.bat`은 Python venv, Windows 개발자 모드, Flutter, Visual Studio C++ 도구, Windows SDK, 프로젝트 파일 존재 여부를 확인합니다. 단, 개발자 모드/Flutter SDK/Visual Studio Build Tools 자체를 설치해 주지는 않습니다.
+
 워크스페이스 루트에서 실행합니다.
 
 ```bat
@@ -73,11 +103,18 @@ check_environment.bat
 install_dependencies.bat all
 ```
 
-`install_dependencies.bat all`은 다음을 준비합니다.
+`install_dependencies.bat all`은 다음을 준비하고 검사합니다.
 
+- Windows 개발자 모드 활성화 여부 확인
+- Flutter SDK 실행 가능 여부 확인
+- Visual Studio C++ Build Tools, Windows SDK, CMake tools 확인
 - 루트 `.venv` Python 가상환경 생성
 - 서버 FastAPI 의존성 설치
-- 클라이언트 내장 백엔드 의존성 설치
+- 클라이언트 내장 백엔드/AI 의존성 설치
+- 클라이언트 Flutter pub 의존성 설치
+- 뷰어 Flutter pub 의존성 설치
+
+주의: Windows 개발자 모드, Flutter SDK, Visual Studio Build Tools, Windows SDK는 자동 설치하지 않습니다. 누락되어 있으면 안내 메시지를 출력하고 중단합니다.
 
 서버만 준비할 때:
 
@@ -85,10 +122,16 @@ install_dependencies.bat all
 install_dependencies.bat server
 ```
 
-클라이언트 내장 백엔드까지 준비할 때:
+클라이언트 내장 백엔드와 클라이언트 Flutter 의존성까지 준비할 때:
 
 ```bat
 install_dependencies.bat client
+```
+
+뷰어 Flutter 의존성만 준비할 때:
+
+```bat
+install_dependencies.bat viewer
 ```
 
 ## 2. 서버 실행

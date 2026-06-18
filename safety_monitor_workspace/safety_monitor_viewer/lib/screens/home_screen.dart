@@ -52,6 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<_SourcePanelSlot> _sourceSlots = [];
   final Set<String> _slotCreationSourceKeys = <String>{};
   String _activeSlotId = '';
+  bool _userClearedActiveSlot = false;
   ApiEventItem? selectedApiEventDetail;
   bool isLoadingApiDetail = false;
   String? apiDetailErrorMessage;
@@ -2892,8 +2893,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         _sourceSlots.add(slot);
-        if (activate || _activeSlotId.isEmpty) {
+        if (activate || (_activeSlotId.isEmpty && !_userClearedActiveSlot)) {
           _activeSlotId = slot.slotId;
+          _userClearedActiveSlot = false;
         }
         selectedApiEventDetail = null;
         apiDetailErrorMessage = null;
@@ -3075,6 +3077,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final nextSnapshot = frameDetectionBySourceKey[nextSourceKey];
     setState(() {
       _activeSlotId = slotId;
+      _userClearedActiveSlot = false;
       selectedApiEventDetail = null;
       apiDetailErrorMessage = null;
       frameDetectionSnapshots = nextSnapshot == null
@@ -3097,6 +3100,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_activeSlotId == slotId) {
       setState(() {
         _activeSlotId = '';
+        _userClearedActiveSlot = true;
         selectedApiEventDetail = null;
         apiDetailErrorMessage = null;
         frameDetectionSnapshots = const [];
@@ -3293,6 +3297,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _sourceSlots.any((slot) => slot.slotId == previousActiveSlotId)) {
       setState(() {
         _activeSlotId = previousActiveSlotId;
+        _userClearedActiveSlot = false;
       });
       apiEventFeed.setSourceKeyFilter(_activeSlot?.sourceKey.trim() ?? '');
       await _syncSlotAudioFocus();
@@ -3300,9 +3305,12 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    if (_activeSlotId.isEmpty && _sourceSlots.isNotEmpty) {
+    if (_activeSlotId.isEmpty &&
+        !_userClearedActiveSlot &&
+        _sourceSlots.isNotEmpty) {
       setState(() {
         _activeSlotId = _sourceSlots.first.slotId;
+        _userClearedActiveSlot = false;
       });
       apiEventFeed.setSourceKeyFilter(_activeSlot?.sourceKey.trim() ?? '');
       await _syncSlotAudioFocus();
@@ -4001,6 +4009,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_activeSlotId.isNotEmpty) {
       setState(() {
         _activeSlotId = '';
+        _userClearedActiveSlot = true;
         selectedApiEventDetail = null;
         apiDetailErrorMessage = null;
         frameDetectionSnapshots = const [];

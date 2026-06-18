@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import sys
 import threading
+from time import monotonic
 
 
 _ANSI_RESET = "\033[0m"
@@ -26,6 +27,36 @@ _TAG_COLORS = {
 }
 
 _LOG_FILE_LOCK = threading.Lock()
+
+def _read_positive_int_env(name: str, default: int) -> int:
+    try:
+        value = int(os.environ.get(name, "").strip())
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+def _read_non_negative_float_env(name: str, default: float) -> float:
+    try:
+        value = float(os.environ.get(name, "").strip())
+    except ValueError:
+        return default
+    return value if value >= 0 else default
+
+
+_LOG_FILE_MAX_BYTES = _read_positive_int_env(
+    "SAFETY_MONITOR_LOG_MAX_BYTES",
+    5 * 1024 * 1024,
+)
+_LOG_FILE_BACKUP_COUNT = _read_positive_int_env(
+    "SAFETY_MONITOR_LOG_BACKUP_COUNT",
+    3,
+)
+_CONSOLE_CLEAR_INTERVAL_SECONDS = _read_non_negative_float_env(
+    "SAFETY_MONITOR_CONSOLE_CLEAR_INTERVAL_SECONDS",
+    600.0,
+)
+_LAST_CONSOLE_CLEAR_AT = monotonic()
 
 
 def _enable_windows_ansi() -> bool:
@@ -332,6 +363,7 @@ def _compact_field_text(tag: str, fields: dict[str, object]) -> str:
 
 
 def log_line(tag: str, message: str = "", **fields: object) -> None:
+    _maybe_clear_console()
     timestamp = datetime.now().strftime("%H:%M:%S")
     prefix = f"[{timestamp}] [{tag}]"
     if _USE_COLOR:
@@ -359,6 +391,44 @@ def log_line(tag: str, message: str = "", **fields: object) -> None:
     _append_log_file(plain_prefix)
 
 
+def _maybe_clear_console() -> None:
+    global _LAST_CONSOLE_CLEAR_AT
+    if _CONSOLE_CLEAR_INTERVAL_SECONDS <= 0:
+        return
+    if not hasattr(sys.stdout, "isatty") or not sys.stdout.isatty():
+        return
+    now = monotonic()
+    if now - _LAST_CONSOLE_CLEAR_AT < _CONSOLE_CLEAR_INTERVAL_SECONDS:
+        return
+    _LAST_CONSOLE_CLEAR_AT = now
+    try:
+        os.system("cls" if os.name == "nt" else "clear")
+        print("[LOG] console cleared to prevent unbounded server log scroll", flush=True)
+    except OSError:
+        return
+
+
+def _backup_path(path: Path, index: int) -> Path:
+    return path.with_name(f"{path.name}.{index}")
+
+
+def _rotate_log_file_if_needed(path: Path) -> None:
+    if _LOG_FILE_MAX_BYTES <= 0:
+        return
+    try:
+        if not path.exists() or path.stat().st_size < _LOG_FILE_MAX_BYTES:
+            return
+        if _LOG_FILE_BACKUP_COUNT <= 0:
+            path.unlink(missing_ok=True)
+            return
+        for index in range(_LOG_FILE_BACKUP_COUNT, 0, -1):
+            source = path if index == 1 else _backup_path(path, index - 1)
+            target = _backup_path(path, index)
+            if source.exists():
+                source.replace(target)
+    except OSError:
+        return
+
 def _append_log_file(line: str) -> None:
     log_file = os.environ.get("SAFETY_MONITOR_LOG_FILE", "").strip()
     if not log_file:
@@ -367,6 +437,7 @@ def _append_log_file(line: str) -> None:
         path = Path(log_file).resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
         with _LOG_FILE_LOCK:
+            _rotate_log_file_if_needed(path)
             with path.open("a", encoding="utf-8") as output:
                 output.write(line)
                 output.write("\n")

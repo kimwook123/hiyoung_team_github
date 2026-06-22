@@ -50,6 +50,8 @@ def list_events(
     source_type: str | None = None,
     client_id: str | None = None,
     session_id: str | None = None,
+    created_from: str | None = None,
+    created_to: str | None = None,
 ) -> EventListResponse:
     # GET은 서버에서 데이터를 가져오는 요청입니다.
     if latest_only:
@@ -61,6 +63,8 @@ def list_events(
             source_type=source_type,
             client_id=client_id,
             session_id=session_id,
+            created_from=created_from,
+            created_to=created_to,
         )
     else:
         items = list_events_from_db(
@@ -71,6 +75,8 @@ def list_events(
             source_type=source_type,
             client_id=client_id,
             session_id=session_id,
+            created_from=created_from,
+            created_to=created_to,
         )
 
     if limit is not None:
@@ -88,6 +94,8 @@ def list_latest_events(
     source_type: str | None = None,
     client_id: str | None = None,
     session_id: str | None = None,
+    created_from: str | None = None,
+    created_to: str | None = None,
 ) -> EventListResponse:
     items = list_latest_events_from_db(
         DATABASE_PATH,
@@ -97,6 +105,8 @@ def list_latest_events(
         source_type=source_type,
         client_id=client_id,
         session_id=session_id,
+        created_from=created_from,
+        created_to=created_to,
     )
 
     if limit is not None:

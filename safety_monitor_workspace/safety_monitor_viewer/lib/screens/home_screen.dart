@@ -87,6 +87,8 @@ class _HomeScreenState extends State<HomeScreen> {
   String _maximizedSlotId = '';
   int _ruleConfigSaveTicket = 0;
   int previewRefreshCacheBust = 0;
+  DateTime? eventLogStartDate;
+  DateTime? eventLogEndDate;
 
   @override
   void initState() {
@@ -1329,6 +1331,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 baseUrl: eventApiService.baseUrl,
                 onTapItem: _onTapEventItem,
                 sourceLabelResolver: _displayLabelForSourceKey,
+                onDateRangeChanged: _handleEventLogDateRangeChanged,
               );
             },
           ),
@@ -2427,7 +2430,24 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _refreshApiEvents() async {
-    await apiEventController.loadEvents(limit: 5000);
+    final startDate = eventLogStartDate;
+    final endDate = eventLogEndDate;
+    await apiEventController.loadEvents(
+      limit: startDate == null && endDate == null ? 5000 : null,
+      createdFrom: startDate?.toIso8601String(),
+      createdTo: endDate?.toIso8601String(),
+    );
+  }
+
+  Future<void> _handleEventLogDateRangeChanged(
+    DateTime? startDate,
+    DateTime? endDate,
+  ) async {
+    setState(() {
+      eventLogStartDate = startDate;
+      eventLogEndDate = endDate;
+    });
+    await _refreshApiEventsIfNeeded();
   }
 
   Future<void> _checkApiHealth() async {

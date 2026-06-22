@@ -42,6 +42,9 @@ def init_db(db_path: Path) -> None:
             CREATE INDEX IF NOT EXISTS idx_events_event_key
             ON events(event_key, id);
 
+            CREATE INDEX IF NOT EXISTS idx_events_received_at
+            ON events(received_at, id);
+
             CREATE TABLE IF NOT EXISTS frame_detections (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 source_key TEXT NOT NULL,
@@ -222,6 +225,8 @@ def list_events(
     source_type: str | None = None,
     client_id: str | None = None,
     session_id: str | None = None,
+    created_from: str | None = None,
+    created_to: str | None = None,
 ) -> list[dict]:
     query = """
         SELECT payload_json
@@ -238,6 +243,8 @@ def list_events(
         source_type=source_type,
         client_id=client_id,
         session_id=session_id,
+        created_from=created_from,
+        created_to=created_to,
     )
     query += " ORDER BY id ASC"
 
@@ -255,6 +262,8 @@ def list_latest_events(
     source_type: str | None = None,
     client_id: str | None = None,
     session_id: str | None = None,
+    created_from: str | None = None,
+    created_to: str | None = None,
 ) -> list[dict]:
     ordered_items = list_events(
         db_path,
@@ -264,6 +273,8 @@ def list_latest_events(
         source_type=source_type,
         client_id=client_id,
         session_id=session_id,
+        created_from=created_from,
+        created_to=created_to,
     )
     latest_by_key: dict[str, dict] = {}
     for item in ordered_items:
@@ -1021,6 +1032,8 @@ def _append_common_filters(
     source_type: str | None,
     client_id: str | None,
     session_id: str | None,
+    created_from: str | None = None,
+    created_to: str | None = None,
 ) -> tuple[str, list[object]]:
     if event_type is not None:
         query += " AND event_type = ?"
@@ -1040,6 +1053,12 @@ def _append_common_filters(
     if session_id is not None:
         query += " AND session_id = ?"
         parameters.append(session_id)
+    if created_from is not None:
+        query += " AND received_at >= ?"
+        parameters.append(created_from)
+    if created_to is not None:
+        query += " AND received_at < ?"
+        parameters.append(created_to)
     return query, parameters
 
 

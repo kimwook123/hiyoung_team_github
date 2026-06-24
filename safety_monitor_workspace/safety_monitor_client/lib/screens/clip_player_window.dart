@@ -23,21 +23,31 @@ class ClipPlayerWindow extends StatefulWidget {
 }
 
 class _ClipPlayerWindowState extends State<ClipPlayerWindow> {
+  /// 클립 재생 UI와 재생 상태를 관리하는 컨트롤러입니다.
   late final VideoPanelController _controller;
+  /// 서버의 이벤트 API와 통신하기 위한 서비스입니다.
   late final EventApiService _eventApiService;
+  /// 프레임 탐지 결과를 주기적으로 갱신하기 위한 타이머입니다.
   Timer? _refreshTimer;
+  /// 가장 최근에 받아온 프레임 탐지 스냅샷입니다.
   FrameDetectionSnapshot? _snapshot;
+  /// 마지막으로 탐지 요청을 보낸 재생 시간을 저장합니다. 과도한 요청을 막기 위해 사용합니다.
   double _lastRequestedSeconds = -1;
+  /// 현재 탐지 요청이 진행 중인지 여부입니다.
   bool _isFetching = false;
+  /// 화면이 닫히는 중인지를 나타내는 플래그입니다.
   bool _isClosing = false;
+  /// 사용자에게 보여줄 오류 메시지입니다.
   String _errorText = '';
 
   @override
   void initState() {
     super.initState();
+    // 재생 컨트롤러와 API 서비스를 초기화하고, 상태 변화 이벤트를 감지합니다.
     _controller = VideoPanelController();
     _eventApiService = EventApiService(baseUrl: widget.arguments.baseUrl);
     _controller.addListener(_handleControllerChanged);
+    // 클립을 열고, 재생 위치가 바뀔 때마다 탐지 정보를 갱신하도록 비동기 작업을 시작합니다.
     unawaited(_openClip());
     _refreshTimer = Timer.periodic(
       const Duration(milliseconds: 250),
@@ -47,6 +57,7 @@ class _ClipPlayerWindowState extends State<ClipPlayerWindow> {
 
   @override
   void dispose() {
+    // 화면이 사라지는 중에는 뒤늦게 들어오는 네트워크 응답을 무시하도록 플래그를 켭니다.
     _isClosing = true;
     _refreshTimer?.cancel();
     _controller.removeListener(_handleControllerChanged);
@@ -106,6 +117,7 @@ class _ClipPlayerWindowState extends State<ClipPlayerWindow> {
   }
 
   Future<void> _openClip() async {
+    // 선택한 클립을 재생 UI에 로드하고, 지정된 시작 시간부터 재생하도록 요청합니다.
     await _controller.openReplayClip(
       widget.arguments.clipUrl,
       replayStartSeconds: widget.arguments.sourceStartSeconds,
@@ -115,29 +127,36 @@ class _ClipPlayerWindowState extends State<ClipPlayerWindow> {
     if (!mounted) {
       return;
     }
+    // 재생기 상태가 변경되었으므로 화면을 다시 그려서 새 데이터를 반영합니다.
     setState(() {});
+    // 클립이 열리자마자 첫 프레임 탐지 스냅샷을 즉시 요청합니다.
     await _refreshDetectionIfNeeded(force: true);
   }
 
   void _handleControllerChanged() {
+    // 비디오가 로드되지 않았거나 재생 중이 아니면 탐지 조회를 하지 않습니다.
     if (!_controller.hasVideo || !_controller.isPlaying) {
       return;
     }
+    // 재생 위치가 바뀌었을 때 최신 탐지 결과를 가져오기 위해 비동기 갱신을 요청합니다.
     unawaited(_refreshDetectionIfNeeded());
   }
 
   Future<void> _refreshDetectionIfNeeded({bool force = false}) async {
+    // 화면이 닫히고 있거나 이미 요청 중이거나 비디오가 없으면 중단합니다.
     if (_isClosing || _isFetching || !_controller.hasVideo) {
       return;
     }
 
     final sourceSeconds = _controller.currentOverlaySeconds;
+    // 같은 위치를 반복해서 조회하지 않도록, 마지막 요청 시각과 0.05초 차이도면 무시합니다.
     if (!force && (sourceSeconds - _lastRequestedSeconds).abs() < 0.05) {
       return;
     }
 
     _isFetching = true;
     try {
+      // 현재 재생 시점에 해당하는 프레임 탐지 결과를 서버에서 조회합니다.
       final snapshot = await _eventApiService.fetchCurrentFrameDetection(
         sourceKey: widget.arguments.sourceKey,
         sourceTimeSeconds: sourceSeconds,
@@ -146,6 +165,7 @@ class _ClipPlayerWindowState extends State<ClipPlayerWindow> {
         return;
       }
       setState(() {
+        // 조회 결과를 상태에 반영하고, 다음 요청 시 중복 조회를 피하기 위해 기준 시점을 갱신합니다.
         _snapshot = snapshot;
         _lastRequestedSeconds = sourceSeconds;
         _errorText = snapshot == null ? '해당 시점 프레임 탐지 결과가 없습니다.' : '';
@@ -154,10 +174,12 @@ class _ClipPlayerWindowState extends State<ClipPlayerWindow> {
       if (!mounted) {
         return;
       }
+      // 네트워크 오류나 서버 문제는 사용자에게 메시지로 보여주고 상태를 유지합니다.
       setState(() {
         _errorText = '프레임 탐지 조회 실패: $error';
       });
     } finally {
+      // 화면이 닫히는 중이 아니라면 다음 요청을 위해 잠금 상태를 해제합니다.
       if (!_isClosing) {
         _isFetching = false;
       }
@@ -166,11 +188,13 @@ class _ClipPlayerWindowState extends State<ClipPlayerWindow> {
 
   List<VideoOverlayDetection> _buildOverlayDetections() {
     final snapshot = _snapshot;
+    // 아직 스냅샷이 없으면 오버레이를 그리지 않습니다.
     if (snapshot == null) {
       return const [];
     }
 
     final items = <VideoOverlayDetection>[];
+    // 동일한 박스를 중복 그리지 않도록 key 중복 여부를 추적합니다.
     final seenKeys = <String>{};
     for (final detection in snapshot.detections) {
       final box = detection['box'];
@@ -186,6 +210,7 @@ class _ClipPlayerWindowState extends State<ClipPlayerWindow> {
         continue;
       }
 
+      // 프레임 ID와 박스 좌표를 조합해 각 오버레이 항목을 고유하게 식별합니다.
       final key =
           '${snapshot.frameId}:${detection['track_id']}:${detection['name']}:$x1:$y1:$x2:$y2';
       if (!seenKeys.add(key)) {
@@ -208,12 +233,14 @@ class _ClipPlayerWindowState extends State<ClipPlayerWindow> {
   }
 
   String _buildOverlayStatusText() {
+    // 컨트롤러 자체 오류가 있으면 그 메시지를 우선 표시합니다.
     if (_controller.errorText.isNotEmpty) {
       return _controller.errorText;
     }
     if (_errorText.isNotEmpty) {
       return _errorText;
     }
+    // 탐지 결과가 아직 없으면 로딩 상태를 안내합니다.
     final snapshot = _snapshot;
     if (snapshot == null) {
       return '프레임 탐지 결과를 조회 중입니다.';
@@ -223,6 +250,7 @@ class _ClipPlayerWindowState extends State<ClipPlayerWindow> {
 
   String _buildDetectionLabel(Map<String, dynamic> detection) {
     final name = detection['name']?.toString() ?? 'object';
+    // 신뢰도 값이 있으면 퍼센트 형태로 표시해 더 읽기 쉽게 만듭니다.
     final confidence = _toDouble(detection['confidence']);
     if (confidence == null) {
       return name;
@@ -231,6 +259,7 @@ class _ClipPlayerWindowState extends State<ClipPlayerWindow> {
   }
 
   Color _resolveDetectionColor(String label) {
+    // 탐지 이름에 따라 경고/안전 상태를 시각적으로 구분합니다.
     switch (label.trim().toLowerCase()) {
       case 'yes_helmet':
       case 'helmet':
@@ -248,6 +277,7 @@ class _ClipPlayerWindowState extends State<ClipPlayerWindow> {
   }
 
   double? _toDouble(Object? value) {
+    // JSON 값이 문자열, 숫자, double 중 무엇이든 안전하게 double로 바꿉니다.
     if (value is double) {
       return value;
     }

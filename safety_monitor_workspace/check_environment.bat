@@ -15,8 +15,6 @@ echo.
 call :check_path_policy
 call :check_git
 call :check_python
-call :check_developer_mode
-if errorlevel 1 set "HAS_ERROR=1"
 call :check_flutter
 call :check_windows_build_tools
 call :check_project_files
@@ -65,20 +63,6 @@ echo Python venv: missing. Run install_dependencies.bat all
 set "HAS_ERROR=1"
 exit /b 0
 
-:check_developer_mode
-set "DEV_MODE_VALUE="
-for /f "tokens=3" %%i in ('reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /v AllowDevelopmentWithoutDevLicense 2^>nul ^| find /I "AllowDevelopmentWithoutDevLicense"') do set "DEV_MODE_VALUE=%%i"
-if /I "%DEV_MODE_VALUE%"=="0x1" (
-  echo Windows Developer Mode: enabled
-  exit /b 0
-)
-echo Windows Developer Mode: disabled or not configured.
-echo Enable it before Flutter Windows builds:
-echo   Settings ^> System ^> For developers ^> Developer Mode ^> On
-echo Or run this in an elevated PowerShell/cmd session:
-echo   reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /t REG_DWORD /f /v AllowDevelopmentWithoutDevLicense /d 1
-exit /b 1
-
 :check_flutter
 if exist "%LOCAL_FLUTTER%" (
   echo Flutter SDK: local workspace SDK found
@@ -109,11 +93,11 @@ set "VSWHERE_EXE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.e
 set "VS_NATIVE_READY="
 set "SDK_READY="
 if exist "%VSWHERE_EXE%" (
-  for /f "usebackq delims=" %%i in (`"%VSWHERE_EXE%" -products * -requires Microsoft.VisualStudio.Workload.NativeDesktop Microsoft.VisualStudio.Component.VC.Tools.x86.x64 Microsoft.VisualStudio.Component.VC.CMake.Project -property installationPath`) do set "VS_NATIVE_READY=%%i"
+  for /f "usebackq delims=" %%i in (`"%VSWHERE_EXE%" -products * -requires Microsoft.VisualStudio.Workload.NativeDesktop Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VS_NATIVE_READY=%%i"
 )
 for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "$roots=@('C:\Program Files (x86)\Windows Kits\10\Include','C:\Program Files\Windows Kits\10\Include'); foreach($root in $roots){ if(Test-Path $root){ $dirs=Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending; if($dirs){ $dirs[0].FullName; break } } }"`) do set "SDK_READY=%%i"
 if defined VS_NATIVE_READY (echo Visual Studio C++ tools: found) else (
-  echo Visual Studio C++ tools: missing. Install "Desktop development with C++", MSVC tools, Windows SDK, and CMake tools.
+  echo Visual Studio C++ tools: missing. Install "Desktop development with C++".
   set "HAS_ERROR=1"
 )
 if defined SDK_READY (echo Windows SDK: found) else (

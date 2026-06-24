@@ -40,6 +40,7 @@ from app.source_rule_config import normalize_rule_config
 
 @dataclass
 class _ManagedWorker:
+    """실행 중인 분석 워커의 상태를 함께 보관하기 위한 내부 데이터 클래스입니다."""
     source_record: dict[str, Any]
     stop_event: threading.Event
     thread: threading.Thread
@@ -47,15 +48,18 @@ class _ManagedWorker:
 
 
 class AnalysisSourceManager:
+    """카메라/스트림/영상 소스의 생명주기를 관리하는 중앙 관리자입니다."""
     _server_presence_interval_seconds = 5.0
 
     def __init__(self) -> None:
+        """워커 저장소와 서버 상태 동기화용 상태를 초기화한다."""
         self._lock = threading.RLock()
         self._workers: dict[str, _ManagedWorker] = {}
         self._server_presence_stop = threading.Event()
         self._server_presence_thread: threading.Thread | None = None
 
     def bootstrap(self) -> None:
+        """기존 로컬 소스를 정리하고 서버와 상태를 동기화해 부팅 시점을 복구한다."""
         self._remove_stale_local_camera_sources()
         for source_record in list_sources(DATABASE_PATH):
             source_key = str(source_record.get("source_key", "")).strip()
@@ -64,6 +68,7 @@ class AnalysisSourceManager:
             source_type = str(source_record.get("source_type", "")).strip().lower()
             source_value = str(source_record.get("source_value", "")).strip()
             if source_type != "camera" or source_value != "0":
+                # 비카메라 소스는 부팅 시 자동 실행하지 않도록 상태만 비활성화한다.
                 set_source_desired_running(
                     DATABASE_PATH,
                     source_key=source_key,
@@ -71,6 +76,7 @@ class AnalysisSourceManager:
                 )
                 continue
             if "owner=" not in source_key:
+                # 구버전 source_key 형식은 owner 정보가 없어 새 형식으로 마이그레이션한다.
                 migrated = build_source_record(
                     source_type="camera",
                     source_value="0",
@@ -132,6 +138,7 @@ class AnalysisSourceManager:
         self._start_server_presence_loop()
 
     def shutdown(self) -> None:
+        """서버 presence 루프와 실행 중인 모든 워커를 정리한다."""
         self._server_presence_stop.set()
         if self._server_presence_thread is not None:
             self._server_presence_thread.join(timeout=2.0)
@@ -154,6 +161,7 @@ class AnalysisSourceManager:
         reset_existing: bool = True,
         start_immediately: bool = True,
     ) -> dict[str, Any]:
+        """새 소스를 등록하고 필요하면 즉시 실행 상태로 만든다."""
         source_type = "camera"
         source_value = "0"
         client_id = client_id.strip() or _build_default_client_id()
@@ -179,6 +187,7 @@ class AnalysisSourceManager:
         upsert_source(DATABASE_PATH, source_record)
         self._sync_source_to_server(source_record)
         if reset_existing:
+            # 기존 데이터가 남아 있으면 클립/이벤트 기록을 초기화해 새 등록 상태로 맞춘다.
             reset_source_data(
                 DATABASE_PATH,
                 source_key=source_key,
@@ -188,8 +197,10 @@ class AnalysisSourceManager:
             self._reset_remote_source_data(source_record)
 
         if start_immediately:
+            # 즉시 시작 요청이면 워커를 생성하고 상태를 시작 중으로 올린다.
             self.start_source(source_key)
         else:
+            # 시작하지 않는 경우에도 등록 상태를 서버에 알려 UI와 동기화를 유지한다.
             previous_status = get_source_status(DATABASE_PATH, source_key) or {}
             self._upsert_status_and_sync(
                 {
@@ -218,6 +229,7 @@ class AnalysisSourceManager:
         *,
         rule_config: dict,
     ) -> dict[str, Any]:
+        """소스의 규칙 설정을 갱신하고 필요 시 재분석을 다시 시작한다."""
         normalized_source_key = source_key.strip()
         source_record = get_source(DATABASE_PATH, normalized_source_key)
         if source_record is None:
@@ -229,6 +241,7 @@ class AnalysisSourceManager:
 
         should_reanalyze_from_start = source_type == "video"
         if should_reanalyze_from_start:
+            # 영상 소스는 규칙 변경 시 처음부터 다시 분석하는 편이 더 안전하다.
             source_record["desired_running"] = True
 
         upsert_source(DATABASE_PATH, source_record)
@@ -251,6 +264,7 @@ class AnalysisSourceManager:
             return get_source(DATABASE_PATH, normalized_source_key) or source_record
 
         with self._lock:
+            # 이미 실행 중인 워커가 있으면 새 설정을 반영하기 위해 재시작만 수행한다.
             existing_worker = self._workers.get(normalized_source_key)
             is_running = existing_worker is not None and existing_worker.thread.is_alive()
 
@@ -260,15 +274,18 @@ class AnalysisSourceManager:
         return get_source(DATABASE_PATH, normalized_source_key) or source_record
 
     def list_registered_sources(self) -> list[dict[str, Any]]:
+        """현재 등록된 모든 소스 기록을 반환한다."""
         return list_sources(DATABASE_PATH)
 
     def sync_all_to_server(self) -> None:
+        """로컬 소스와 상태를 서버에 한 번에 동기화한다."""
         for source_record in list_sources(DATABASE_PATH):
             self._sync_source_to_server(source_record)
         for status_record in list_source_statuses(DATABASE_PATH):
             remote_server_reporter.post_status(status_record)
 
     def start_source(self, source_key: str) -> dict[str, Any]:
+        """지정한 소스의 분석 워커를 시작한다."""
         normalized_source_key = source_key.strip()
         source_record = get_source(DATABASE_PATH, normalized_source_key)
         if source_record is None:
@@ -283,6 +300,7 @@ class AnalysisSourceManager:
         if latest_source_record is not None:
             self._sync_source_to_server(latest_source_record)
         with self._lock:
+            # 중복 실행을 막기 위해 이미 살아 있는 워커가 있으면 새 스레드를 만들지 않는다.
             existing_worker = self._workers.get(normalized_source_key)
             if existing_worker is not None and existing_worker.thread.is_alive():
                 return source_record
@@ -334,6 +352,7 @@ class AnalysisSourceManager:
         update_desired_running: bool = True,
         stop_reason: str = "api-stop",
     ) -> dict[str, Any] | None:
+        """실행 중인 워커를 중지하고 상태를 갱신한다."""
         normalized_source_key = source_key.strip()
         if update_desired_running:
             set_source_desired_running(
@@ -347,6 +366,7 @@ class AnalysisSourceManager:
 
         worker: _ManagedWorker | None = None
         with self._lock:
+            # 현재 등록된 워커를 꺼내고 stop 이벤트를 발생시켜 루프를 종료시킨다.
             worker = self._workers.pop(normalized_source_key, None)
         if worker is not None:
             worker.stop_reason = stop_reason
@@ -361,6 +381,7 @@ class AnalysisSourceManager:
 
         source_record = get_source(DATABASE_PATH, normalized_source_key)
         if source_record is not None:
+            # 워커 중지 후에는 상태를 stopped로 바꿔 UI와 서버가 최신 상태를 인지하게 한다.
             previous_status = get_source_status(DATABASE_PATH, normalized_source_key) or {}
             self._upsert_status_and_sync(
                 {
@@ -382,10 +403,12 @@ class AnalysisSourceManager:
         return source_record
 
     def restart_source(self, source_key: str) -> dict[str, Any]:
+        """현재 소스를 중지한 뒤 다시 시작한다."""
         self.stop_source(source_key, stop_reason="api-restart")
         return self.start_source(source_key)
 
     def remove_source(self, source_key: str, *, clear_data: bool = False) -> bool:
+        """소스를 등록 해제하고 필요하면 관련 데이터를 함께 정리한다."""
         source_record = get_source(DATABASE_PATH, source_key)
         if source_record is None:
             return False
@@ -410,6 +433,7 @@ class AnalysisSourceManager:
         return deleted
 
     def _delete_managed_source_file(self, source_record: dict[str, Any]) -> None:
+        """관리 대상 영상 파일이 있으면 로컬에서 제거한다."""
         source_type = str(source_record.get("source_type", "")).strip().lower()
         source_value = str(source_record.get("source_value", "")).strip()
         if source_type != "video" or not source_value:
@@ -437,6 +461,7 @@ class AnalysisSourceManager:
             file_path.unlink(missing_ok=True)
 
     def _remove_stale_local_camera_sources(self, *, keep_source_key: str = "") -> None:
+        """현재 클라이언트가 아닌 오래된 로컬 카메라 소스를 정리한다."""
         current_client_id = _read_configured_client_id() or _build_default_client_id()
         keep_source_key = keep_source_key.strip()
         for source_record in list_sources(DATABASE_PATH):
@@ -451,6 +476,7 @@ class AnalysisSourceManager:
                 or source_value != "0"
                 or client_id == current_client_id
             ):
+                # 기본 카메라 소스만 로컬 정리 대상이며, 같은 클라이언트의 소스는 건드리지 않는다.
                 continue
 
             self.stop_source(
@@ -461,6 +487,7 @@ class AnalysisSourceManager:
             delete_source(DATABASE_PATH, source_key)
             delete_source_status(DATABASE_PATH, source_key)
             prune_orphan_source_data(DATABASE_PATH)
+            # 같은 클라이언트 패밀리라면 서버에 삭제 요청도 함께 보내고, 다른 기기 소스는 로컬만 정리한다.
             is_same_client_family = _canonical_client_id(client_id) == _canonical_client_id(
                 current_client_id
             )
@@ -488,12 +515,14 @@ class AnalysisSourceManager:
         source_record: dict[str, Any],
         stop_event: threading.Event,
     ) -> None:
+        """개별 소스의 분석 루프를 실행하며 재연결과 재시도를 처리한다."""
         source_type = str(source_record.get("source_type", "")).strip().lower()
         try:
             while not stop_event.is_set():
                 previous_status = get_source_status(DATABASE_PATH, source_key) or {}
                 resume_from_seconds = 0.0
                 if source_type == "video":
+                    # 영상은 중간부터 이어서 분석할 수 있도록 마지막 재생 위치를 기준으로 복원한다.
                     previous_state = str(previous_status.get("state", "")).strip().lower()
                     previous_time = float(
                         previous_status.get("last_source_time_seconds", 0.0) or 0.0
@@ -524,6 +553,7 @@ class AnalysisSourceManager:
                     stop_reason = "stopped"
 
                 if stop_reason == "completed":
+                    # 영상 분석이 끝나면 더 이상 자동 실행하지 않도록 desired_running을 꺼준다.
                     set_source_desired_running(
                         DATABASE_PATH,
                         source_key=source_key,
@@ -541,6 +571,7 @@ class AnalysisSourceManager:
                         and bool((get_source(DATABASE_PATH, source_key) or {}).get("desired_running", False))
                         and stop_reason in {"disconnected", "error"}
                     ):
+                        # 연결이 끊긴 스트림/카메라는 재연결 상태로 표시해 UI에서 바로 인지할 수 있게 한다.
                         next_state = "reconnecting"
                         if not next_error_message:
                             next_error_message = "입력 연결이 끊겨 재시도 중입니다."
@@ -573,6 +604,7 @@ class AnalysisSourceManager:
                     stop_reason=stop_reason,
                     stop_event=stop_event,
                 ):
+                    # 재시도 대상이 아니면 워커 루프를 종료하고 상태를 정리한다.
                     log_line(
                         "SRC",
                         action="stop",
@@ -602,6 +634,7 @@ class AnalysisSourceManager:
         stop_reason: str,
         stop_event: threading.Event,
     ) -> bool:
+        """소스가 재시도 가능한 상태인지 판단한다."""
         if stop_event.is_set():
             return False
         if source_type == "video":
@@ -614,6 +647,7 @@ class AnalysisSourceManager:
         return False
 
     def _sync_source_to_server(self, source_record: dict[str, Any]) -> None:
+        """소스 정보를 서버에 업서트해 동기화한다."""
         payload = dict(source_record)
         payload["rule_config"] = normalize_rule_config(payload.get("rule_config"))
         payload["source_duration_seconds"] = float(
@@ -626,17 +660,20 @@ class AnalysisSourceManager:
         remote_server_reporter.upsert_source(payload)
 
     def _upsert_status_and_sync(self, status_record: dict[str, Any]) -> dict[str, Any]:
+        """상태를 로컬 DB에 저장하고 서버에 바로 전파한다."""
         saved_record = upsert_source_status(DATABASE_PATH, status_record)
         remote_server_reporter.post_status(saved_record)
         return saved_record
 
     def _reset_remote_source_data(self, source_record: dict[str, Any]) -> None:
+        """원격 서버의 소스 관련 데이터를 초기화한다."""
         remote_server_reporter.reset_source_data(
             source_key=str(source_record.get("source_key", "")).strip(),
             source_slug=str(source_record.get("source_slug", "")).strip(),
         )
 
     def _start_server_presence_loop(self) -> None:
+        """서버 존재 여부를 주기적으로 확인하는 백그라운드 루프를 시작한다."""
         if self._server_presence_thread is not None and self._server_presence_thread.is_alive():
             return
         self._server_presence_stop.clear()
@@ -648,6 +685,7 @@ class AnalysisSourceManager:
         self._server_presence_thread.start()
 
     def _run_server_presence_loop(self) -> None:
+        """정해진 간격마다 서버와의 상태 동기화를 반복한다."""
         while not self._server_presence_stop.wait(self._server_presence_interval_seconds):
             try:
                 self._sync_server_presence()
@@ -655,6 +693,7 @@ class AnalysisSourceManager:
                 log_line("WARN", message="server presence sync failed", error=error)
 
     def _sync_server_presence(self) -> None:
+        """등록된 소스와 상태를 주기적으로 서버에 다시 전송한다."""
         for source_record in list_sources(DATABASE_PATH):
             source_key = str(source_record.get("source_key", "")).strip()
             if not source_key:
@@ -662,6 +701,7 @@ class AnalysisSourceManager:
             self._sync_source_to_server(source_record)
 
         for status_record in list_source_statuses(DATABASE_PATH):
+            # heartbeat처럼 상태 레코드를 다시 저장해 서버에서 최신 상태를 유지하도록 한다.
             source_key = str(status_record.get("source_key", "")).strip()
             if not source_key:
                 continue
@@ -674,6 +714,7 @@ class AnalysisSourceManager:
 
 
 def _build_default_client_id() -> str:
+    """현재 머신 이름을 기반으로 기본 클라이언트 식별자를 만든다."""
     hostname = socket.gethostname().strip().lower()
     normalized = "".join(char if char.isalnum() else "_" for char in hostname)
     normalized = "_".join(part for part in normalized.split("_") if part)
@@ -681,6 +722,7 @@ def _build_default_client_id() -> str:
 
 
 def _read_configured_client_id() -> str:
+    """설정 파일에 저장된 클라이언트 ID를 읽어온다."""
     try:
         decoded = json.loads(CLIENT_SETTINGS_PATH.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -691,6 +733,7 @@ def _read_configured_client_id() -> str:
 
 
 def _canonical_client_id(client_id: str) -> str:
+    """클라이언트 ID의 동일성 비교에 쓰이는 정규화된 형태를 반환한다."""
     normalized = client_id.strip().lower()
     parts = normalized.rsplit("_", 1)
     if (

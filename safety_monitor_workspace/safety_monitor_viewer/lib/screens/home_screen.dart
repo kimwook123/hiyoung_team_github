@@ -52,7 +52,6 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<_SourcePanelSlot> _sourceSlots = [];
   final Set<String> _slotCreationSourceKeys = <String>{};
   String _activeSlotId = '';
-  bool _userClearedActiveSlot = false;
   ApiEventItem? selectedApiEventDetail;
   bool isLoadingApiDetail = false;
   String? apiDetailErrorMessage;
@@ -87,8 +86,6 @@ class _HomeScreenState extends State<HomeScreen> {
   String _maximizedSlotId = '';
   int _ruleConfigSaveTicket = 0;
   int previewRefreshCacheBust = 0;
-  DateTime? eventLogStartDate;
-  DateTime? eventLogEndDate;
 
   @override
   void initState() {
@@ -1331,7 +1328,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 baseUrl: eventApiService.baseUrl,
                 onTapItem: _onTapEventItem,
                 sourceLabelResolver: _displayLabelForSourceKey,
-                onDateRangeChanged: _handleEventLogDateRangeChanged,
               );
             },
           ),
@@ -2430,24 +2426,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _refreshApiEvents() async {
-    final startDate = eventLogStartDate;
-    final endDate = eventLogEndDate;
-    await apiEventController.loadEvents(
-      limit: startDate == null && endDate == null ? 5000 : null,
-      createdFrom: startDate?.toIso8601String(),
-      createdTo: endDate?.toIso8601String(),
-    );
-  }
-
-  Future<void> _handleEventLogDateRangeChanged(
-    DateTime? startDate,
-    DateTime? endDate,
-  ) async {
-    setState(() {
-      eventLogStartDate = startDate;
-      eventLogEndDate = endDate;
-    });
-    await _refreshApiEventsIfNeeded();
+    await apiEventController.loadEvents(limit: 5000);
   }
 
   Future<void> _checkApiHealth() async {
@@ -2913,9 +2892,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         _sourceSlots.add(slot);
-        if (activate || (_activeSlotId.isEmpty && !_userClearedActiveSlot)) {
+        if (activate || _activeSlotId.isEmpty) {
           _activeSlotId = slot.slotId;
-          _userClearedActiveSlot = false;
         }
         selectedApiEventDetail = null;
         apiDetailErrorMessage = null;
@@ -3097,7 +3075,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final nextSnapshot = frameDetectionBySourceKey[nextSourceKey];
     setState(() {
       _activeSlotId = slotId;
-      _userClearedActiveSlot = false;
       selectedApiEventDetail = null;
       apiDetailErrorMessage = null;
       frameDetectionSnapshots = nextSnapshot == null
@@ -3120,7 +3097,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_activeSlotId == slotId) {
       setState(() {
         _activeSlotId = '';
-        _userClearedActiveSlot = true;
         selectedApiEventDetail = null;
         apiDetailErrorMessage = null;
         frameDetectionSnapshots = const [];
@@ -3317,7 +3293,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _sourceSlots.any((slot) => slot.slotId == previousActiveSlotId)) {
       setState(() {
         _activeSlotId = previousActiveSlotId;
-        _userClearedActiveSlot = false;
       });
       apiEventFeed.setSourceKeyFilter(_activeSlot?.sourceKey.trim() ?? '');
       await _syncSlotAudioFocus();
@@ -3325,12 +3300,9 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    if (_activeSlotId.isEmpty &&
-        !_userClearedActiveSlot &&
-        _sourceSlots.isNotEmpty) {
+    if (_activeSlotId.isEmpty && _sourceSlots.isNotEmpty) {
       setState(() {
         _activeSlotId = _sourceSlots.first.slotId;
-        _userClearedActiveSlot = false;
       });
       apiEventFeed.setSourceKeyFilter(_activeSlot?.sourceKey.trim() ?? '');
       await _syncSlotAudioFocus();
@@ -4029,7 +4001,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_activeSlotId.isNotEmpty) {
       setState(() {
         _activeSlotId = '';
-        _userClearedActiveSlot = true;
         selectedApiEventDetail = null;
         apiDetailErrorMessage = null;
         frameDetectionSnapshots = const [];

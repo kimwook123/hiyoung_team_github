@@ -16,8 +16,6 @@ if /I "%~1"=="--no-pause" set "PAUSE_ON_EXIT=0"
 
 call :check_workspace_path
 if errorlevel 1 goto :fail
-call :check_developer_mode
-if errorlevel 1 goto :fail
 call :find_flutter
 if errorlevel 1 goto :fail
 call "%ROOT_DIR%\install_dependencies.bat" %INSTALL_TARGET%
@@ -117,20 +115,6 @@ if exist "%BUILD_LINK%" (
 )
 exit /b 0
 
-:check_developer_mode
-set "DEV_MODE_VALUE="
-for /f "tokens=3" %%i in ('reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /v AllowDevelopmentWithoutDevLicense 2^>nul ^| find /I "AllowDevelopmentWithoutDevLicense"') do set "DEV_MODE_VALUE=%%i"
-if /I "%DEV_MODE_VALUE%"=="0x1" (
-  echo Windows Developer Mode: enabled
-  exit /b 0
-)
-echo Windows Developer Mode: disabled or not configured.
-echo Enable it before Flutter Windows builds:
-echo   Settings ^> System ^> For developers ^> Developer Mode ^> On
-echo Or run this in an elevated PowerShell/cmd session:
-echo   reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /t REG_DWORD /f /v AllowDevelopmentWithoutDevLicense /d 1
-exit /b 1
-
 :find_flutter
 if exist "%LOCAL_FLUTTER%" (
   set "FLUTTER_CMD=%LOCAL_FLUTTER%"
@@ -156,12 +140,12 @@ set "VSWHERE_EXE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.e
 set "VS_NATIVE_READY="
 set "SDK_READY="
 if exist "%VSWHERE_EXE%" (
-  for /f "usebackq delims=" %%i in (`"%VSWHERE_EXE%" -products * -requires Microsoft.VisualStudio.Workload.NativeDesktop Microsoft.VisualStudio.Component.VC.Tools.x86.x64 Microsoft.VisualStudio.Component.VC.CMake.Project -property installationPath`) do set "VS_NATIVE_READY=%%i"
+  for /f "usebackq delims=" %%i in (`"%VSWHERE_EXE%" -products * -requires Microsoft.VisualStudio.Workload.NativeDesktop Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VS_NATIVE_READY=%%i"
 )
 for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "$roots=@('C:\Program Files (x86)\Windows Kits\10\Include','C:\Program Files\Windows Kits\10\Include'); foreach($root in $roots){ if(Test-Path $root){ $dirs=Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending; if($dirs){ $dirs[0].FullName; break } } }"`) do set "SDK_READY=%%i"
 if defined VS_NATIVE_READY if defined SDK_READY exit /b 0
 echo Windows C++ build tools are missing.
-echo Install Visual Studio Build Tools with "Desktop development with C++", MSVC tools, Windows 10/11 SDK, and CMake tools.
+echo Install Visual Studio Build Tools with "Desktop development with C++" and Windows 10/11 SDK.
 exit /b 1
 
 :fail

@@ -1,6 +1,0 @@
-train: /content/fine_tuning_dataset_v3.1/images/train
-val: /content/fine_tuning_dataset_v3.1/images/val
-nc: 2
-names:
-- YES_Helmet
-- NO_Helmet

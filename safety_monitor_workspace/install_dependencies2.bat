@@ -24,7 +24,7 @@ if not exist "%VENV_DIR%\Scripts\python.exe" (
     echo Python was not found. Install Python 3.12 or add python to PATH.
     exit /b 1
   )
-  call %BOOTSTRAP_PYTHON% -m venv "%VENV_DIR%"
+  python -m venv "%VENV_DIR%"
   if errorlevel 1 (
     echo Failed to create virtual environment.
     exit /b 1

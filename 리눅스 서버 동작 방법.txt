@@ -1,0 +1,391 @@
+포트포워딩 방식으로 VMware Ubuntu 리눅스 서버를 만들고 연결한 과정 정리
+작성 기준: safety_monitor_server FastAPI 서버 / VMware NAT / Windows 호스트 포트포워딩
+
+============================================================
+1. 최종 연결 구조
+============================================================
+
+다른 컴퓨터 또는 Windows 클라이언트/뷰어는 Ubuntu VM의 내부 IP로 직접 접속하지 않는다.
+
+최종 구조는 아래와 같다.
+
+다른 컴퓨터 / 클라이언트 / 뷰어
+    ↓
+http://192.168.24.113:8000
+    ↓
+Windows 호스트 PC
+    ↓
+VMware NAT 포트포워딩
+    ↓
+Ubuntu VM 192.168.80.129:8000
+    ↓
+FastAPI safety_monitor_server
+
+중요:
+- 192.168.80.129는 VMware NAT 내부망 IP이다.
+- 다른 컴퓨터에서는 192.168.80.129로 직접 접속하지 않는다.
+- 다른 컴퓨터에서는 Windows 호스트 IP인 192.168.24.113:8000으로 접속한다.
+
+
+============================================================
+2. Bridged 방식이 아니라 NAT + 포트포워딩을 사용한 이유
+============================================================
+
+처음에는 VMware 네트워크를 Bridged로 바꾸려고 했다.
+목표는 Ubuntu가 Windows 본체와 같은 대역인 192.168.24.xxx IP를 받게 만드는 것이었다.
+
+하지만 VMnet0의 Bridged 대상 어댑터를 바꿔도 Ubuntu에서 IPv4가 정상적으로 나오지 않았다.
+Ubuntu에서 hostname -I를 실행해도 192.168.24.xxx 주소가 나오지 않았다.
+
+그래서 Bridged 방식은 현재 환경에서 안정적으로 동작하지 않는 것으로 보고,
+VMware NAT를 유지한 상태에서 포트포워딩으로 외부 접속을 연결했다.
+
+
+============================================================
+3. VMware 네트워크 설정
+============================================================
+
+Ubuntu VM 설정:
+- Network Adapter: NAT
+- Connect at power on: 체크
+
+Virtual Network Editor 설정:
+- VMnet8
+- Type: NAT
+- Subnet Address: 192.168.80.0
+- DHCP: Enabled
+- Host virtual adapter: VMware Network Adapter VMnet8
+
+Ubuntu VM에서 IP 확인:
+
+    hostname -I
+
+확인된 Ubuntu VM IP:
+
+    192.168.80.129
+
+
+============================================================
+4. 리눅스 서버 프로젝트 구성
+============================================================
+
+리눅스 서버에는 전체 Windows 프로젝트를 그대로 옮기지 않는다.
+
+서버에 필요한 최소 구성:
+
+    safety_monitor_server/
+    requirements-server.txt
+
+옮기지 말아야 할 것:
+- .venv/
+- venv/
+- node_modules/
+- build/
+- dist/
+- __pycache__/
+- Windows용 .bat 파일 전체
+- 클라이언트/뷰어 전체 폴더는 서버 실행만 목적이면 필수 아님
+
+주의:
+Windows에서 만든 .venv 폴더를 Ubuntu로 가져오면 안 된다.
+Windows 가상환경은 리눅스에서 그대로 사용할 수 없고, 용량도 매우 크다.
+Ubuntu에서는 리눅스용 .venv를 새로 만들어야 한다.
+
+
+============================================================
+5. Ubuntu 패키지 설치
+============================================================
+
+Ubuntu에서 필요한 시스템 패키지를 설치했다.
+
+    sudo apt update
+    sudo apt install -y python3 python3-venv python3-pip ffmpeg libgl1 libglib2.0-0t64
+
+설명:
+- python3: Python 실행 환경
+- python3-venv: 가상환경 생성용
+- python3-pip: Python 패키지 설치용
+- ffmpeg: 영상/클립 처리용
+- libgl1, libglib2.0-0t64: opencv-python 실행 시 필요한 시스템 라이브러리
+
+
+============================================================
+6. 리눅스용 Python 가상환경 생성
+============================================================
+
+프로젝트 폴더 기준으로 가상환경을 만들었다.
+
+예시 위치:
+
+    cd ~/projects
+    python3 -m venv .venv
+    source .venv/bin/activate
+
+가상환경이 활성화되면 터미널 앞에 아래처럼 표시된다.
+
+    (.venv)
+
+Python 패키지 설치:
+
+    pip install --upgrade pip
+    pip install -r requirements-server.txt
+
+
+============================================================
+7. FastAPI 서버 실행
+============================================================
+
+서버 폴더로 이동:
+
+    cd ~/projects/safety_monitor_server
+
+가상환경 활성화:
+
+    source ~/projects/.venv/bin/activate
+
+FastAPI 서버 실행:
+
+    python -m uvicorn main:app --host 0.0.0.0 --port 8000 --no-access-log
+
+정상 실행 메시지:
+
+    INFO:     Started server process [...]
+    INFO:     Waiting for application startup.
+    INFO:     Application startup complete.
+    INFO:     Uvicorn running on http://0.0.0.0:8000
+
+중요:
+- --host 0.0.0.0 으로 실행해야 외부 접속을 받을 수 있다.
+- 이 터미널을 닫거나 Ctrl+C를 누르면 서버가 꺼진다.
+- 운영처럼 항상 켜두려면 나중에 systemd 서비스 등록이 필요하다.
+
+
+============================================================
+8. Ubuntu 내부에서 서버 확인
+============================================================
+
+서버가 켜진 상태에서 새 터미널을 열고 확인:
+
+    curl http://127.0.0.1:8000/docs
+
+정상이라면 Swagger UI HTML이 출력된다.
+
+또는 health API가 있는 경우:
+
+    curl http://127.0.0.1:8000/health
+
+포트가 열려 있는지 확인:
+
+    sudo ss -tlnp | grep 8000
+
+정상 예시:
+
+    LISTEN ... 0.0.0.0:8000 ...
+
+
+============================================================
+9. Ubuntu 방화벽 설정
+============================================================
+
+Ubuntu에서 8000번 포트를 허용했다.
+
+    sudo ufw allow 8000/tcp
+    sudo ufw status
+
+ufw가 active라면 8000/tcp ALLOW가 보여야 한다.
+ufw가 inactive라면 Ubuntu 방화벽은 꺼져 있는 상태이다.
+
+
+============================================================
+10. VMware NAT 포트포워딩 설정
+============================================================
+
+Windows VMware에서 설정한다.
+Ubuntu 터미널 안에서 하는 작업이 아니다.
+
+위치:
+
+    VMware
+    → Edit
+    → Virtual Network Editor
+    → Change Settings
+    → VMnet8 선택
+    → NAT Settings...
+    → Port Forwarding
+    → Add
+
+추가한 값:
+
+    Host port: 8000
+    Type: TCP
+    Virtual machine IP address: 192.168.80.129
+    Virtual machine port: 8000
+    Description: safety-monitor
+
+저장 순서:
+
+    OK → OK → Apply → OK
+
+의미:
+- Windows 호스트의 8000번 포트로 들어오는 요청을
+- Ubuntu VM 192.168.80.129의 8000번 포트로 넘긴다.
+
+
+============================================================
+11. Windows 방화벽 설정
+============================================================
+
+다른 컴퓨터가 Windows 호스트의 8000번 포트로 들어올 수 있도록
+Windows 방화벽에서 8000번 TCP 포트를 허용했다.
+
+관리자 권한 PowerShell에서 실행:
+
+    netsh advfirewall firewall add rule name="Safety Monitor Server 8000" dir=in action=allow protocol=TCP localport=8000
+
+
+============================================================
+12. 접속 주소 정리
+============================================================
+
+Ubuntu 내부 확인 주소:
+
+    http://127.0.0.1:8000/docs
+
+Windows 호스트 또는 같은 PC에서 확인할 주소:
+
+    http://192.168.24.113:8000/docs
+
+다른 컴퓨터에서 접속할 주소:
+
+    http://192.168.24.113:8000/docs
+
+클라이언트/뷰어에 넣을 API 서버 주소:
+
+    http://192.168.24.113:8000
+
+중요:
+- 클라이언트/뷰어에는 /docs를 붙이지 않는다.
+- /docs는 브라우저에서 서버가 열렸는지 확인하는 테스트 주소이다.
+- 앱 설정에는 기본 서버 URL만 넣는다.
+
+올바른 앱 서버 URL:
+
+    http://192.168.24.113:8000
+
+잘못된 앱 서버 URL 예시:
+
+    http://192.168.24.113:8000/docs
+    http://192.168.80.129:8000
+
+
+============================================================
+13. 클라이언트 연결 확인
+============================================================
+
+클라이언트에서 기존 서버 주소가 아래처럼 나왔었다.
+
+    Current API server: http://192.168.80.129:8000
+
+여기에 새 주소를 입력했다.
+
+    http://192.168.24.113:8000
+
+정상 결과:
+
+    Checking server health at http://192.168.24.113:8000 ...
+    Server health check succeeded.
+
+이 메시지가 나오면 클라이언트는 서버에 정상 연결된 것이다.
+
+
+============================================================
+14. 서버가 끊겼을 때 다시 연결하는 순서
+============================================================
+
+VMware나 Ubuntu 서버가 꺼졌거나 재부팅되면 아래 순서로 복구한다.
+
+1) Ubuntu VM을 켠다.
+
+2) Ubuntu IP 확인:
+
+    hostname -I
+
+기존처럼 192.168.80.129가 나오는지 확인한다.
+
+3) IP가 바뀌었다면 VMware 포트포워딩의 Virtual machine IP address도 새 IP로 수정해야 한다.
+
+4) 서버 실행:
+
+    cd ~/projects/safety_monitor_server
+    source ~/projects/.venv/bin/activate
+    python -m uvicorn main:app --host 0.0.0.0 --port 8000 --no-access-log
+
+5) Ubuntu 내부 확인:
+
+    curl http://127.0.0.1:8000/docs
+
+6) Windows 또는 다른 컴퓨터에서 확인:
+
+    http://192.168.24.113:8000/docs
+
+7) 클라이언트/뷰어 서버 주소:
+
+    http://192.168.24.113:8000
+
+
+============================================================
+15. 자주 생기는 문제
+============================================================
+
+문제 1:
+다른 컴퓨터에서 http://192.168.80.129:8000/docs 접속이 안 된다.
+
+원인:
+192.168.80.129는 VMware NAT 내부망 IP라서 다른 컴퓨터가 직접 접근할 수 없다.
+
+해결:
+다른 컴퓨터에서는 Windows 호스트 IP를 사용한다.
+
+    http://192.168.24.113:8000/docs
+
+
+문제 2:
+Ubuntu에서 curl http://127.0.0.1:8000/docs 가 안 된다.
+
+원인:
+FastAPI 서버가 꺼져 있다.
+
+해결:
+서버를 다시 실행한다.
+
+    cd ~/projects/safety_monitor_server
+    source ~/projects/.venv/bin/activate
+    python -m uvicorn main:app --host 0.0.0.0 --port 8000 --no-access-log
+
+
+문제 3:
+Ubuntu에서는 접속되는데 다른 컴퓨터에서 안 된다.
+
+가능 원인:
+- VMware NAT 포트포워딩 누락
+- Windows 방화벽 8000번 미허용
+- 다른 컴퓨터가 같은 네트워크에 있지 않음
+- Windows IP가 바뀜
+- Ubuntu VM IP가 바뀌었는데 포트포워딩 IP를 수정하지 않음
+
+확인:
+- Windows ipconfig로 Windows IP 확인
+- Ubuntu hostname -I로 Ubuntu IP 확인
+- VMware VMnet8 NAT Settings의 포트포워딩 IP 확인
+- Windows 방화벽 8000번 허용 확인
+
+
+문제 4:
+서버 실행 터미널을 닫았더니 접속이 안 된다.
+
+원인:
+직접 실행 방식은 터미널이 켜져 있는 동안만 서버가 살아 있다.
+
+해결:
+테스트 중에는 서버 실행 터미널을 닫지 않는다.
+추후 systemd 서비스 등록을 하면 자동 실행 방식으로 바꿀 수 있다.

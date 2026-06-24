@@ -3,11 +3,11 @@ setlocal EnableExtensions
 
 set "ROOT_DIR=%~dp0"
 if "%ROOT_DIR:~-1%"=="\" set "ROOT_DIR=%ROOT_DIR:~0,-1%"
-set "PROJECT_DIR=%ROOT_DIR%\safety_monitor_viewer"
-set "PROJECT_REL=safety_monitor_viewer"
-set "PROJECT_NAME=Viewer"
-set "INSTALL_TARGET=viewer"
-set "BUILD_LINK=C:\smw_build_viewer"
+set "PROJECT_DIR=%ROOT_DIR%\safety_monitor_client"
+set "PROJECT_REL=safety_monitor_client"
+set "PROJECT_NAME=Client"
+set "INSTALL_TARGET=client"
+set "BUILD_LINK=C:\smw_build_client"
 set "LOCAL_FLUTTER=%ROOT_DIR%\flutter\bin\flutter.bat"
 set "FLUTTER_CMD=flutter"
 set "PAUSE_ON_EXIT=1"
@@ -17,6 +17,8 @@ if /I "%~1"=="--no-pause" set "PAUSE_ON_EXIT=0"
 call :check_workspace_path
 if errorlevel 1 goto :fail
 call :find_flutter
+if errorlevel 1 goto :fail
+call "%ROOT_DIR%\install_dependencies.bat" %INSTALL_TARGET%
 if errorlevel 1 goto :fail
 call :prepare_windows_build_environment
 if errorlevel 1 goto :fail
@@ -134,9 +136,9 @@ call :ensure_windows_build_tools
 exit /b %ERRORLEVEL%
 
 :ensure_windows_build_tools
+exit /b 0
 set "VSWHERE_EXE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
-set "VS_NATIVE_READY="
-set "SDK_READY="
+set "VS_NATIVE_READY="set "SDK_READY="
 if exist "%VSWHERE_EXE%" (
   for /f "usebackq delims=" %%i in (`"%VSWHERE_EXE%" -products * -requires Microsoft.VisualStudio.Workload.NativeDesktop Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VS_NATIVE_READY=%%i"
 )

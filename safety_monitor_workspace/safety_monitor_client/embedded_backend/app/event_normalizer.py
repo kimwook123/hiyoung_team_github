@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 # 특히 clip_url, clip_path, preferred_clip_source 같은 클립 접근 필드를 서버 기준으로 맞춰 줍니다.
 
 def normalize_event_record(event_record: dict[str, Any]) -> dict[str, Any]:
+    """이벤트 payload를 서버/뷰어가 공통으로 읽을 수 있는 형태로 정규화합니다."""
     # 원본 dict는 최대한 보존하고, 클라이언트가 바로 쓰기 쉬운 보조 필드만 보강합니다.
     normalized = deepcopy(event_record)
 
@@ -44,6 +45,7 @@ def normalize_event_record(event_record: dict[str, Any]) -> dict[str, Any]:
 
 
 def _clean_string(value: Any) -> str:
+    """값을 문자열로 바꾸고 앞뒤 공백을 제거해 일관된 형태로 정리합니다."""
     if value is None:
         return ""
     if not isinstance(value, str):
@@ -52,6 +54,7 @@ def _clean_string(value: Any) -> str:
 
 
 def _extract_clip_name_from_url(clip_url: str) -> str:
+    """클립 URL에서 서버 저장용 파일명을 추출합니다."""
     # /api/clips/sample.mp4 같은 상대 URL에서 파일명만 뽑아 server_clip_name 보강에 사용합니다.
     path_text = urlsplit(clip_url).path.strip()
     if not path_text:

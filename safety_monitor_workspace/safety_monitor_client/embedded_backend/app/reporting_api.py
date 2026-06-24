@@ -14,15 +14,20 @@ from app.log_utils import log_line
 
 
 class RemoteServerReporter:
+    """클라이언트가 분석 결과와 미디어를 원격 서버에 전송하는 도우미입니다."""
+
     def __init__(self, base_url: str = REMOTE_SERVER_BASE_URL) -> None:
+        """기본 서버 주소를 정규화해 저장합니다."""
         self.base_url = base_url.rstrip("/")
 
     def set_base_url(self, base_url: str) -> None:
+        """서버 주소를 다시 설정합니다."""
         normalized = base_url.strip().rstrip("/")
         if normalized:
             self.base_url = normalized
 
     def upsert_source(self, source_record: dict[str, Any]) -> bool:
+        """소스 정보를 서버에 등록하거나 갱신합니다."""
         return self._post_json("/api/sources", source_record)
 
     def upload_source_media(
@@ -40,6 +45,7 @@ class RemoteServerReporter:
         reset_existing: bool,
         start_immediately: bool,
     ) -> dict[str, Any] | None:
+        """소스 영상을 서버에 업로드하고 응답 payload를 반환합니다."""
         source_file = Path(file_path)
         if not source_file.exists() or not source_file.is_file():
             return None
@@ -88,6 +94,7 @@ class RemoteServerReporter:
         client_id: str = "",
         session_id: str = "",
     ) -> bool:
+        """지정한 소스를 서버에서 제거합니다."""
         try:
             response = requests.delete(
                 f"{self.base_url}/api/sources/{requests.utils.quote(source_key, safe='')}",
@@ -105,6 +112,7 @@ class RemoteServerReporter:
             return False
 
     def reset_source_data(self, *, source_key: str, source_slug: str) -> bool:
+        """특정 소스의 서버 측 데이터를 초기화합니다."""
         try:
             response = requests.post(
                 f"{self.base_url}/api/admin/reset-data",
@@ -126,12 +134,15 @@ class RemoteServerReporter:
             return False
 
     def post_status(self, status_record: dict[str, Any]) -> bool:
+        """소스 상태 업데이트를 서버에 전송합니다."""
         return self._post_json("/api/source-status", status_record)
 
     def post_frame_detection(self, frame_record: dict[str, Any]) -> bool:
+        """프레임 탐지 결과를 서버에 전송합니다."""
         return self._post_json("/api/frame-detections", frame_record)
 
     def post_event(self, event_record: dict[str, Any]) -> bool:
+        """클라이언트 측에서는 이벤트 전송을 하지 않도록 막아둔 메서드입니다."""
         # 클라이언트는 이벤트를 서버로 전송하지 않습니다.
         # 서버가 frame_detections를 기준으로 룰 판정과 이벤트 저장을 담당합니다.
         return False
@@ -144,6 +155,7 @@ class RemoteServerReporter:
         source_key: str,
         source_slug: str,
     ) -> dict[str, Any] | None:
+        """이벤트 클립 파일을 서버에 업로드합니다."""
         file_path = Path(clip_path)
         if not file_path.exists() or not file_path.is_file():
             return None
@@ -179,6 +191,7 @@ class RemoteServerReporter:
         source_key: str,
         preview_path: str,
     ) -> bool:
+        """소스 미리보기 이미지를 서버에 업로드합니다."""
         file_path = Path(preview_path)
         if not file_path.exists() or not file_path.is_file():
             return False
@@ -202,6 +215,7 @@ class RemoteServerReporter:
             return False
 
     def _post_json(self, path: str, payload: dict[str, Any]) -> bool:
+        """JSON payload를 서버의 지정 경로로 POST 전송합니다."""
         try:
             response = requests.post(
                 f"{self.base_url}{path}",

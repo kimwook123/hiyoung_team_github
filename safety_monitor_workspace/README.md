@@ -7,41 +7,6 @@ CCTV/웹캠 기반 안전 모니터링 시스템입니다. 전체 구조는 `클
 - 뷰어는 서버 API를 통해 실시간 프리뷰, 이벤트 로그, 클립, 룰 설정을 관리합니다.
 
 자세한 실행 절차는 [RUN_GUIDE.md](RUN_GUIDE.md)를 기준으로 합니다.
-자세한 의존성 목록은 [DEPENDENCIES.md](DEPENDENCIES.md)를 기준으로 합니다.
-
-
-## 필수 외부 의존성
-
-`install_dependencies.bat`은 Python 가상환경, pip 패키지, Flutter pub 패키지를 설치합니다. Windows 앱 빌드에 필요한 외부 도구는 사용자가 먼저 설치해야 합니다.
-
-필수 항목:
-
-- Python 3.12: 서버와 클라이언트 내장 백엔드 실행에 필요합니다.
-- Windows 개발자 모드: Flutter Windows 빌드의 symlink 생성에 필요합니다.
-  - 설정 경로: `설정 > 시스템 > 개발자용 > 개발자 모드 > 켬`
-- Flutter SDK for Windows: 클라이언트/뷰어 Flutter Windows 앱 빌드에 필요합니다.
-  - 권장 위치: 워크스페이스 루트의 `flutter\bin\flutter.bat`
-  - 또는 `flutter\bin`을 PATH에 추가합니다.
-- Visual Studio Build Tools 또는 Visual Studio Community
-  - `Desktop development with C++` 워크로드
-  - MSVC v143 또는 최신 C++ x64/x86 build tools
-  - Windows 10/11 SDK
-  - CMake tools for Windows
-- Git: `git pull`, `core.longpaths` 설정, 협업용으로 필요합니다.
-
-AI 클라이언트에서 TensorRT engine을 만들거나 CUDA 추론을 사용할 경우 다음 항목도 필요합니다.
-
-- NVIDIA GPU와 호환 드라이버
-- CUDA 호환 PyTorch 패키지: `requirements.txt`에서 설치합니다.
-- TensorRT Python 패키지: `requirements.txt`에서 설치합니다.
-
-`install_dependencies.bat client`, `install_dependencies.bat viewer`, `install_dependencies.bat all`은 개발자 모드, Flutter SDK, Visual Studio C++ Build Tools, Windows SDK, CMake tools를 먼저 검사합니다. 누락된 외부 도구는 자동 설치하지 않고 안내 메시지와 함께 중단합니다.
-
-환경 확인은 워크스페이스 루트에서 아래 명령으로 먼저 수행합니다.
-
-```bat
-check_environment.bat
-```
 
 ## 현재 운영 정책
 
@@ -238,8 +203,8 @@ Downloads
 
 ## 주요 배치파일
 
-- `check_environment.bat`: Python/Windows 개발자 모드/Flutter/Visual Studio C++/Windows SDK 환경 확인
-- `install_dependencies.bat`: Python 의존성 및 Flutter pub 의존성 설치
+- `check_environment.bat`: Python/Flutter/Visual Studio C++/Windows SDK 환경 확인
+- `install_dependencies.bat`: Python 의존성 설치
 - `build_client.bat`: 클라이언트 Windows 빌드
 - `build_viewer.bat`: 뷰어 Windows 빌드
 - `run_server.bat`: 서버 실행

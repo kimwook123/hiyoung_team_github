@@ -45,16 +45,12 @@ class ApiEventController extends ChangeNotifier {
     int? limit,
     String? eventType,
     String? status,
-    String? createdFrom,
-    String? createdTo,
   }) async {
     await loadEvents(
       latestOnly: true,
       limit: limit,
       eventType: eventType,
       status: status,
-      createdFrom: createdFrom,
-      createdTo: createdTo,
     );
   }
 
@@ -63,8 +59,6 @@ class ApiEventController extends ChangeNotifier {
     int? limit,
     String? eventType,
     String? status,
-    String? createdFrom,
-    String? createdTo,
   }) async {
     // GET /api/events 또는 latest_only=true 조회를 담당합니다.
     isLoading = true;
@@ -77,8 +71,6 @@ class ApiEventController extends ChangeNotifier {
         limit: limit,
         eventType: eventType,
         status: status,
-        createdFrom: createdFrom,
-        createdTo: createdTo,
       );
       items = nextItems;
       lastUpdatedAt = DateTime.now();

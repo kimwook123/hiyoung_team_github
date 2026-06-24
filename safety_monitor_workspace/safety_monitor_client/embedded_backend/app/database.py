@@ -12,6 +12,7 @@ from app.source_identity import extract_clip_name
 
 
 def init_db(db_path: Path) -> None:
+    """데이터베이스 파일과 필요한 테이블을 생성합니다."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with _connect(db_path) as connection:
         connection.executescript(
@@ -96,6 +97,7 @@ def init_db(db_path: Path) -> None:
 
 @contextmanager
 def _connect(db_path: Path) -> Iterator[sqlite3.Connection]:
+    """SQLite 연결을 열고, 사용이 끝나면 자동으로 커밋 및 종료합니다."""
     connection = sqlite3.connect(db_path, timeout=30, check_same_thread=False)
     connection.row_factory = sqlite3.Row
     try:
@@ -106,6 +108,7 @@ def _connect(db_path: Path) -> Iterator[sqlite3.Connection]:
 
 
 def insert_event(db_path: Path, event_record: dict) -> dict:
+    """이벤트 기록을 데이터베이스에 저장하고 저장된 내용을 반환합니다."""
     saved_record = dict(event_record)
     saved_record["received_at"] = str(saved_record.get("received_at", "")).strip() or (
         datetime.now().isoformat()
@@ -146,6 +149,7 @@ def list_events(
     client_id: str | None = None,
     session_id: str | None = None,
 ) -> list[dict]:
+    """조건에 맞는 이벤트 기록 목록을 조회합니다."""
     query = """
         SELECT payload_json
         FROM events
@@ -179,6 +183,7 @@ def list_latest_events(
     client_id: str | None = None,
     session_id: str | None = None,
 ) -> list[dict]:
+    """같은 이벤트 키를 최신 상태로 정리해 중복 없이 반환합니다."""
     ordered_items = list_events(
         db_path,
         event_type=event_type,
@@ -203,6 +208,7 @@ def find_events_by_key(
     *,
     source_key: str | None = None,
 ) -> list[dict]:
+    """특정 이벤트 키를 가진 기록들을 시간 순으로 조회합니다."""
     query = "SELECT payload_json FROM events WHERE event_key = ?"
     parameters: list[object] = [event_key]
     if source_key is not None:
@@ -220,6 +226,7 @@ def get_latest_event_by_key(
     *,
     source_key: str | None = None,
 ) -> dict | None:
+    """특정 이벤트 키의 가장 최신 기록 하나만 조회합니다."""
     query = "SELECT payload_json FROM events WHERE event_key = ?"
     parameters: list[object] = [event_key]
     if source_key is not None:
@@ -239,6 +246,7 @@ def list_source_summaries(
     client_id: str | None = None,
     session_id: str | None = None,
 ) -> list[dict]:
+    """각 소스별로 이벤트 개수와 최근 수신 시각 요약 정보를 조회합니다."""
     query = """
         SELECT
             source_key,
@@ -276,6 +284,7 @@ def list_source_summaries(
 
 
 def insert_frame_detection(db_path: Path, frame_record: dict) -> dict:
+    """프레임 탐지 결과를 저장하고 최신 상태 테이블도 함께 갱신합니다."""
     saved_record = dict(frame_record)
     saved_record["received_at"] = str(saved_record.get("received_at", "")).strip() or (
         datetime.now().isoformat()
@@ -319,6 +328,7 @@ def insert_frame_detection(db_path: Path, frame_record: dict) -> dict:
 
 
 def get_latest_frame_detection(db_path: Path, *, source_key: str) -> dict | None:
+    """특정 소스의 가장 최근 프레임 탐지 결과를 조회합니다."""
     with _connect(db_path) as connection:
         row = connection.execute(
             """
@@ -340,6 +350,7 @@ def find_current_frame_detection(
     source_time_seconds: float,
     tolerance_seconds: float,
 ) -> dict | None:
+    """주어진 시간에 가장 가까운 프레임 탐지 결과를 찾습니다."""
     with _connect(db_path) as connection:
         latest_row = connection.execute(
             """
@@ -390,6 +401,7 @@ def find_current_frame_detection(
 
 
 def upsert_source_status(db_path: Path, status_record: dict) -> dict:
+    """소스 상태를 저장하거나 기존 상태를 갱신합니다."""
     saved_record = dict(status_record)
     saved_record["updated_at"] = str(saved_record.get("updated_at", "")).strip() or (
         datetime.now().isoformat()
@@ -460,6 +472,7 @@ def upsert_source_status(db_path: Path, status_record: dict) -> dict:
 
 
 def list_source_statuses(db_path: Path) -> list[dict]:
+    """모든 소스 상태 레코드를 최신 순으로 조회합니다."""
     with _connect(db_path) as connection:
         rows = connection.execute(
             "SELECT payload_json FROM source_status ORDER BY updated_at DESC, source_key DESC"
@@ -468,6 +481,7 @@ def list_source_statuses(db_path: Path) -> list[dict]:
 
 
 def get_source_status(db_path: Path, source_key: str) -> dict | None:
+    """특정 소스의 현재 상태를 조회합니다."""
     with _connect(db_path) as connection:
         row = connection.execute(
             "SELECT payload_json FROM source_status WHERE source_key = ?",
@@ -479,6 +493,7 @@ def get_source_status(db_path: Path, source_key: str) -> dict | None:
 
 
 def delete_source_status(db_path: Path, source_key: str) -> bool:
+    """특정 소스의 상태 기록을 삭제합니다."""
     with _connect(db_path) as connection:
         deleted_count = connection.execute(
             "DELETE FROM source_status WHERE source_key = ?",
@@ -488,6 +503,7 @@ def delete_source_status(db_path: Path, source_key: str) -> bool:
 
 
 def prune_orphan_source_statuses(db_path: Path) -> int:
+    """더 이상 존재하지 않는 소스의 상태 레코드를 정리합니다."""
     with _connect(db_path) as connection:
         deleted_count = connection.execute(
             """
@@ -501,6 +517,7 @@ def prune_orphan_source_statuses(db_path: Path) -> int:
 
 
 def prune_orphan_source_data(db_path: Path) -> tuple[int, int, int]:
+    """소스가 사라진 이벤트와 프레임 기록을 정리합니다."""
     with _connect(db_path) as connection:
         deleted_events = connection.execute(
             """
@@ -534,6 +551,7 @@ def prune_orphan_source_data(db_path: Path) -> tuple[int, int, int]:
 
 
 def upsert_source(db_path: Path, source_record: dict) -> dict:
+    """소스 정보를 저장하거나 기존 정보를 갱신합니다."""
     saved_record = dict(source_record)
     now_text = datetime.now().isoformat()
     saved_record["created_at"] = str(saved_record.get("created_at", "")).strip() or now_text
@@ -578,6 +596,7 @@ def upsert_source(db_path: Path, source_record: dict) -> dict:
 
 
 def list_sources(db_path: Path) -> list[dict]:
+    """등록된 모든 소스 정보를 조회합니다."""
     with _connect(db_path) as connection:
         rows = connection.execute(
             "SELECT payload_json FROM sources ORDER BY updated_at DESC, source_key DESC"
@@ -586,6 +605,7 @@ def list_sources(db_path: Path) -> list[dict]:
 
 
 def get_source(db_path: Path, source_key: str) -> dict | None:
+    """특정 소스의 정보를 조회합니다."""
     with _connect(db_path) as connection:
         row = connection.execute(
             "SELECT payload_json FROM sources WHERE source_key = ?",
@@ -597,6 +617,7 @@ def get_source(db_path: Path, source_key: str) -> dict | None:
 
 
 def delete_source(db_path: Path, source_key: str) -> bool:
+    """특정 소스 정보를 삭제합니다."""
     with _connect(db_path) as connection:
         deleted_count = connection.execute(
             "DELETE FROM sources WHERE source_key = ?",
@@ -611,6 +632,7 @@ def set_source_desired_running(
     source_key: str,
     desired_running: bool,
 ) -> dict | None:
+    """소스의 실행 희망 상태를 변경하고 저장합니다."""
     record = get_source(db_path, source_key)
     if record is None:
         return None
@@ -620,6 +642,7 @@ def set_source_desired_running(
 
 
 def reset_source_data(db_path: Path, *, source_key: str, source_slug: str, server_clip_dir: Path) -> tuple[bool, int, int]:
+    """특정 소스의 데이터와 관련 클립을 모두 정리합니다."""
     removed_records = list_events(db_path, source_key=source_key)
     kept_records = list_events(db_path)
     kept_records = [
@@ -678,6 +701,7 @@ def migrate_legacy_analysis_paths(
     legacy_source_cache_dir: Path,
     server_source_cache_dir: Path,
 ) -> int:
+    """이전 경로 문자열을 새 경로 문자열로 바꿔 데이터베이스 내용을 마이그레이션합니다."""
     legacy_raw = str(legacy_source_cache_dir.resolve())
     server_raw = str(server_source_cache_dir.resolve())
     legacy_norm = legacy_raw.replace("\\", "/").lower()
@@ -741,6 +765,7 @@ def _append_common_filters(
     client_id: str | None,
     session_id: str | None,
 ) -> tuple[str, list[object]]:
+    """조회 쿼리에 공통 필터 조건을 추가합니다."""
     if event_type is not None:
         query += " AND event_type = ?"
         parameters.append(event_type)
@@ -770,6 +795,7 @@ def _migrate_sources_table(
     legacy_norm: str,
     server_norm: str,
 ) -> int:
+    """sources 테이블의 경로 관련 값을 새 경로로 바꿉니다."""
     rows = connection.execute(
         """
         SELECT source_key, source_value, original_source_value, payload_json
@@ -851,6 +877,7 @@ def _migrate_source_status_table(
     legacy_norm: str,
     server_norm: str,
 ) -> int:
+    """source_status 테이블의 경로 관련 값을 새 경로로 바꿉니다."""
     rows = connection.execute(
         """
         SELECT source_key, source_value, payload_json
@@ -920,6 +947,7 @@ def _migrate_payload_only_table(
     legacy_norm: str,
     server_norm: str,
 ) -> int:
+    """payload_json 안의 경로 문자열만 별도로 마이그레이션합니다."""
     rows = connection.execute(
         f"SELECT {row_key_column}, source_key, payload_json FROM {table_name}"
     ).fetchall()
@@ -965,6 +993,7 @@ def _rewrite_legacy_payload(
     legacy_norm: str,
     server_norm: str,
 ) -> bool:
+    """payload_json 내부의 레거시 경로 문자열을 새 경로로 치환합니다."""
     changed = False
     for key in ("source_key", "source_value", "original_source_value"):
         value = payload.get(key)
@@ -992,12 +1021,14 @@ def _replace_legacy_text(
     legacy_norm: str,
     server_norm: str,
 ) -> str:
+    """문자열 안의 레거시 경로를 새 경로로 치환합니다."""
     next_value = value.replace(legacy_raw, server_raw)
     next_value = next_value.replace(legacy_norm, server_norm)
     return next_value
 
 
 def _decode_payload(payload_json: str) -> dict:
+    """저장된 JSON 문자열을 딕셔너리로 되돌립니다."""
     try:
         decoded = json.loads(payload_json)
     except json.JSONDecodeError:
@@ -1006,6 +1037,7 @@ def _decode_payload(payload_json: str) -> dict:
 
 
 def _to_float(value: object) -> float:
+    """값을 실수형으로 안전하게 변환합니다."""
     if isinstance(value, float):
         return value
     if isinstance(value, int):
@@ -1019,6 +1051,7 @@ def _to_float(value: object) -> float:
 
 
 def _to_int(value: object, *, default: int = 0) -> int:
+    """값을 정수형으로 안전하게 변환합니다."""
     if isinstance(value, int):
         return value
     if isinstance(value, float):

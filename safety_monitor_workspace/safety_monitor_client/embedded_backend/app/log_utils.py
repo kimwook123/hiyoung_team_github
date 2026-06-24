@@ -27,6 +27,7 @@ _LOG_FILE_LOCK = threading.Lock()
 
 
 def _enable_windows_ansi() -> bool:
+    """Windows 콘솔에서 ANSI 색상 코드를 활성화할 수 있는지 확인합니다."""
     if os.environ.get("NO_COLOR"):
         return False
     if not hasattr(sys.stdout, "isatty") or not sys.stdout.isatty():
@@ -68,6 +69,7 @@ _REQUEST_PATH_ALIASES = {
 
 
 def _shorten_path_text(value: str) -> str:
+    """긴 요청 경로를 읽기 쉬운 짧은 형태로 축약합니다."""
     normalized = value.strip()
     if not normalized:
         return "-"
@@ -87,6 +89,7 @@ def _shorten_path_text(value: str) -> str:
 
 
 def _shorten_source_text(value: str) -> str:
+    """소스 문자열을 콘솔에 맞게 짧고 명확하게 줄입니다."""
     normalized = value.strip()
     if not normalized:
         return "-"
@@ -109,6 +112,7 @@ def _shorten_source_text(value: str) -> str:
 
 
 def _shorten_stage_text(value: str) -> str:
+    """긴 단계 설명을 길이 제한에 맞게 잘라서 표시합니다."""
     text = value.strip()
     if not text:
         return "-"
@@ -118,6 +122,7 @@ def _shorten_stage_text(value: str) -> str:
 
 
 def _shorten_error_text(value: str) -> str:
+    """오류 메시지를 너무 길지 않게 축약해서 표시합니다."""
     text = value.strip()
     if not text:
         return "-"
@@ -127,6 +132,7 @@ def _shorten_error_text(value: str) -> str:
 
 
 def _format_value(value: object) -> str:
+    """로그 값이 None일 때는 '-'로, 그 외에는 문자열 형태로 정리합니다."""
     if value is None:
         return "-"
     text = str(value).strip()
@@ -134,6 +140,7 @@ def _format_value(value: object) -> str:
 
 
 def _build_field_text(fields: dict[str, object]) -> str:
+    """로그 필드를 읽기 쉬운 순서로 조합해 한 줄 문자열로 만듭니다."""
     preferred_order = [
         "action",
         "source",
@@ -180,6 +187,7 @@ def _build_field_text(fields: dict[str, object]) -> str:
 
 
 def _compact_field_text(tag: str, fields: dict[str, object]) -> str:
+    """태그 종류에 따라 짧고 적절한 형식으로 필드 문자열을 압축합니다."""
     def _text(key: str) -> str:
         value = fields.get(key)
         if value is None:
@@ -286,6 +294,7 @@ def _compact_field_text(tag: str, fields: dict[str, object]) -> str:
 
 
 def log_line(tag: str, message: str = "", **fields: object) -> None:
+    """태그와 필드를 포함한 로그 한 줄을 콘솔과 로그 파일에 출력합니다."""
     timestamp = datetime.now().strftime("%H:%M:%S")
     prefix = f"[{timestamp}] [{tag}]"
     if _USE_COLOR:
@@ -314,6 +323,7 @@ def log_line(tag: str, message: str = "", **fields: object) -> None:
 
 
 def _append_log_file(line: str) -> None:
+    """설정된 로그 파일에 한 줄씩 기록합니다."""
     log_file = os.environ.get("SAFETY_MONITOR_LOG_FILE", "").strip()
     if not log_file:
         return

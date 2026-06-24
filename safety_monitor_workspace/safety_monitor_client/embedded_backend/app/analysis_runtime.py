@@ -53,8 +53,10 @@ from app.source_rule_config import build_default_rule_config
 
 
 def _ensure_analysis_import_path() -> None:
+    """분석 모듈이 import될 수 있도록 경로를 등록합니다."""
     analysis_path = str(ANALYSIS_DIR)
     if analysis_path not in sys.path:
+        # 분석 패키지를 찾을 수 있도록 앞쪽에 경로를 추가합니다.
         sys.path.insert(0, analysis_path)
 
 
@@ -76,9 +78,11 @@ from models.yolo_model_sample import YoloModelSample  # type: ignore  # noqa: E4
 
 
 def resolve_source(*, source_type: str, source_value: str) -> dict[str, str]:
+    """입력된 소스 정보를 정규화하고, 필요하면 YouTube URL을 로컬 비디오 파일로 변환합니다."""
     normalized_source_type = source_type.strip()
     normalized_source_value = source_value.strip()
     if normalized_source_type == "stream" and _is_youtube_url(normalized_source_value):
+        # YouTube 주소면 로컬 파일로 바꿔서 이후 처리에서 동일하게 다루도록 합니다.
         resolved_path = _download_youtube_video(normalized_source_value)
         return {
             "source_type": "video",
@@ -104,11 +108,14 @@ def build_source_record(
     session_id: str = "",
     desired_running: bool = True,
 ) -> dict[str, Any]:
+    """분석 파이프라인이 사용할 소스 메타데이터 레코드를 생성합니다."""
     normalized_source_value = source_value
     if source_type == "video":
+        # 비디오 경로는 정규화된 형태로 저장해 중복 소스를 같은 키로 묶습니다.
         normalized_source_value = normalize_video_source_value(source_value)
     normalized_client_id = client_id.strip()
     normalized_session_id = session_id.strip()
+    # 소스를 식별할 수 있는 고유 키와 표시용 슬러그를 생성합니다.
     source_key = build_source_key(
         source_type=source_type,
         source_value=normalized_source_value,
@@ -147,6 +154,7 @@ def build_pipeline_for_source(
     restart_checker=None,
     resume_from_seconds: float = 0.0,
 ) -> VideoPipeline:
+    """소스 종류에 맞는 프레임 소스와 분석 파이프라인 객체를 구성합니다."""
     source_type = str(source_record.get("source_type", "")).strip()
     source_value = str(source_record.get("source_value", "")).strip()
     client_id = str(source_record.get("client_id", "")).strip()
@@ -155,10 +163,13 @@ def build_pipeline_for_source(
     source_slug = str(source_record.get("source_slug", "")).strip()
 
     if source_type == "camera":
+        # 카메라 인덱스를 기준으로 실시간 프레임 소스를 생성합니다.
         frame_source = CameraFrameSource(camera_index=int(source_value or "0"))
     elif source_type == "stream":
+        # 스트림 URL을 통해 외부 영상 소스를 읽어옵니다.
         frame_source = StreamFrameSource(stream_url=source_value)
     elif source_type == "video":
+        # 저장된 비디오 파일을 지정된 시간부터 읽기 시작합니다.
         frame_source = VideoFileFrameSource(
             video_path=source_value,
             start_time_seconds=resume_from_seconds,
@@ -168,6 +179,7 @@ def build_pipeline_for_source(
 
     model = _build_model()
     # 위험상황 룰 판정과 이벤트 클립 인코딩은 중앙 서버가 담당합니다.
+    # 클라이언트는 탐지 결과를 수집하고 후속 전송에 집중합니다.
     rules: list[Any] = []
     tracker = PersonTracker(
         max_distance=TRACK_MAX_DISTANCE,
@@ -226,7 +238,10 @@ def build_pipeline_for_source(
 
 
 class ClientFrameDetectionRecorder:
+    """탐지 결과를 DB와 서버에 비동기적으로 전송하는 기록기입니다."""
+
     def __init__(self, *, max_post_fps: float = 8.0) -> None:
+        # 전송 빈도를 제한하기 위해 FPS 기준값과 마지막 전송 시각을 초기화합니다.
         self.max_post_fps = max(0.0, max_post_fps)
         self.last_posted_at = 0.0
         self.worker = AsyncLatestWorker[dict[str, Any]](
@@ -245,6 +260,7 @@ class ClientFrameDetectionRecorder:
         frame_width: int,
         frame_height: int,
     ) -> None:
+        # 전송 속도를 제한하고, 탐지 결과를 기록용 payload로 변환합니다.
         now_ts = datetime.now().timestamp()
         if self.max_post_fps > 0:
             min_interval = 1.0 / self.max_post_fps
@@ -267,6 +283,7 @@ class ClientFrameDetectionRecorder:
         self.worker.submit(record)
 
     def _save_record_sync(self, record: dict[str, Any]) -> None:
+        # DB에 저장한 뒤 원격 서버로 탐지 결과를 전달합니다.
         saved_record = insert_frame_detection(DATABASE_PATH, record)
         remote_server_reporter.post_frame_detection(saved_record)
 
@@ -275,12 +292,15 @@ class ClientFrameDetectionRecorder:
 
 
 class ClientSourceStatusPublisher:
+    """소스의 상태 변화를 DB와 실시간 허브에 전파하는 퍼블리셔입니다."""
+
     def __init__(
         self,
         *,
         min_interval_seconds: float = 1.0,
         progress_log_interval_seconds: float = 10.0,
     ) -> None:
+        # 상태 전송 빈도와 진행 로그 간격을 초기화합니다.
         self.min_interval_seconds = min_interval_seconds
         self.progress_log_interval_seconds = max(1.0, progress_log_interval_seconds)
         self.last_signature = ""
@@ -311,6 +331,7 @@ class ClientSourceStatusPublisher:
         error_message: str = "",
         force: bool = False,
     ) -> None:
+        # 중복 상태 전송을 줄이기 위해 간격과 시그니처를 확인합니다.
         now_ts = datetime.now().timestamp()
         if not force and (now_ts - self.last_posted_at) < self.min_interval_seconds:
             return
@@ -355,6 +376,7 @@ class ClientSourceStatusPublisher:
         )
 
     def _save_status_sync(self, payload: dict[str, Any]) -> None:
+        # 상태를 저장하고 실시간으로 UI가 반영되도록 이벤트를 발행합니다.
         saved_record = upsert_source_status(DATABASE_PATH, payload)
         realtime_update_hub.publish(
             "source_status_changed",
@@ -382,6 +404,7 @@ class ClientSourceStatusPublisher:
         now_ts: float,
         force: bool,
     ) -> None:
+        # 상태 변화나 진행률 변화가 있을 때만 로그를 남기도록 조건을 판단합니다.
         normalized_state = state.strip().lower() or "unknown"
         state_changed = self.last_logged_state_by_source_key.get(source_key) != normalized_state
         progress_bucket = -1
@@ -431,7 +454,10 @@ class ClientSourceStatusPublisher:
 
 
 class ClientSourcePreviewPublisher:
+    """미리보기 이미지를 생성해 저장소와 서버로 전송하는 퍼블리셔입니다."""
+
     def __init__(self, *, max_preview_fps: float = 15.0) -> None:
+        # 미리보기 전송 주기를 제한하기 위해 FPS 기준값을 초기화합니다.
         self.max_preview_fps = max(0.1, max_preview_fps)
         self.last_posted_at = 0.0
         self.worker = AsyncLatestWorker[dict[str, Any]](
@@ -440,6 +466,8 @@ class ClientSourcePreviewPublisher:
         )
 
     def publish(self, *, frame, result, source_key: str) -> None:
+        """프레임과 탐지 결과를 바탕으로 미리보기 이미지를 생성합니다."""
+        # 미리보기 생성 빈도를 제한해 과도한 이미지 전송을 막습니다.
         now_ts = datetime.now().timestamp()
         min_interval = 1.0 / self.max_preview_fps
         if (now_ts - self.last_posted_at) < min_interval:
@@ -458,6 +486,7 @@ class ClientSourcePreviewPublisher:
         )
 
     def _save_preview_sync(self, payload: dict[str, Any]) -> None:
+        # 저장 경로를 만들고, 미리보기 이미지를 파일로 기록한 뒤 서버에 업로드합니다.
         source_key = str(payload.get("source_key", "")).strip()
         jpeg_bytes = payload.get("jpeg_bytes")
         if not source_key or not isinstance(jpeg_bytes, (bytes, bytearray)):
@@ -475,6 +504,8 @@ class ClientSourcePreviewPublisher:
         self.worker.close(timeout_seconds=15.0)
 
     def _make_preview_frame(self, *, frame, result):
+        """탐지 박스와 라벨을 그려 미리보기 프레임을 만듭니다."""
+        # 원본 프레임을 복사한 뒤 탐지 박스를 시각적으로 그려서 보여줍니다.
         preview_frame = frame.copy()
         for detection in getattr(result, "detections", []):
             box = getattr(detection, "box", None)
@@ -501,6 +532,8 @@ class ClientSourcePreviewPublisher:
 
 
 def _build_model():
+    """설정값에 따라 적절한 탐지 모델 인스턴스를 생성합니다."""
+    # 테스트용 더미 모델 또는 실제 YOLO 모델 중 하나를 선택합니다.
     if MODEL_TYPE == "dummy":
         return DummyDetectionModel(min_confidence=MIN_CONFIDENCE)
     if MODEL_TYPE == "yolo":
@@ -530,12 +563,15 @@ def _build_model():
 
 
 def _build_rules(source_record: dict[str, Any]) -> list[Any]:
+    """클라이언트 측에서는 규칙 판정 대신 탐지 결과만 전달하도록 비워 둡니다."""
     # 룰 판정은 중앙 서버 전용 책임입니다.
     # 클라이언트는 객체 탐지 결과(frame_detections)만 서버로 전송합니다.
     return []
 
 
 def _download_youtube_video(url: str) -> Path:
+    """YouTube 영상을 로컬 캐시에 다운로드해 재사용 가능한 파일 경로로 반환합니다."""
+    # 이미 캐시된 파일이 있으면 다시 내려받지 않고 재사용합니다.
     try:
         import yt_dlp
     except ModuleNotFoundError as error:
@@ -565,6 +601,7 @@ def _download_youtube_video(url: str) -> Path:
 
 
 def _is_youtube_url(value: str) -> bool:
+    """입력 문자열이 YouTube URL인지 간단히 판별합니다."""
     normalized = value.strip().lower()
     return (
         "youtube.com/" in normalized
@@ -574,6 +611,8 @@ def _is_youtube_url(value: str) -> bool:
 
 
 def _read_video_duration_seconds(video_path: str) -> float:
+    """비디오 파일의 길이를 FPS와 프레임 수로 계산합니다."""
+    # OpenCV로 비디오를 열어 총 프레임 수와 FPS를 읽어 재생 시간을 추정합니다.
     try:
         cap = cv2.VideoCapture(video_path)
     except Exception:
@@ -591,6 +630,7 @@ def _read_video_duration_seconds(video_path: str) -> float:
             cap.release()
 
 def _color_for_detection_name(name: str) -> tuple[int, int, int]:
+    """탐지 객체 이름에 따라 미리보기 박스 색상을 선택합니다."""
     normalized = str(name or "").strip().lower()
     if normalized in {"yes_helmet", "helmet", "hardhat"}:
         return (0, 255, 0)

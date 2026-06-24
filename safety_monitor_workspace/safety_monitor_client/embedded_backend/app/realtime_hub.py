@@ -15,11 +15,15 @@ from app.log_utils import log_line
 
 
 class RealtimeUpdateHub:
+    """WebSocket 연결된 클라이언트에게 실시간 업데이트를 브로드캐스트하는 허브입니다."""
+
     def __init__(self) -> None:
+        """리스너 목록과 동기화를 위한 잠금을 초기화합니다."""
         self._lock = threading.RLock()
         self._listeners: dict[int, tuple[asyncio.AbstractEventLoop, asyncio.Queue[str]]] = {}
 
     async def serve(self, websocket: WebSocket) -> None:
+        """클라이언트의 WebSocket 연결을 받아 이벤트를 지속적으로 전달합니다."""
         await websocket.accept()
         queue: asyncio.Queue[str] = asyncio.Queue(maxsize=128)
         listener_id = id(queue)
@@ -41,6 +45,7 @@ class RealtimeUpdateHub:
             log_line("PUSH", event="client-disconnect", clients=listener_count)
 
     def publish(self, message_type: str, **payload: Any) -> None:
+        """모든 연결된 클라이언트에게 메시지를 비동기적으로 전달합니다."""
         message = {"type": message_type, **payload}
         encoded = json.dumps(message, ensure_ascii=False)
         with self._lock:
@@ -70,6 +75,7 @@ class RealtimeUpdateHub:
 
     @staticmethod
     def _enqueue_message(queue: asyncio.Queue[str], payload: str) -> None:
+        """이벤트 루프 쪽 큐에 메시지를 안전하게 넣습니다."""
         if queue.full():
             try:
                 queue.get_nowait()

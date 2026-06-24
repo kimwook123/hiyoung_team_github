@@ -93,6 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    // 화면이 열리면 재생 컨트롤러와 서버 연결, 자동 새로고침/동기화 루프를 시작한다.
     _emptyVideoController = VideoPanelController();
     eventApiService = EventApiService(baseUrl: _defaultApiServerBaseUrl);
     remoteEventApiService = EventApiService(
@@ -110,6 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    // 화면이 사라질 때는 백그라운드 타이머와 WebSocket 연결을 모두 정리한다.
     apiAutoRefreshTimer?.cancel();
     frameDetectionRefreshTimer?.cancel();
     sourceStatusSyncTimer?.cancel();
@@ -134,6 +136,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   _SourcePanelSlot? get _activeSlot {
+    // 현재 선택된 슬롯 ID와 일치하는 패널 정보를 찾아 반환한다.
     for (final slot in _sourceSlots) {
       if (slot.slotId == _activeSlotId) {
         return slot;
@@ -143,6 +146,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   SourceItem? get _activeSourceItem {
+    // 현재 선택된 소스 키가 있으면 등록된 소스 맵에서 해당 소스 정보를 꺼낸다.
     final sourceKey = selectedSourceKey.trim();
     if (sourceKey.isEmpty) {
       return null;
@@ -151,6 +155,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   VideoPanelController get videoController =>
+      // 선택된 슬롯이 있으면 그 슬롯의 컨트롤러를 쓰고, 없으면 빈 플레이어 컨트롤러를 사용한다.
       _activeSlot?.controller ?? _emptyVideoController;
 
   String get selectedSourceType => _activeSlot?.sourceType ?? '';
@@ -161,6 +166,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 홈 화면은 엔진 준비 상태 패널, 서버 연결 컨트롤, 비디오 그리드 패널로 구성된다.
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -195,6 +201,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildClientApiControls() {
+    // 원격 서버 주소 입력과 연결 상태를 보여주는 상단 제어 패널이다.
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
       decoration: BoxDecoration(
@@ -246,6 +253,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildEngineProgressPanel() {
+    // TensorRT 엔진 생성 중이면 진행 상태를 상단에 표시해 사용자가 대기 중임을 알 수 있게 한다.
     return AnimatedBuilder(
       animation: EmbeddedBackendService.instance,
       builder: (context, _) {
@@ -3232,6 +3240,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _initializeServerConnection() async {
+    // 앱 시작 시 클라이언트 식별자, 서버 주소, 런타임 설정, 이벤트/소스 상태를 순서대로 준비한다.
     clientId = await _resolveClientIdentity();
     await _loadSavedRemoteServerBaseUrl();
     await EmbeddedBackendService.instance.ensureStarted();
@@ -3245,6 +3254,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<String> _resolveClientIdentity() async {
+    // 로컬 설정 파일의 client_id와 현재 머신 정보를 확인해, 유효하면 재사용하고 아니면 새로 생성한다.
     final configPath = _resolveLegacyClientSettingsFile();
     final currentMachineId = _buildCurrentMachineId();
     final generated = _buildDefaultClientId();
@@ -3320,6 +3330,7 @@ class _HomeScreenState extends State<HomeScreen> {
     bool force = false,
     bool silent = true,
   }) async {
+    // 앱이 시작될 때 기본 카메라 소스가 하나만 등록되도록 보장한다.
     if (_isViewerReadOnly || _isEnsuringCameraSource) {
       return;
     }
@@ -3334,6 +3345,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await _refreshRegisteredSources();
       await _refreshSourceStatuses();
 
+      // 이미 현재 클라이언트 소스가 있으면 재등록하지 않고, 없으면 서버에 새로 등록한다.
       var source = _findRegisteredCameraZeroSource();
       source ??= await eventApiService.registerSource(
         sourceType: 'camera',
@@ -3426,6 +3438,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _ensureRegisteredSourceRunning(SourceItem source) async {
+    // 소스가 이미 시작 중이거나 재연결 중이면 다시 요청하지 않는다.
     final status = sourceStatusesByKey[source.sourceKey.trim()];
     final state = status?.state.trim().toLowerCase() ?? '';
     if (status?.isRunning == true ||
@@ -3438,6 +3451,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _connectRealtimeUpdates() async {
+    // 서버의 실시간 이벤트 채널에 연결해 소스/상태/이벤트 변경을 즉시 반영한다.
     realtimeReconnectTimer?.cancel();
     await _disconnectRealtimeUpdates();
     try {
@@ -3464,6 +3478,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _disconnectRealtimeUpdates() async {
+    // 기존 WebSocket 구독과 소켓을 안전하게 해제해 재연결 시 중복 이벤트를 막는다.
     final subscription = realtimeSocketSubscription;
     realtimeSocketSubscription = null;
     if (subscription != null) {
@@ -3484,6 +3499,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _handleRealtimeSocketClosed() {
+    // 소켓이 끊기면 연결 상태를 비활성화하고 자동 재연결을 예약한다.
     realtimeSocketSubscription = null;
     realtimeSocket = null;
     if (mounted) {
@@ -3497,6 +3513,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _scheduleRealtimeReconnect() {
+    // 네트워크가 잠깐 끊겼을 때 재연결을 몇 초 후에 시도해 과도한 반복 연결을 방지한다.
     realtimeReconnectTimer?.cancel();
     realtimeReconnectTimer = Timer(const Duration(seconds: 2), () {
       unawaited(_connectRealtimeUpdates());
@@ -3504,6 +3521,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _handleRealtimeUpdateMessage(dynamic data) {
+    // 서버로부터 들어온 실시간 메시지를 파싱해 어떤 데이터가 바뀌었는지 판단한다.
     if (data is! String) {
       return;
     }
@@ -3538,6 +3556,7 @@ class _HomeScreenState extends State<HomeScreen> {
     bool refreshSources = false,
     bool refreshStatuses = false,
   }) {
+    // 실시간 이벤트가 여러 번 들어오면 바로 갱신하지 않고, 짧은 지연 후 한 번에 처리한다.
     pendingRealtimeEventsRefresh =
         pendingRealtimeEventsRefresh || refreshEvents;
     pendingRealtimeSourcesRefresh =

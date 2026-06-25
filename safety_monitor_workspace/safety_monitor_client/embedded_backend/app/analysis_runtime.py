@@ -561,14 +561,6 @@ def _build_model():
         )
     raise ValueError(f"unsupported MODEL_TYPE: {MODEL_TYPE}")
 
-
-def _build_rules(source_record: dict[str, Any]) -> list[Any]:
-    """클라이언트 측에서는 규칙 판정 대신 탐지 결과만 전달하도록 비워 둡니다."""
-    # 룰 판정은 중앙 서버 전용 책임입니다.
-    # 클라이언트는 객체 탐지 결과(frame_detections)만 서버로 전송합니다.
-    return []
-
-
 def _download_youtube_video(url: str) -> Path:
     """YouTube 영상을 로컬 캐시에 다운로드해 재사용 가능한 파일 경로로 반환합니다."""
     # 이미 캐시된 파일이 있으면 다시 내려받지 않고 재사용합니다.
